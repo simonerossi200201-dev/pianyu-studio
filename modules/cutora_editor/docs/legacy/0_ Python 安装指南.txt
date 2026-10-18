@@ -1,0 +1,15 @@
+Python 安装注意事项：
+🔴 1、 Add Python to PATH 👉 一定要勾上
+不勾 = 后面 100% 出问题（pip、venv、脚本全跪）
+
+🔴 2、 Advanced Options（只检查，不乱改）
+点 Customize installation → Advanced Options 后：
+
+确认这几项是 ✔️：
+
+☑ Install for all users
+☑ Add Python to environment variables
+☑ Precompile standard library
+
+
+👉 安装路径：C:\Python310\ 或默认即可，不要装进中文目录

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- ≤32 专用：无底板、透明底。橙子直径 96% 画布、居中，6 瓣无细缝无高光。 -->
+  <defs>
+    <linearGradient id="peel" gradientUnits="userSpaceOnUse" x1="161.71" y1="123.63" x2="841.71" y2="896.96">
+      <stop offset="0%" stop-color="#F0A24A"/>
+      <stop offset="100%" stop-color="#E8823A"/>
+    </linearGradient>
+    <radialGradient id="fleshGold" gradientUnits="userSpaceOnUse" cx="512" cy="512" r="413.33">
+      <stop offset="10%" stop-color="#D9A34F"/>
+      <stop offset="100%" stop-color="#F3C878"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="512" cy="512" r="491.52" fill="url(#peel)"/>
+  <!-- 6 瓣紧贴，皮更厚，中心点更大，16px 仍是橙色圆盘 -->
+  <path fill="url(#fleshGold)" d="M 512.00,98.67 A 413.33 413.33 0 0 1 869.96,305.33 L 592.83,465.33 A 93.33 93.33 0 0 0 512.00,418.67 Z"/>
+  <path fill="#6BB2AF" d="M 869.96,305.33 A 413.33 413.33 0 0 1 869.96,718.67 L 592.83,558.67 A 93.33 93.33 0 0 0 592.83,465.33 Z"/>
+  <path fill="url(#fleshGold)" d="M 869.96,718.67 A 413.33 413.33 0 0 1 512.00,925.33 L 512.00,605.33 A 93.33 93.33 0 0 0 592.83,558.67 Z"/>
+  <path fill="url(#fleshGold)" d="M 512.00,925.33 A 413.33 413.33 0 0 1 154.04,718.67 L 431.17,558.67 A 93.33 93.33 0 0 0 512.00,605.33 Z"/>
+  <path fill="#D9705F" d="M 154.04,718.67 A 413.33 413.33 0 0 1 154.04,305.33 L 431.17,465.33 A 93.33 93.33 0 0 0 431.17,558.67 Z"/>
+  <path fill="url(#fleshGold)" d="M 154.04,305.33 A 413.33 413.33 0 0 1 512.00,98.67 L 512.00,418.67 A 93.33 93.33 0 0 0 431.17,465.33 Z"/>
+  <circle cx="512" cy="512" r="64" fill="#D9A34F"/>
+</svg>

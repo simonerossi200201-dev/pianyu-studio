@@ -1,0 +1,3 @@
+License identifier from the wheel: MIT
+Project URL: https://opennmt.net
+The wheel did not ship a recognizable LICENSE file. See the project URL for the official text.

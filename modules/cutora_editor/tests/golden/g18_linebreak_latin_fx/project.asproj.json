@@ -1,0 +1,1171 @@
+{
+  "version": 2,
+  "created_at": "2026-09-08 05:07:45",
+  "app": "AutoSub Ultimate",
+  "export_video_mode": "compressed",
+  "tasks": [
+    {
+      "video": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g01\\video.mp4",
+      "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g01\\video.mp4",
+      "text": "They waited in the shade of the old church for a friend from town. Friends arrived, then we sat by the fire until late. Kindly remember bringing extra documents tomorrow. Please remember to bring the documents, the maps, the keys, and the letters for the meeting tomorrow morning at the hall of the old station. Il gatto dorme sul tetto della casa grande vicino al fiume blu. La voce dell'anima riempie la sala del teatro con un canto lento.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 3.292,
+          "words": [
+            {
+              "word": "They",
+              "start": 0.0,
+              "end": 0.235,
+              "wid": 0
+            },
+            {
+              "word": "waited",
+              "start": 0.235,
+              "end": 0.47,
+              "wid": 1
+            },
+            {
+              "word": "in",
+              "start": 0.47,
+              "end": 0.705,
+              "wid": 2
+            },
+            {
+              "word": "the",
+              "start": 0.705,
+              "end": 0.941,
+              "wid": 3
+            },
+            {
+              "word": "shade",
+              "start": 0.941,
+              "end": 1.176,
+              "wid": 4
+            },
+            {
+              "word": "of",
+              "start": 1.176,
+              "end": 1.411,
+              "wid": 5
+            },
+            {
+              "word": "the",
+              "start": 1.411,
+              "end": 1.646,
+              "wid": 6
+            },
+            {
+              "word": "old",
+              "start": 1.646,
+              "end": 1.881,
+              "wid": 7
+            },
+            {
+              "word": "church",
+              "start": 1.881,
+              "end": 2.116,
+              "wid": 8
+            },
+            {
+              "word": "for",
+              "start": 2.116,
+              "end": 2.351,
+              "wid": 9
+            },
+            {
+              "word": "a",
+              "start": 2.351,
+              "end": 2.587,
+              "wid": 10
+            },
+            {
+              "word": "friend",
+              "start": 2.587,
+              "end": 2.822,
+              "wid": 11
+            },
+            {
+              "word": "from",
+              "start": 2.822,
+              "end": 3.057,
+              "wid": 12
+            },
+            {
+              "word": "town.",
+              "start": 3.057,
+              "end": 3.292,
+              "wid": 13
+            }
+          ],
+          "text": "They waited in the shade of the old church for a friend from town.",
+          "role": "default",
+          "lines": [
+            "They waited in the shade of the old",
+            "church for a friend from town."
+          ],
+          "lang": "en"
+        },
+        {
+          "start": 3.342,
+          "end": 6.634,
+          "words": [
+            {
+              "word": "Friends",
+              "start": 3.342,
+              "end": 3.671,
+              "wid": 14
+            },
+            {
+              "word": "arrived,",
+              "start": 3.671,
+              "end": 4.0,
+              "wid": 15
+            },
+            {
+              "word": "then",
+              "start": 4.0,
+              "end": 4.33,
+              "wid": 16
+            },
+            {
+              "word": "we",
+              "start": 4.33,
+              "end": 4.659,
+              "wid": 17
+            },
+            {
+              "word": "sat",
+              "start": 4.659,
+              "end": 4.988,
+              "wid": 18
+            },
+            {
+              "word": "by",
+              "start": 4.988,
+              "end": 5.317,
+              "wid": 19
+            },
+            {
+              "word": "the",
+              "start": 5.317,
+              "end": 5.646,
+              "wid": 20
+            },
+            {
+              "word": "fire",
+              "start": 5.646,
+              "end": 5.976,
+              "wid": 21
+            },
+            {
+              "word": "until",
+              "start": 5.976,
+              "end": 6.305,
+              "wid": 22
+            },
+            {
+              "word": "late.",
+              "start": 6.305,
+              "end": 6.634,
+              "wid": 23
+            }
+          ],
+          "text": "Friends arrived, then we sat by the fire until late.",
+          "role": "default",
+          "lines": [
+            "Friends arrived,",
+            "then we sat by the fire until late."
+          ],
+          "lang": "en"
+        },
+        {
+          "start": 6.683,
+          "end": 9.975,
+          "words": [
+            {
+              "word": "Kindly",
+              "start": 6.683,
+              "end": 7.232,
+              "wid": 24
+            },
+            {
+              "word": "remember",
+              "start": 7.232,
+              "end": 7.78,
+              "wid": 25
+            },
+            {
+              "word": "bringing",
+              "start": 7.78,
+              "end": 8.329,
+              "wid": 26
+            },
+            {
+              "word": "extra",
+              "start": 8.329,
+              "end": 8.878,
+              "wid": 27
+            },
+            {
+              "word": "documents",
+              "start": 8.878,
+              "end": 9.426,
+              "wid": 28
+            },
+            {
+              "word": "tomorrow.",
+              "start": 9.426,
+              "end": 9.975,
+              "wid": 29
+            }
+          ],
+          "text": "Kindly remember bringing extra documents tomorrow.",
+          "role": "default",
+          "lines": [
+            "Kindly remember bringing",
+            "extra documents tomorrow."
+          ],
+          "lang": "en"
+        },
+        {
+          "start": 10.025,
+          "end": 13.317,
+          "words": [
+            {
+              "word": "Please",
+              "start": 10.025,
+              "end": 10.157,
+              "wid": 30
+            },
+            {
+              "word": "remember",
+              "start": 10.157,
+              "end": 10.288,
+              "wid": 31
+            },
+            {
+              "word": "to",
+              "start": 10.288,
+              "end": 10.42,
+              "wid": 32
+            },
+            {
+              "word": "bring",
+              "start": 10.42,
+              "end": 10.552,
+              "wid": 33
+            },
+            {
+              "word": "the",
+              "start": 10.552,
+              "end": 10.683,
+              "wid": 34
+            },
+            {
+              "word": "documents,",
+              "start": 10.683,
+              "end": 10.815,
+              "wid": 35
+            },
+            {
+              "word": "the",
+              "start": 10.815,
+              "end": 10.947,
+              "wid": 36
+            },
+            {
+              "word": "maps,",
+              "start": 10.947,
+              "end": 11.078,
+              "wid": 37
+            },
+            {
+              "word": "the",
+              "start": 11.078,
+              "end": 11.21,
+              "wid": 38
+            },
+            {
+              "word": "keys,",
+              "start": 11.21,
+              "end": 11.342,
+              "wid": 39
+            },
+            {
+              "word": "and",
+              "start": 11.342,
+              "end": 11.473,
+              "wid": 40
+            },
+            {
+              "word": "the",
+              "start": 11.473,
+              "end": 11.605,
+              "wid": 41
+            },
+            {
+              "word": "letters",
+              "start": 11.605,
+              "end": 11.737,
+              "wid": 42
+            },
+            {
+              "word": "for",
+              "start": 11.737,
+              "end": 11.869,
+              "wid": 43
+            },
+            {
+              "word": "the",
+              "start": 11.869,
+              "end": 12.0,
+              "wid": 44
+            },
+            {
+              "word": "meeting",
+              "start": 12.0,
+              "end": 12.132,
+              "wid": 45
+            },
+            {
+              "word": "tomorrow",
+              "start": 12.132,
+              "end": 12.264,
+              "wid": 46
+            },
+            {
+              "word": "morning",
+              "start": 12.264,
+              "end": 12.395,
+              "wid": 47
+            },
+            {
+              "word": "at",
+              "start": 12.395,
+              "end": 12.527,
+              "wid": 48
+            },
+            {
+              "word": "the",
+              "start": 12.527,
+              "end": 12.659,
+              "wid": 49
+            },
+            {
+              "word": "hall",
+              "start": 12.659,
+              "end": 12.79,
+              "wid": 50
+            },
+            {
+              "word": "of",
+              "start": 12.79,
+              "end": 12.922,
+              "wid": 51
+            },
+            {
+              "word": "the",
+              "start": 12.922,
+              "end": 13.054,
+              "wid": 52
+            },
+            {
+              "word": "old",
+              "start": 13.054,
+              "end": 13.185,
+              "wid": 53
+            },
+            {
+              "word": "station.",
+              "start": 13.185,
+              "end": 13.317,
+              "wid": 54
+            }
+          ],
+          "text": "Please remember to bring the documents, the maps, the keys, and the letters for the meeting tomorrow morning at the hall of the old station.",
+          "role": "default",
+          "lines": [
+            "Please remember to bring the documents,",
+            "the maps, the keys, and the letters for the meeting tomorrow morning at the hall of the old station."
+          ],
+          "lang": "en"
+        },
+        {
+          "start": 13.367,
+          "end": 16.659,
+          "words": [
+            {
+              "word": "Il",
+              "start": 13.367,
+              "end": 13.641,
+              "wid": 55
+            },
+            {
+              "word": "gatto",
+              "start": 13.641,
+              "end": 13.916,
+              "wid": 56
+            },
+            {
+              "word": "dorme",
+              "start": 13.916,
+              "end": 14.19,
+              "wid": 57
+            },
+            {
+              "word": "sul",
+              "start": 14.19,
+              "end": 14.464,
+              "wid": 58
+            },
+            {
+              "word": "tetto",
+              "start": 14.464,
+              "end": 14.739,
+              "wid": 59
+            },
+            {
+              "word": "della",
+              "start": 14.739,
+              "end": 15.013,
+              "wid": 60
+            },
+            {
+              "word": "casa",
+              "start": 15.013,
+              "end": 15.287,
+              "wid": 61
+            },
+            {
+              "word": "grande",
+              "start": 15.287,
+              "end": 15.562,
+              "wid": 62
+            },
+            {
+              "word": "vicino",
+              "start": 15.562,
+              "end": 15.836,
+              "wid": 63
+            },
+            {
+              "word": "al",
+              "start": 15.836,
+              "end": 16.11,
+              "wid": 64
+            },
+            {
+              "word": "fiume",
+              "start": 16.11,
+              "end": 16.385,
+              "wid": 65
+            },
+            {
+              "word": "blu.",
+              "start": 16.385,
+              "end": 16.659,
+              "wid": 66
+            }
+          ],
+          "text": "Il gatto dorme sul tetto della casa grande vicino al fiume blu.",
+          "role": "default",
+          "lines": [
+            "Il gatto dorme sul tetto della casa",
+            "grande vicino al fiume blu."
+          ],
+          "lang": "it"
+        },
+        {
+          "start": 16.708,
+          "end": 20.0,
+          "words": [
+            {
+              "word": "La",
+              "start": 16.708,
+              "end": 16.982,
+              "wid": 67
+            },
+            {
+              "word": "voce",
+              "start": 16.982,
+              "end": 17.257,
+              "wid": 68
+            },
+            {
+              "word": "dell'anima",
+              "start": 17.257,
+              "end": 17.531,
+              "wid": 69
+            },
+            {
+              "word": "riempie",
+              "start": 17.531,
+              "end": 17.805,
+              "wid": 70
+            },
+            {
+              "word": "la",
+              "start": 17.805,
+              "end": 18.08,
+              "wid": 71
+            },
+            {
+              "word": "sala",
+              "start": 18.08,
+              "end": 18.354,
+              "wid": 72
+            },
+            {
+              "word": "del",
+              "start": 18.354,
+              "end": 18.628,
+              "wid": 73
+            },
+            {
+              "word": "teatro",
+              "start": 18.628,
+              "end": 18.903,
+              "wid": 74
+            },
+            {
+              "word": "con",
+              "start": 18.903,
+              "end": 19.177,
+              "wid": 75
+            },
+            {
+              "word": "un",
+              "start": 19.177,
+              "end": 19.451,
+              "wid": 76
+            },
+            {
+              "word": "canto",
+              "start": 19.451,
+              "end": 19.726,
+              "wid": 77
+            },
+            {
+              "word": "lento.",
+              "start": 19.726,
+              "end": 20.0,
+              "wid": 78
+            }
+          ],
+          "text": "La voce dell'anima riempie la sala del teatro con un canto lento.",
+          "role": "default",
+          "lines": [
+            "La voce dell'anima riempie la sala",
+            "del teatro con un canto lento."
+          ],
+          "lang": "it"
+        }
+      ],
+      "overlays": [],
+      "text_overlays": [],
+      "image_overlays": [],
+      "audio_clips": [],
+      "dims": [
+        1080,
+        1920
+      ],
+      "style": {
+        "font_family": "SN Pro SemiBold",
+        "fontsize": 35,
+        "bold": true,
+        "italic": false,
+        "pos_x": 540,
+        "pos_y": 1449,
+        "rotation": 0,
+        "color_text": "#ffffff",
+        "color_high": "#ffff7f",
+        "color_bg": "#007a95",
+        "opacity_bg": 255,
+        "opacity_shadow": 255,
+        "use_box": false,
+        "box_padding_x": 28,
+        "box_padding_y": 5,
+        "box_radius": 5,
+        "box_blur": 11,
+        "use_stroke": true,
+        "border_width": 2,
+        "opacity_outline": 255,
+        "dynamic_box": true,
+        "color_high_bg": "#550000",
+        "opacity_high_bg": 67,
+        "dynamic_radius": 13,
+        "shadow_blur": 0,
+        "high_padding": 1,
+        "high_offset_y": 0,
+        "wrap_lines": 2,
+        "wrap_left": 0,
+        "wrap_right": 0,
+        "line_spacing": 0,
+        "anim_in_type": "none",
+        "anim_in_duration": 0.3,
+        "anim_in_easing": "ease_out",
+        "anim_out_type": "none",
+        "anim_out_duration": 0.3,
+        "anim_out_easing": "ease_out",
+        "tw_revealed_opacity": 255,
+        "tw_revealed_stroke_opacity": 255,
+        "tw_unrevealed_opacity": 80,
+        "char_bounce_height": 20,
+        "char_bounce_stagger": 0.05,
+        "dyn_box_anim": false,
+        "dyn_box_anim_overshoot": 1.25,
+        "dyn_box_anim_duration": 0.15,
+        "floating_amplitude": 8,
+        "floating_period": 2.0,
+        "bullet_stagger": 0.15,
+        "metronome_bpm": 120,
+        "flash_duration": 0.1,
+        "holy_glow_radius": 6,
+        "holy_glow_period": 3.0,
+        "letter_jump_scale": 1.5,
+        "letter_jump_duration": 0.2,
+        "blur_sharp_max": 20,
+        "blur_sharp_clear_frac": 0.4,
+        "stroke_expand_enabled": false,
+        "stroke_expand_layers": 3,
+        "stroke_expand_step": 4.0,
+        "stroke_expand_feather": 8.0,
+        "stroke_expand_layer_widths": [
+          4.0,
+          4.0,
+          4.0
+        ],
+        "stroke_expand_layer_feathers": [
+          8.0,
+          8.0,
+          8.0
+        ],
+        "bg_gradient_enabled": true,
+        "bg_gradient_type": "fresnel",
+        "bg_gradient_colors": "#0081bd,#007cb6",
+        "bg_gradient_highlight": false,
+        "dyn_box_image_enabled": false,
+        "metro_read_stroke_width": 2,
+        "metro_read_opacity": 255,
+        "metro_unread_stroke_width": 1,
+        "metro_unread_opacity": 100,
+        "box_transition_enabled": true,
+        "advanced_textbox_enabled": false,
+        "advanced_textbox_x": 420,
+        "advanced_textbox_y": 760,
+        "advanced_textbox_w": 1080,
+        "advanced_textbox_h": 280,
+        "advanced_textbox_align": "right",
+        "adv_bg_enabled": false,
+        "adv_bg_offset_x": 0,
+        "adv_bg_offset_y": 0,
+        "adv_bg_w": 1080,
+        "adv_bg_h": 280,
+        "adv_bg_radius": 1,
+        "adv_bg_opacity": 191,
+        "adv_bg_gradient_enabled": false,
+        "adv_bg_gradient_type": "linear_h",
+        "adv_bg_gradient_highlight": false,
+        "adv_line_spacing": 0,
+        "adv_text_align": "right",
+        "adv_stroke_enabled": false,
+        "adv_stroke_width": 1,
+        "adv_stroke_opacity": 255,
+        "spectrum_enabled": false,
+        "spectrum_bands": 32,
+        "spectrum_bar_width": 20,
+        "spectrum_bar_gap": 2,
+        "spectrum_max_height": 82,
+        "spectrum_position": "below",
+        "spectrum_shape": "bars",
+        "spectrum_dual": false,
+        "spectrum_top_shape": "bars",
+        "spectrum_opacity": 200,
+        "spectrum_roundness": 2,
+        "text_grad": {
+          "enabled": false,
+          "mode": 1,
+          "dir": 0,
+          "c1": "#ffffff",
+          "c2": "#0000ff",
+          "c3": "#0062ff"
+        },
+        "high_grad": {
+          "enabled": true,
+          "mode": 1,
+          "dir": 0,
+          "c1": "#ffff7f",
+          "c2": "#ffff00",
+          "c3": "#ffbf00"
+        },
+        "bg_grad": {
+          "enabled": true,
+          "mode": 1,
+          "dir": 1,
+          "c1": "#007a95",
+          "c2": "#719cb9",
+          "c3": "#0076b5"
+        },
+        "dyn_box_style": 1,
+        "dyn_box_stroke_width": 2,
+        "dyn_box_glow_radius": 12,
+        "dyn_box_font_enabled": true,
+        "dyn_box_font_family": "SN Pro SemiBold",
+        "dyn_box_font_size": 35,
+        "adv_bar_enabled": false,
+        "adv_bar_opacity": 180,
+        "adv_bar_padding": 10,
+        "adv_bar_offset_y": 0,
+        "adv_bar_radius": 10,
+        "adv_bar_glow": 0,
+        "adv_bar_style": "filled",
+        "adv_bar_border_width": 3,
+        "fade_in_out_enabled": false,
+        "fade_in_out_duration": 0.15,
+        "lyrics_scroll_enabled": false,
+        "lyrics_scroll_damping": 0.8,
+        "lyrics_scroll_transition": 0.4,
+        "lyrics_center_scale": 1.15,
+        "keyword_rules": [],
+        "lyrics_edge_feather": 40,
+        "lyrics_alpha_decay": 30,
+        "lyrics_line_gap": 20,
+        "lyrics_center_offset": 0,
+        "color_outline": "#550000",
+        "tw_revealed_color": "#0088ff",
+        "tw_revealed_stroke_color": "#ffffff",
+        "tw_unrevealed_color": "#808080",
+        "tw_unrevealed_stroke_color": "#404040",
+        "flash_color": "#FFFF00",
+        "holy_glow_color": "#FFFFCC",
+        "stroke_expand_colors": "#FF0000,#00FF00,#0000FF",
+        "dyn_box_image_path": "",
+        "dyn_box_image_scale": 1.0,
+        "dyn_box_image_offset_x": 0,
+        "dyn_box_image_offset_y": 0,
+        "dyn_box_image_blend": "normal",
+        "spectrum_color_bottom": "#00AAFF",
+        "spectrum_color_top": "#FF4444",
+        "dyn_box_images": [],
+        "metro_read_color": "#FFFFFF",
+        "metro_read_stroke_color": "#000000",
+        "metro_unread_color": "#808080",
+        "metro_unread_stroke_color": "#404040",
+        "box_transition_color_to": "#3060fc",
+        "adv_bg_color": "#e0c3fc",
+        "adv_bg_gradient_colors": "#e0c3fc,#8ec5fc",
+        "adv_stroke_color": "#000000",
+        "lyrics_center_color": "#FFD700",
+        "color_shadow": "#ffffff",
+        "preset_name": "周圆青色",
+        "fx": {
+          "fill": {
+            "type": "solid",
+            "colors": [
+              "#ffffff"
+            ]
+          },
+          "stroke": {
+            "width_em": 0.05714285714285714,
+            "color": "#550000",
+            "join": "round"
+          },
+          "glow": {
+            "sigma_em": 0,
+            "spread_em": 0.02,
+            "color": "#22D3EE",
+            "strength": 0.8,
+            "mode": "soft"
+          },
+          "shadow": {
+            "sigma_em": 0,
+            "dx_em": 0.04,
+            "dy_em": 0.06,
+            "color": "#141A26",
+            "alpha": 0.6
+          },
+          "extrude": {
+            "depth_em": 0,
+            "angle": 135,
+            "color": ""
+          },
+          "bg": {
+            "type": "none",
+            "color": "#550000",
+            "alpha": 0.2627450980392157,
+            "radius_em": 0.37142857142857144,
+            "pad_em": [
+              0.5,
+              0.25
+            ],
+            "texture": "paper",
+            "texture_tint": "#F1E9D8",
+            "align": "center"
+          },
+          "fonts": {
+            "body": "SN Pro SemiBold",
+            "emphasis": ""
+          },
+          "emphasis": {
+            "auto": [],
+            "words": [],
+            "color": "#ffff7f",
+            "palette": [],
+            "scale": 1.25,
+            "font": "emphasis",
+            "anim": "none",
+            "max_per_cue": 2
+          },
+          "anim": {
+            "in": "none",
+            "loop": "highlight+box_highlight",
+            "out": "none",
+            "unit": "segment",
+            "stagger_s": 0.05,
+            "in_s": 0.3,
+            "out_s": 0.3,
+            "easing": "ease_out",
+            "seed": 0
+          },
+          "scatter": {
+            "enabled": false,
+            "size_jitter": 0.35,
+            "pos_jitter_em": [
+              1.5,
+              0.8
+            ],
+            "rot_jitter_deg": 6.0
+          },
+          "tracking_em": 0.0,
+          "letter_case": "none"
+        }
+      },
+      "src_volume": 1.0,
+      "intro_media": null,
+      "video_overlay": {},
+      "audio_tracks": [],
+      "duration": 20.0,
+      "trim_end_sec": 20.0,
+      "subtitle_roles": {
+        "default": {
+          "name": "默认",
+          "color": "#CCCCCC"
+        }
+      },
+      "timeline": {
+        "width": 1080,
+        "height": 1920,
+        "fps": 30.0,
+        "sources": {
+          "bceb25104eee48abafceaa2f9a5c5497": {
+            "id": "bceb25104eee48abafceaa2f9a5c5497",
+            "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g01\\video.mp4",
+            "duration": 20.0,
+            "has_video": true,
+            "has_audio": true
+          }
+        },
+        "tracks": [
+          {
+            "id": "5468956f127d4c8986784f392b71fb14",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": true,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [
+              {
+                "source_id": "bceb25104eee48abafceaa2f9a5c5497",
+                "in_t": 0.0,
+                "out_t": 20.0,
+                "start_t": 0.0,
+                "fit_mode": "fill",
+                "blend_mode": "normal",
+                "x": 0.0,
+                "y": 0.0,
+                "scale": 1.0,
+                "rotation": 0.0,
+                "flip_x": false,
+                "flip_y": false,
+                "speed": 1.0,
+                "loop": false,
+                "match_duration": false,
+                "transition_preset": "none",
+                "transition_duration": 0.35,
+                "gain_db": 0.0,
+                "pitch_semitones": 0.0,
+                "fade_in_dur": 0.0,
+                "fade_out_dur": 0.0,
+                "spatial_enabled": false,
+                "spatial_amount": 0.0,
+                "spatial_preset": "cathedral",
+                "spatial_user_set": false,
+                "is_main": false,
+                "audio_role": ""
+              }
+            ],
+            "transitions": []
+          },
+          {
+            "id": "f9fdf6b363b643d8aef4414485b167e7",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "0d7857248de44e5fbaa5cecd0a2bddfe",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "6b3323d134834c6aa7868fa11fbce33c",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "19c16280a9b84c219f7468ca296734d1",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "279b51d244e140d98e81feafbda11a02",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "3379c7de3db54131aaf440ffd3d70f21",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "046bb7d5f0384e88865fd27cbc398875",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "13d75c4ac456483f9a41c4c9f61575f9",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "c586853490f64d2a96bac6801280c7cf",
+            "type": "text",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "038a24349027453090f84934326f7020",
+            "type": "text",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "df8c24ffc7954129a7c35834b8535421",
+            "type": "text",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "e791b5c25bf64186829ff12f5102b6bb",
+            "type": "subs",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "6a4d7283ffbe4f9985712ccf45c823bd",
+            "type": "audio",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "audio",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [
+              {
+                "source_id": "bceb25104eee48abafceaa2f9a5c5497",
+                "in_t": 0.0,
+                "out_t": 20.0,
+                "start_t": 0.0,
+                "fit_mode": "fill",
+                "blend_mode": "normal",
+                "x": 0.0,
+                "y": 0.0,
+                "scale": 1.0,
+                "rotation": 0.0,
+                "flip_x": false,
+                "flip_y": false,
+                "speed": 1.0,
+                "loop": false,
+                "match_duration": false,
+                "transition_preset": "none",
+                "transition_duration": 0.35,
+                "gain_db": 0.0,
+                "pitch_semitones": 0.0,
+                "fade_in_dur": 0.0,
+                "fade_out_dur": 0.0,
+                "spatial_enabled": false,
+                "spatial_amount": 0.0,
+                "spatial_preset": "cathedral",
+                "spatial_user_set": false,
+                "is_main": true,
+                "audio_role": ""
+              }
+            ],
+            "transitions": []
+          },
+          {
+            "id": "0db06272b69e4d09bb61f82d0771bc77",
+            "type": "audio",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "audio",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "6bc8844a20964f63a67f7c315e410684",
+            "type": "audio",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "audio",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          }
+        ]
+      },
+      "layout_rules": {
+        "max_chars_per_line": 42,
+        "max_lines": 2,
+        "balance_lines": true,
+        "line_break": "space"
+      }
+    }
+  ],
+  "curr_idx": 0,
+  "ui": {
+    "timeline_zoom": 20,
+    "timeline_scroll_x": 0,
+    "timeline_scroll_y": 0
+  },
+  "headless": true
+}

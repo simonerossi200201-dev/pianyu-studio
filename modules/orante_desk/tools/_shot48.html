@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>48 文案列</title>
+<link rel="stylesheet" href="/ui/css/app.css">
+<style>
+html,body{overflow:auto;height:auto}
+body{padding:24px}
+main.stage{overflow:visible;position:static;height:auto}
+</style>
+</head>
+<body>
+<section class="panel-track" style="max-width:560px;background:var(--panel);border:1px solid var(--rule);border-radius:8px">
+  <div class="bwrap" style="overflow:visible">
+    <table class="btable">
+      <thead><tr>
+        <th style="width:52px">段</th>
+        <th style="width:140px">图</th>
+        <th style="width:66px">时长</th>
+        <th style="width:100%">文案</th>
+      </tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+</section>
+<script>
+const open = {};
+function render() {
+  const segs = window.SEGS || [];
+  const tb = document.getElementById('body');
+  tb.innerHTML = segs.map(sg => {
+    const isOpen = !!open[sg.s];
+    const html = sg.html || sg.text;
+    const warn = sg.warn ? `<div class="w">${sg.warn}</div>` : '';
+    return `<tr data-s="${sg.s}" title="${sg.text.replace(/"/g,'&quot;')}">
+      <td class="sn">s${String(sg.s).padStart(3,'0')}</td>
+      <td class="pp"><span class="swatch" style="background:#6BB2AF"></span>p0${sg.s}</td>
+      <td class="sn">${sg.dur}s</td>
+      <td class="txt${isOpen ? ' open' : ''}" data-s="${sg.s}">
+        <span>${html}</span>
+        ${warn}
+      </td>
+    </tr>`;
+  }).join('');
+  tb.querySelectorAll('td.txt').forEach(td => {
+    td.addEventListener('click', () => {
+      const s = td.getAttribute('data-s');
+      if (open[s]) delete open[s]; else open[s] = true;
+      render();
+    });
+  });
+}
+window.toggleTxt = function(s) {
+  if (open[s]) delete open[s]; else open[s] = true;
+  render();
+};
+window.renderSegs = function(list) { window.SEGS = list; render(); };
+</script>
+</body>
+</html>

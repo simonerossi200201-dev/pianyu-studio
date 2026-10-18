@@ -1,0 +1,12 @@
+{
+  "case": "g19_stitch_timeline",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "T20a timeline stitch. T0035 27 clips copied into tests/golden/_media/g19_stitch_timeline (gitignored, never D:\\1_PROJECT). Hash gate is 5 clips / ~29s (start, trimmed tail, short, non-zero in_t, end) so --all does not grow by 3 min. fill + hard cut + linked audio. No _stitched mp4."
+}

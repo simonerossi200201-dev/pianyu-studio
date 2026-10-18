@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "counts": {
+    "tasks": 1,
+    "pieces": 1,
+    "placed": 2
+  },
+  "artifacts": [
+    "D:\\0_Dev\\CUTORA\\tests\\golden\\g05_scatter_insert\\project.asproj.json",
+    "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g05\\broll\\_scatter"
+  ],
+  "per_task": [
+    {
+      "video": "host.mp4",
+      "count": 2,
+      "duration": 20.0
+    }
+  ],
+  "project": "D:\\0_Dev\\CUTORA\\tests\\golden\\g05_scatter_insert\\project.asproj.json",
+  "out_dir": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g05\\broll\\_scatter",
+  "next_hint": "切片已铺进工程 Video 轨道。用界面打开检查，要出片就 batch_export。",
+  "op": "scatter_broll",
+  "started_at": "2026-09-08T11:10:08+08:00",
+  "finished_at": "2026-09-08T11:10:09+08:00",
+  "human_needed": false,
+  "error": null,
+  "result_path": "D:\\0_Dev\\CUTORA\\tests\\golden\\g05_scatter_insert\\_state\\01_scatter_broll.json"
+}

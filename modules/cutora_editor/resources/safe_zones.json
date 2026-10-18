@@ -1,0 +1,80 @@
+{
+  "disclaimer": "参考值，随平台版本变化",
+  "presets": [
+    {
+      "id": "youtube_landscape",
+      "name": "YouTube 横屏",
+      "aspect": "16:9",
+      "unsafe": {"top": 0.06, "bottom": 0.12, "left": 0.05, "right": 0.05},
+      "labels": {
+        "top": "YouTube 标题区",
+        "bottom": "YouTube 控制栏",
+        "left": "YouTube 边距",
+        "right": "YouTube 边距"
+      },
+      "color": "#22D3EE",
+      "derived_on": "2026-09-13",
+      "source": "YouTube 帮助中心片尾画面/卡片安全区（约 5–10% 边距）与播放器控制栏公开说明；按 16:9 横屏估算，非平台出具的精确规范。"
+    },
+    {
+      "id": "youtube_shorts",
+      "name": "YouTube Shorts",
+      "aspect": "9:16",
+      "unsafe": {"top": 0.10, "bottom": 0.22, "left": 0.04, "right": 0.16},
+      "labels": {
+        "top": "Shorts 顶栏",
+        "bottom": "Shorts 标题与描述",
+        "left": "Shorts 边距",
+        "right": "Shorts 互动栏"
+      },
+      "color": "#F59E0B",
+      "derived_on": "2026-09-13",
+      "source": "YouTube Shorts 创作者叠加层模板（顶栏搜索/相机、右侧互动、底部标题）的公开示意；竖屏 9:16 估算。"
+    },
+    {
+      "id": "tiktok",
+      "name": "TikTok",
+      "aspect": "9:16",
+      "unsafe": {"top": 0.10, "bottom": 0.20, "left": 0.04, "right": 0.18},
+      "labels": {
+        "top": "TikTok 顶栏",
+        "bottom": "TikTok 底部 UI",
+        "left": "TikTok 边距",
+        "right": "TikTok 互动栏"
+      },
+      "color": "#A78BFA",
+      "derived_on": "2026-09-13",
+      "source": "TikTok 创作者文档与公开 UI 布局（右侧点赞/评论列、底部文案与原声条）；竖屏 9:16 估算，随 App 版本变化。"
+    },
+    {
+      "id": "instagram_reels",
+      "name": "Instagram Reels",
+      "aspect": "9:16",
+      "unsafe": {"top": 0.08, "bottom": 0.22, "left": 0.04, "right": 0.16},
+      "labels": {
+        "top": "Reels 顶栏",
+        "bottom": "Reels 文案与音频",
+        "left": "Reels 边距",
+        "right": "Reels 互动栏"
+      },
+      "color": "#F472B6",
+      "derived_on": "2026-09-13",
+      "source": "Instagram Reels 创作者叠加层公开示意（底部说明/音频、右侧互动）；竖屏 9:16 估算。"
+    },
+    {
+      "id": "instagram_square",
+      "name": "Instagram 方图",
+      "aspect": "1:1",
+      "unsafe": {"top": 0.06, "bottom": 0.14, "left": 0.05, "right": 0.05},
+      "labels": {
+        "top": "Instagram 顶栏",
+        "bottom": "Instagram 文案区",
+        "left": "Instagram 边距",
+        "right": "Instagram 边距"
+      },
+      "color": "#34D399",
+      "derived_on": "2026-09-13",
+      "source": "Instagram 正方形帖（1:1）Feed 顶栏与底部说明区的公开布局估算；边距按常见 5% 安全区。"
+    }
+  ]
+}

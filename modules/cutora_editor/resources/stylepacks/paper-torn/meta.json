@@ -1,0 +1,15 @@
+{
+  "name": "撕纸·划线",
+  "tags": [
+    "竖屏",
+    "纹理"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "note this",
+  "description_zh": "纸纹底 + 划线强调"
+}

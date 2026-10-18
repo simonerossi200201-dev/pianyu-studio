@@ -1,0 +1,1 @@
+render video.mp4 -> D:\0_Dev\CUTORA\tests\golden\g03_horizontal_it\expected.mp4 (32.6s) err=[]

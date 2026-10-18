@@ -1,0 +1,12 @@
+{
+  "case": "g19b_stitch_crossfade",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "T20c: g19 plus cross_dissolve 0.35s on each of 4 seams. First-add."
+}

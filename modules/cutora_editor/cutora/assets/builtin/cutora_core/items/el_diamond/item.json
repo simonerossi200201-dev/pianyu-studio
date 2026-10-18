@@ -1,0 +1,22 @@
+{
+  "id": "el_diamond",
+  "type": "element",
+  "name": "菱形",
+  "license": "CUTORA-original",
+  "tags": [
+    "element",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "shape.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#B3A695",
+      "label": "主色"
+    }
+  }
+}

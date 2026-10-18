@@ -1,0 +1,22 @@
+{
+  "id": "fr_oct",
+  "type": "frame",
+  "name": "切角框",
+  "license": "CUTORA-original",
+  "tags": [
+    "frame",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "frame.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#B4544A",
+      "label": "主色"
+    }
+  }
+}

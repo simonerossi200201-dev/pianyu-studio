@@ -1,0 +1,9 @@
+id = "table"
+name = "右键表格工具"
+root = 'D:\0_Dev\右键表格工具'
+description = "资源管理器右键：表格批量改名、Google Drive 上传/下载（rclone 远程 gdrive）、批量建文件夹。本身只有图形界面；自动化时直接用 rclone。"
+rules_file = ""
+test_cmd = ""
+default_brain = "auto"
+private = true
+notes = "rclone 授权在本机 rclone.conf，绝不外传；private=true 表示只许本地大脑处理"

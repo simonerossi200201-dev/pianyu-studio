@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Orante 主图标 1024：橙子横切 × 胶片帧 / 环形时间线。底板圆角 22%。 -->
+  <defs>
+    <clipPath id="board">
+      <rect width="1024" height="1024" rx="225.28" ry="225.28"/>
+    </clipPath>
+    <radialGradient id="bg" cx="50%" cy="42%" r="72%">
+      <stop offset="0%" stop-color="#1c1915"/>
+      <stop offset="100%" stop-color="#121110"/>
+    </radialGradient>
+    <linearGradient id="peel" gradientUnits="userSpaceOnUse" x1="280" y1="190" x2="790" y2="770">
+      <stop offset="0%" stop-color="#F0A24A"/>
+      <stop offset="100%" stop-color="#E8823A"/>
+    </linearGradient>
+    <radialGradient id="fleshGold" gradientUnits="userSpaceOnUse" cx="542.72" cy="481.28" r="326">
+      <stop offset="10%" stop-color="#D9A34F"/>
+      <stop offset="100%" stop-color="#F3C878"/>
+    </radialGradient>
+    <radialGradient id="fleshFlow" gradientUnits="userSpaceOnUse" cx="542.72" cy="481.28" r="326">
+      <stop offset="10%" stop-color="#5A9E9B"/>
+      <stop offset="100%" stop-color="#6BB2AF"/>
+    </radialGradient>
+    <radialGradient id="fleshRust" gradientUnits="userSpaceOnUse" cx="542.72" cy="481.28" r="326">
+      <stop offset="10%" stop-color="#C45A4C"/>
+      <stop offset="100%" stop-color="#D9705F"/>
+    </radialGradient>
+    <radialGradient id="fleshHi" cx="62%" cy="36%" r="48%">
+      <stop offset="0%" stop-color="#FFF6E4" stop-opacity="0.09"/>
+      <stop offset="60%" stop-color="#FFF6E4" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="fleshClip">
+      <circle cx="542.72" cy="481.28" r="326"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#board)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <!-- 底板内沿发丝，让圆角在深色壁纸上有一点边界 -->
+    <rect x="1.5" y="1.5" width="1021" height="1021" rx="223.8" ry="223.8"
+          fill="none" stroke="#2C2822" stroke-width="2" opacity="0.65"/>
+
+    <!-- 橙子皮：占底板 72%，中心向右上偏 3% -->
+    <circle cx="542.72" cy="481.28" r="368.64" fill="url(#peel)"/>
+    <!-- 白皮层（果皮与果肉之间） -->
+    <circle cx="542.72" cy="481.28" r="346" fill="none" stroke="#E8D4A8" stroke-width="8"/>
+    <!-- 暗膜：瓣间细缝露出来的底，像胶片齿孔/段与段的间隔 -->
+    <circle cx="542.72" cy="481.28" r="332" fill="#161310"/>
+
+    <!-- 8 瓣胶片帧：圆角扇形 + 暗色描边作细缝。P1=Flow 青，P5=深橙 -->
+    <g fill="none" stroke="#14110E" stroke-width="5" stroke-linejoin="round">
+      <path fill="url(#fleshGold)" d="M 572.92,156.68 A 326.00 326.00 0 0 1 750.89,230.40 A 20.00 20.00 0 0 1 752.19,258.22 L 587.90,433.17 A 8.00 8.00 0 0 1 576.23,433.94 A 58.00 58.00 0 0 0 552.50,424.11 A 8.00 8.00 0 0 1 544.79,415.31 L 552.33,175.43 A 20.00 20.00 0 0 1 572.92,156.68 Z"/>
+      <path fill="url(#fleshFlow)" d="M 793.60,273.11 A 326.00 326.00 0 0 1 867.32,451.08 A 20.00 20.00 0 0 1 848.57,471.67 L 608.69,479.21 A 8.00 8.00 0 0 1 599.89,471.50 A 58.00 58.00 0 0 0 590.06,447.77 A 8.00 8.00 0 0 1 590.83,436.10 L 765.78,271.81 A 20.00 20.00 0 0 1 793.60,273.11 Z"/>
+      <path fill="url(#fleshGold)" d="M 867.32,511.48 A 326.00 326.00 0 0 1 793.60,689.45 A 20.00 20.00 0 0 1 765.78,690.75 L 590.83,526.46 A 8.00 8.00 0 0 1 590.06,514.79 A 58.00 58.00 0 0 0 599.89,491.06 A 8.00 8.00 0 0 1 608.69,483.35 L 848.57,490.89 A 20.00 20.00 0 0 1 867.32,511.48 Z"/>
+      <path fill="url(#fleshGold)" d="M 750.89,732.16 A 326.00 326.00 0 0 1 572.92,805.88 A 20.00 20.00 0 0 1 552.33,787.13 L 544.79,547.25 A 8.00 8.00 0 0 1 552.50,538.45 A 58.00 58.00 0 0 0 576.23,528.62 A 8.00 8.00 0 0 1 587.90,529.39 L 752.19,704.34 A 20.00 20.00 0 0 1 750.89,732.16 Z"/>
+      <path fill="url(#fleshGold)" d="M 512.52,805.88 A 326.00 326.00 0 0 1 334.55,732.16 A 20.00 20.00 0 0 1 333.25,704.34 L 497.54,529.39 A 8.00 8.00 0 0 1 509.21,528.62 A 58.00 58.00 0 0 0 532.94,538.45 A 8.00 8.00 0 0 1 540.65,547.25 L 533.11,787.13 A 20.00 20.00 0 0 1 512.52,805.88 Z"/>
+      <path fill="url(#fleshRust)" d="M 291.84,689.45 A 326.00 326.00 0 0 1 218.12,511.48 A 20.00 20.00 0 0 1 236.87,490.89 L 476.75,483.35 A 8.00 8.00 0 0 1 485.55,491.06 A 58.00 58.00 0 0 0 495.38,514.79 A 8.00 8.00 0 0 1 494.61,526.46 L 319.66,690.75 A 20.00 20.00 0 0 1 291.84,689.45 Z"/>
+      <path fill="url(#fleshGold)" d="M 218.12,451.08 A 326.00 326.00 0 0 1 291.84,273.11 A 20.00 20.00 0 0 1 319.66,271.81 L 494.61,436.10 A 8.00 8.00 0 0 1 495.38,447.77 A 58.00 58.00 0 0 0 485.55,471.50 A 8.00 8.00 0 0 1 476.75,479.21 L 236.87,471.67 A 20.00 20.00 0 0 1 218.12,451.08 Z"/>
+      <path fill="url(#fleshGold)" d="M 334.55,230.40 A 326.00 326.00 0 0 1 512.52,156.68 A 20.00 20.00 0 0 1 533.11,175.43 L 540.65,415.31 A 8.00 8.00 0 0 1 532.94,424.11 A 58.00 58.00 0 0 0 509.21,433.94 A 8.00 8.00 0 0 1 497.54,433.17 L 333.25,258.22 A 20.00 20.00 0 0 1 334.55,230.40 Z"/>
+    </g>
+
+    <!-- 果肉高光：极轻，避免塑料反光 -->
+    <rect width="1024" height="1024" fill="url(#fleshHi)" clip-path="url(#fleshClip)"/>
+
+    <!-- 果心 = 工作流节点 -->
+    <circle cx="542.72" cy="481.28" r="30" fill="#1A1612"/>
+    <circle cx="542.72" cy="481.28" r="18" fill="#D9A34F"/>
+    <circle cx="542.72" cy="481.28" r="8" fill="#F3C878"/>
+
+    <!-- 左下角极细弧形高光（果皮上） -->
+    <path d="M 392.27,803.93 A 356.00 356.00 0 0 1 198.85,573.42"
+          fill="none" stroke="#F8EBD4" stroke-width="4.5" stroke-linecap="round" opacity="0.36"/>
+  </g>
+</svg>

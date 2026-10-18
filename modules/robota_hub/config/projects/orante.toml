@@ -1,0 +1,9 @@
+id = "orante"
+name = "Orante 制片台"
+root = 'D:\0_Dev\Orante'
+description = "批次管理、看片、复查、重生成清单。网页 http://127.0.0.1:9400（Orante.bat 启动）。bridge\\ 下有 newbatch / runall / track / redo / lens 脚本。台账 Grok台账.json 和 manifest.json 只读，绝不修改。"
+rules_file = ""
+test_cmd = ""
+default_brain = "auto"
+private = false
+notes = "Orante 不改台账和 manifest；标记存在 data\\marks.json"

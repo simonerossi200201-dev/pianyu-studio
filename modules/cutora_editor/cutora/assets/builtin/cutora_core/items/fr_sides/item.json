@@ -1,0 +1,22 @@
+{
+  "id": "fr_sides",
+  "type": "frame",
+  "name": "侧边条",
+  "license": "CUTORA-original",
+  "tags": [
+    "frame",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "frame.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#8FA89B",
+      "label": "主色"
+    }
+  }
+}

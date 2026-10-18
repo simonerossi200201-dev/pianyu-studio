@@ -1,0 +1,1508 @@
+{
+  "version": 2,
+  "created_at": "2026-09-14 00:00:00",
+  "app": "CUTORA",
+  "export_video_mode": "compressed",
+  "tasks": [
+    {
+      "video": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g01\\video.mp4",
+      "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g01\\video.mp4",
+      "text": "Hello friends. Welcome to the studio. Today we will learn how to edit by meaning. Peace be with you. Let us begin this journey together. Paper texture holds this line. Each line gets its own bubble here. A solid box is the cheapest.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 2.054,
+          "words": [
+            {
+              "word": "Hello",
+              "start": 0.0,
+              "end": 1.0270000000000001,
+              "wid": 0
+            },
+            {
+              "word": "friends.",
+              "start": 1.1499940119760481,
+              "end": 2.054,
+              "wid": 1
+            }
+          ],
+          "text": "Hello friends.",
+          "role": "fx_grad",
+          "lang": "en",
+          "lines": [
+            "Hello friends."
+          ]
+        },
+        {
+          "start": 2.104,
+          "end": 4.93,
+          "words": [
+            {
+              "word": "Welcome",
+              "start": 2.104,
+              "end": 2.445,
+              "wid": 2
+            },
+            {
+              "word": "to",
+              "start": 2.485,
+              "end": 2.585,
+              "wid": 3
+            },
+            {
+              "word": "the",
+              "start": 2.605,
+              "end": 2.705,
+              "wid": 4
+            },
+            {
+              "word": "studio.",
+              "start": 2.745,
+              "end": 4.248,
+              "wid": 5
+            },
+            {
+              "word": "Today",
+              "start": 4.269,
+              "end": 4.589,
+              "wid": 6
+            },
+            {
+              "word": "we",
+              "start": 4.649,
+              "end": 4.749,
+              "wid": 7
+            },
+            {
+              "word": "will",
+              "start": 4.79,
+              "end": 4.93,
+              "wid": 8
+            }
+          ],
+          "text": "Welcome to the studio. Today we will",
+          "role": "fx_metal",
+          "lang": "en",
+          "lines": [
+            "Welcome to",
+            "the studio. Today we will"
+          ]
+        },
+        {
+          "start": 4.97,
+          "end": 7.385,
+          "words": [
+            {
+              "word": "learn",
+              "start": 4.97,
+              "end": 5.17,
+              "wid": 9
+            },
+            {
+              "word": "how",
+              "start": 5.251,
+              "end": 5.391,
+              "wid": 10
+            },
+            {
+              "word": "to",
+              "start": 5.451,
+              "end": 5.531,
+              "wid": 11
+            },
+            {
+              "word": "edit",
+              "start": 5.631,
+              "end": 5.832,
+              "wid": 12
+            },
+            {
+              "word": "by",
+              "start": 5.892,
+              "end": 6.032,
+              "wid": 13
+            },
+            {
+              "word": "meaning.",
+              "start": 6.092,
+              "end": 6.433,
+              "wid": 14
+            }
+          ],
+          "text": "learn how to edit by meaning.",
+          "role": "fx_neon",
+          "lang": "en",
+          "lines": [
+            "learn how to edit",
+            "by meaning."
+          ]
+        },
+        {
+          "start": 7.435,
+          "end": 9.309,
+          "words": [
+            {
+              "word": "Peace",
+              "start": 7.435,
+              "end": 7.675,
+              "wid": 15
+            },
+            {
+              "word": "be",
+              "start": 7.756,
+              "end": 7.856,
+              "wid": 16
+            },
+            {
+              "word": "with",
+              "start": 7.916,
+              "end": 8.056,
+              "wid": 17
+            },
+            {
+              "word": "you.",
+              "start": 8.116,
+              "end": 8.297,
+              "wid": 18
+            }
+          ],
+          "text": "Peace be with you.",
+          "role": "fx_glass",
+          "lang": "en",
+          "lines": [
+            "Peace be",
+            "with you."
+          ]
+        },
+        {
+          "start": 9.359,
+          "end": 12.0,
+          "words": [
+            {
+              "word": "Let",
+              "start": 9.359,
+              "end": 9.499,
+              "wid": 19
+            },
+            {
+              "word": "us",
+              "start": 9.579,
+              "end": 9.679,
+              "wid": 20
+            },
+            {
+              "word": "begin",
+              "start": 9.76,
+              "end": 10.02,
+              "wid": 21
+            },
+            {
+              "word": "this",
+              "start": 10.06,
+              "end": 10.22,
+              "wid": 22
+            },
+            {
+              "word": "journey",
+              "start": 10.301,
+              "end": 10.621,
+              "wid": 23
+            },
+            {
+              "word": "together.",
+              "start": 10.661,
+              "end": 12.0,
+              "wid": 24
+            }
+          ],
+          "text": "Let us begin this journey together.",
+          "role": "fx_fonts",
+          "lang": "en",
+          "lines": [
+            "Let us begin this",
+            "journey together."
+          ]
+        },
+        {
+          "start": 12.1,
+          "end": 14.7,
+          "words": [
+            {
+              "word": "Paper",
+              "start": 12.1,
+              "end": 12.62,
+              "wid": 25
+            },
+            {
+              "word": "texture",
+              "start": 12.62,
+              "end": 13.139999999999999,
+              "wid": 26
+            },
+            {
+              "word": "holds",
+              "start": 13.139999999999999,
+              "end": 13.66,
+              "wid": 27
+            },
+            {
+              "word": "this",
+              "start": 13.66,
+              "end": 14.18,
+              "wid": 28
+            },
+            {
+              "word": "line.",
+              "start": 14.18,
+              "end": 14.7,
+              "wid": 29
+            }
+          ],
+          "text": "Paper texture holds this line.",
+          "role": "fx_paper",
+          "lang": "en",
+          "lines": [
+            "Paper texture",
+            "holds this line."
+          ]
+        },
+        {
+          "start": 14.8,
+          "end": 17.4,
+          "words": [
+            {
+              "word": "Each",
+              "start": 14.8,
+              "end": 15.171428571428573,
+              "wid": 30
+            },
+            {
+              "word": "line",
+              "start": 15.171428571428573,
+              "end": 15.542857142857143,
+              "wid": 31
+            },
+            {
+              "word": "gets",
+              "start": 15.542857142857143,
+              "end": 15.914285714285715,
+              "wid": 32
+            },
+            {
+              "word": "its",
+              "start": 15.914285714285715,
+              "end": 16.285714285714285,
+              "wid": 33
+            },
+            {
+              "word": "own",
+              "start": 16.285714285714285,
+              "end": 16.657142857142855,
+              "wid": 34
+            },
+            {
+              "word": "bubble",
+              "start": 16.657142857142855,
+              "end": 17.02857142857143,
+              "wid": 35
+            },
+            {
+              "word": "here.",
+              "start": 17.02857142857143,
+              "end": 17.4,
+              "wid": 36
+            }
+          ],
+          "text": "Each line gets its own bubble here.",
+          "role": "fx_bubble",
+          "lang": "en",
+          "lines": [
+            "Each line gets",
+            "its own bubble here."
+          ]
+        },
+        {
+          "start": 17.5,
+          "end": 20.0,
+          "words": [
+            {
+              "word": "A",
+              "start": 17.5,
+              "end": 17.916666666666668,
+              "wid": 37
+            },
+            {
+              "word": "solid",
+              "start": 17.916666666666668,
+              "end": 18.333333333333332,
+              "wid": 38
+            },
+            {
+              "word": "box",
+              "start": 18.333333333333332,
+              "end": 18.75,
+              "wid": 39
+            },
+            {
+              "word": "is",
+              "start": 18.75,
+              "end": 19.166666666666668,
+              "wid": 40
+            },
+            {
+              "word": "the",
+              "start": 19.166666666666668,
+              "end": 19.583333333333332,
+              "wid": 41
+            },
+            {
+              "word": "cheapest.",
+              "start": 19.583333333333332,
+              "end": 20.0,
+              "wid": 42
+            }
+          ],
+          "text": "A solid box is the cheapest.",
+          "role": "fx_box",
+          "lang": "en",
+          "lines": [
+            "A solid box",
+            "is the cheapest."
+          ]
+        }
+      ],
+      "overlays": [],
+      "text_overlays": [],
+      "image_overlays": [],
+      "audio_clips": [],
+      "dims": [
+        1080,
+        1920
+      ],
+      "style": {
+        "font_family": "SN Pro",
+        "fontsize": 70,
+        "bold": true,
+        "italic": false,
+        "pos_x": 540,
+        "pos_y": 1114,
+        "anchor": "bottom-center",
+        "offset_x_pct": 0.0,
+        "offset_y_pct": -0.42,
+        "fontsize_pct": 0.064815,
+        "rotation": 0,
+        "color_text": "#F4EBD8",
+        "color_high": "#F4EBD8",
+        "color_bg": "#0B1A33",
+        "opacity_bg": 180,
+        "opacity_shadow": 255,
+        "use_box": false,
+        "box_padding_x": 20,
+        "box_padding_y": 8,
+        "box_radius": 8,
+        "box_blur": 0,
+        "use_stroke": false,
+        "border_width": 0,
+        "opacity_outline": 255,
+        "color_outline": "#141A26",
+        "wrap_lines": 2,
+        "line_spacing": 4,
+        "dynamic_box": false,
+        "anim_in_type": "none",
+        "anim_out_type": "none",
+        "fade_in_out_enabled": false,
+        "high_grad": {
+          "enabled": false,
+          "mode": 1,
+          "dir": 0,
+          "c1": "#F4EBD8",
+          "c2": "#F4EBD8",
+          "c3": "#F4EBD8"
+        },
+        "fx": {
+          "fill": {
+            "type": "gradient",
+            "colors": [
+              "#F4EBD8",
+              "#E0BE68"
+            ],
+            "angle": 90
+          },
+          "stroke": {
+            "width_em": 0.04,
+            "color": "#3A2A10",
+            "join": "round"
+          },
+          "glow": {
+            "sigma_em": 0,
+            "color": "#22D3EE"
+          },
+          "bg": {
+            "type": "none"
+          },
+          "fonts": {
+            "body": "SN Pro"
+          },
+          "anim": {
+            "in": "none",
+            "loop": "none",
+            "out": "none",
+            "unit": "segment",
+            "in_s": 0.35,
+            "out_s": 0.25,
+            "stagger_s": 0.05,
+            "seed": 0
+          },
+          "scatter": {
+            "enabled": false
+          }
+        }
+      },
+      "src_volume": 1.0,
+      "intro_media": null,
+      "video_overlay": {},
+      "audio_tracks": [],
+      "duration": 20.0,
+      "trim_end_sec": 20.0,
+      "subtitle_roles": {
+        "fx_grad": {
+          "name": "渐变描边",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4EBD8",
+            "color_high": "#F4EBD8",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "gradient",
+                "colors": [
+                  "#F4EBD8",
+                  "#E0BE68"
+                ],
+                "angle": 90
+              },
+              "stroke": {
+                "width_em": 0.04,
+                "color": "#3A2A10",
+                "join": "round"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "anim": {
+                "in": "none",
+                "loop": "none",
+                "out": "none",
+                "unit": "segment",
+                "in_s": 0.35,
+                "out_s": 0.25,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "fx_metal": {
+          "name": "金属挤出",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4EBD8",
+            "color_high": "#F4EBD8",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "metal",
+                "metal": "gold"
+              },
+              "stroke": {
+                "width_em": 0.03,
+                "color": "#3A2A10",
+                "join": "round"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "extrude": {
+                "depth_em": 0.14,
+                "angle": 135,
+                "color": "#3A0A14"
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "anim": {
+                "in": "none",
+                "loop": "none",
+                "out": "none",
+                "unit": "segment",
+                "in_s": 0.35,
+                "out_s": 0.25,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "fx_neon": {
+          "name": "霓虹柔影",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#E8FFFC",
+            "color_high": "#E8FFFC",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#E8FFFC"
+                ]
+              },
+              "stroke": {
+                "width_em": 0.02,
+                "color": "#062E2E"
+              },
+              "glow": {
+                "sigma_em": 0.18,
+                "spread_em": 0.02,
+                "color": "#22D3EE",
+                "strength": 0.85,
+                "mode": "neon"
+              },
+              "shadow": {
+                "sigma_em": 0.1,
+                "dx_em": 0.04,
+                "dy_em": 0.06,
+                "color": "#141A26",
+                "alpha": 0.55
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "anim": {
+                "in": "none",
+                "loop": "none",
+                "out": "none",
+                "unit": "segment",
+                "in_s": 0.35,
+                "out_s": 0.25,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "fx_glass": {
+          "name": "厚玻璃",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4F7FB",
+            "color_high": "#F4F7FB",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4F7FB"
+                ]
+              },
+              "stroke": {
+                "width_em": 0,
+                "color": "#141A26"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "shadow": {
+                "sigma_em": 0.1,
+                "dx_em": 0.04,
+                "dy_em": 0.06,
+                "color": "#141A26",
+                "alpha": 0.55
+              },
+              "bg": {
+                "type": "glass",
+                "color": "#0B1A33",
+                "alpha": 0.35,
+                "radius_em": 0.45,
+                "pad_em": [
+                  0.55,
+                  0.32
+                ],
+                "glass_sigma_em": 0.7,
+                "glass_border": true,
+                "glass_thickness_em": 0.14,
+                "glass_refraction": 0.55,
+                "glass_bevel": 0.7,
+                "glass_sheen": 0.45,
+                "glass_light_deg": 315,
+                "fade": {
+                  "top": 0.18,
+                  "bottom": 0.18,
+                  "left": 0.18,
+                  "right": 0.18
+                }
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "anim": {
+                "in": "none",
+                "loop": "none",
+                "out": "none",
+                "unit": "segment",
+                "in_s": 0.35,
+                "out_s": 0.25,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "fx_fonts": {
+          "name": "双字体强调",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4EBD8",
+            "color_high": "#F4EBD8",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4EBD8"
+                ]
+              },
+              "stroke": {
+                "width_em": 0.03,
+                "color": "#141A26"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro",
+                "emphasis": "Caveat"
+              },
+              "emphasis": {
+                "auto": [],
+                "words": [
+                  "journey"
+                ],
+                "color": "#C45C26",
+                "scale": 1.2,
+                "font": "emphasis",
+                "anim": "none",
+                "max_per_cue": 2
+              },
+              "anim": {
+                "in": "none",
+                "loop": "none",
+                "out": "none",
+                "unit": "segment",
+                "in_s": 0.35,
+                "out_s": 0.25,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              },
+              "tracking_em": 0.08,
+              "letter_case": "upper"
+            }
+          }
+        },
+        "fx_paper": {
+          "name": "纸纹",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#3A0A14",
+            "color_high": "#3A0A14",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#3A0A14"
+                ]
+              },
+              "stroke": {
+                "width_em": 0,
+                "color": "#141A26"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "texture",
+                "texture": "paper",
+                "color": "#F1E9D8",
+                "alpha": 0.92,
+                "radius_em": 0.12,
+                "pad_em": [
+                  0.5,
+                  0.32
+                ],
+                "texture_tint": "#F1E9D8"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "anim": {
+                "in": "none",
+                "loop": "none",
+                "out": "none",
+                "unit": "segment",
+                "in_s": 0.35,
+                "out_s": 0.25,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "fx_bubble": {
+          "name": "气泡",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4F7FB",
+            "color_high": "#F4F7FB",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4F7FB"
+                ]
+              },
+              "stroke": {
+                "width_em": 0,
+                "color": "#141A26"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "bubble",
+                "color": "#0B1A33",
+                "alpha": 0.82,
+                "radius_em": 0.55,
+                "pad_em": [
+                  0.45,
+                  0.28
+                ],
+                "align": "alternate",
+                "line_gap_em": 0.18,
+                "fade": {
+                  "top": 0.18,
+                  "bottom": 0.18,
+                  "left": 0.18,
+                  "right": 0.18
+                }
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "anim": {
+                "in": "none",
+                "loop": "none",
+                "out": "none",
+                "unit": "segment",
+                "in_s": 0.35,
+                "out_s": 0.25,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "fx_box": {
+          "name": "色块",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4F7FB",
+            "color_high": "#F4F7FB",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4F7FB"
+                ]
+              },
+              "stroke": {
+                "width_em": 0,
+                "color": "#141A26"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "box",
+                "color": "#0B1A33",
+                "alpha": 0.86,
+                "radius_em": 0.0,
+                "pad_em": [
+                  0.55,
+                  0.28
+                ]
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "anim": {
+                "in": "none",
+                "loop": "none",
+                "out": "none",
+                "unit": "segment",
+                "in_s": 0.35,
+                "out_s": 0.25,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "default": {
+          "name": "默认"
+        }
+      },
+      "timeline": {
+        "width": 1080,
+        "height": 1920,
+        "fps": 30.0,
+        "sources": {
+          "bceb25104eee48abafceaa2f9a5c5497": {
+            "id": "bceb25104eee48abafceaa2f9a5c5497",
+            "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g01\\video.mp4",
+            "duration": 20.0,
+            "has_video": true,
+            "has_audio": true
+          }
+        },
+        "tracks": [
+          {
+            "id": "5468956f127d4c8986784f392b71fb14",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": true,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [
+              {
+                "source_id": "bceb25104eee48abafceaa2f9a5c5497",
+                "in_t": 0.0,
+                "out_t": 20.0,
+                "start_t": 0.0,
+                "fit_mode": "fill",
+                "blend_mode": "normal",
+                "x": 0.0,
+                "y": 0.0,
+                "scale": 1.0,
+                "rotation": 0.0,
+                "flip_x": false,
+                "flip_y": false,
+                "speed": 1.0,
+                "loop": false,
+                "match_duration": false,
+                "transition_preset": "none",
+                "transition_duration": 0.35,
+                "gain_db": 0.0,
+                "pitch_semitones": 0.0,
+                "fade_in_dur": 0.0,
+                "fade_out_dur": 0.0,
+                "spatial_enabled": false,
+                "spatial_amount": 0.0,
+                "spatial_preset": "cathedral",
+                "spatial_user_set": false,
+                "is_main": false,
+                "audio_role": ""
+              }
+            ],
+            "transitions": []
+          },
+          {
+            "id": "f9fdf6b363b643d8aef4414485b167e7",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "0d7857248de44e5fbaa5cecd0a2bddfe",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "6b3323d134834c6aa7868fa11fbce33c",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "19c16280a9b84c219f7468ca296734d1",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "279b51d244e140d98e81feafbda11a02",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "3379c7de3db54131aaf440ffd3d70f21",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "046bb7d5f0384e88865fd27cbc398875",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "13d75c4ac456483f9a41c4c9f61575f9",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "c586853490f64d2a96bac6801280c7cf",
+            "type": "text",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "038a24349027453090f84934326f7020",
+            "type": "text",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "df8c24ffc7954129a7c35834b8535421",
+            "type": "text",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "e791b5c25bf64186829ff12f5102b6bb",
+            "type": "subs",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "6a4d7283ffbe4f9985712ccf45c823bd",
+            "type": "audio",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "audio",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [
+              {
+                "source_id": "bceb25104eee48abafceaa2f9a5c5497",
+                "in_t": 0.0,
+                "out_t": 20.0,
+                "start_t": 0.0,
+                "fit_mode": "fill",
+                "blend_mode": "normal",
+                "x": 0.0,
+                "y": 0.0,
+                "scale": 1.0,
+                "rotation": 0.0,
+                "flip_x": false,
+                "flip_y": false,
+                "speed": 1.0,
+                "loop": false,
+                "match_duration": false,
+                "transition_preset": "none",
+                "transition_duration": 0.35,
+                "gain_db": 0.0,
+                "pitch_semitones": 0.0,
+                "fade_in_dur": 0.0,
+                "fade_out_dur": 0.0,
+                "spatial_enabled": false,
+                "spatial_amount": 0.0,
+                "spatial_preset": "cathedral",
+                "spatial_user_set": false,
+                "is_main": true,
+                "audio_role": ""
+              }
+            ],
+            "transitions": []
+          },
+          {
+            "id": "0db06272b69e4d09bb61f82d0771bc77",
+            "type": "audio",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "audio",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "6bc8844a20964f63a67f7c315e410684",
+            "type": "audio",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "audio",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          }
+        ]
+      },
+      "layout_rules": {
+        "max_chars_per_line": 32,
+        "max_lines": 2,
+        "balance_lines": true,
+        "line_break": "space"
+      }
+    }
+  ],
+  "curr_idx": 0,
+  "ui": {
+    "timeline_zoom": 20,
+    "timeline_scroll_x": 0,
+    "timeline_scroll_y": 0
+  },
+  "headless": true
+}

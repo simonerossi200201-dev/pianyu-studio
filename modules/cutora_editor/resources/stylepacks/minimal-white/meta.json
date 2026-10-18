@@ -1,0 +1,16 @@
+{
+  "name": "极简白",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "极简"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Find its place",
+  "description_zh": "白字炭蓝描边，无逐词高亮"
+}

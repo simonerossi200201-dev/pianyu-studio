@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>片语 Studio 使用说明</title>
+<style>
+:root{
+  --paper:#f7f7f5; --panel:#ffffff; --panel-2:#f0efec;
+  --ink:#191a1b; --ink-2:#3d3e3f; --muted:#6e6d68;
+  --rule:#e2e1dc; --rule-2:#d2d1cb;
+  --gold:#0f7a7a; --gold-soft:#e4f3f3; --gold-line:#8fc4c4;
+  --flow:#3f6bb0; --flow-soft:#e8eef8;
+  --grok:#6f57a8; --grok-soft:#eeeaf7;
+  --ok:#3f6b47; --ok-soft:#e5efe7;
+  --warn:#9a6a12; --warn-soft:#f7edd8;
+  --bad:#a63c33; --bad-soft:#f8e6e3;
+  --shadow:0 1px 2px rgba(25,26,27,.06),0 8px 24px -16px rgba(25,26,27,.25);
+  --sans:"PingFang SC","Microsoft YaHei UI","Microsoft YaHei","Hiragino Sans GB","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"Cascadia Code","Cascadia Mono",Consolas,"SF Mono",ui-monospace,"Noto Sans Mono CJK SC",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#121313; --panel:#1a1b1c; --panel-2:#212223;
+    --ink:#ecebe7; --ink-2:#cbc9c3; --muted:#918f88;
+    --rule:#2c2d2e; --rule-2:#3a3b3c;
+    --gold:#e0a94a; --gold-soft:#2b2317; --gold-line:#5c4720;
+    --flow:#7ea6e0; --flow-soft:#1a2130;
+    --grok:#a894d8; --grok-soft:#231e30;
+    --ok:#7bb088; --ok-soft:#18231b;
+    --warn:#d8a641; --warn-soft:#2a2214;
+    --bad:#dd8478; --bad-soft:#2d1d1b;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#121313; --panel:#1a1b1c; --panel-2:#212223;
+  --ink:#ecebe7; --ink-2:#cbc9c3; --muted:#918f88;
+  --rule:#2c2d2e; --rule-2:#3a3b3c;
+  --gold:#e0a94a; --gold-soft:#2b2317; --gold-line:#5c4720;
+  --flow:#7ea6e0; --flow-soft:#1a2130;
+  --grok:#a894d8; --grok-soft:#231e30;
+  --ok:#7bb088; --ok-soft:#18231b;
+  --warn:#d8a641; --warn-soft:#2a2214;
+  --bad:#dd8478; --bad-soft:#2d1d1b;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+     font-size:16px;line-height:1.75;-webkit-font-smoothing:antialiased}
+img{max-width:100%}
+
+/* ---------- 版式骨架 ---------- */
+.wrap{display:grid;grid-template-columns:260px minmax(0,1fr);gap:48px;
+      max-width:1180px;margin:0 auto;padding:0 20px}
+.toc{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;
+     max-height:100vh;overflow-y:auto;padding-block:32px 48px;font-size:13.5px}
+.toc-brand{font-weight:700;font-size:15px;letter-spacing:.02em;margin-bottom:2px}
+.toc-ver{color:var(--muted);font-size:12px;font-family:var(--mono);margin-bottom:20px}
+.toc a{display:block;color:var(--muted);text-decoration:none;padding:3px 0 3px 12px;
+       border-left:2px solid transparent;line-height:1.5}
+.toc a:hover{color:var(--ink)}
+.toc a.on{color:var(--gold);border-left-color:var(--gold);font-weight:600}
+.toc a.sub{padding-left:26px;font-size:12.5px}
+.toc .grp{margin-top:16px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+          color:var(--muted);opacity:.7;padding-left:12px}
+main{padding-block:32px 96px;min-width:0}
+.col{max-width:70ch}
+
+/* ---------- 文字层级 ---------- */
+h1{font-size:34px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:0 0 10px;text-wrap:balance}
+h2{font-size:25px;line-height:1.3;font-weight:700;margin:0 0 6px;text-wrap:balance;scroll-margin-top:24px}
+h3{font-size:18.5px;font-weight:650;margin:34px 0 8px;text-wrap:balance;scroll-margin-top:24px}
+h4{font-size:15.5px;font-weight:650;margin:24px 0 6px;color:var(--ink-2)}
+p{margin:0 0 14px}
+a{color:var(--gold)}
+ul,ol{margin:0 0 14px;padding-left:22px}
+li{margin:4px 0}
+li>ul,li>ol{margin:4px 0}
+strong{font-weight:650}
+hr{border:0;border-top:1px solid var(--rule);margin:52px 0}
+.lede{font-size:18px;line-height:1.7;color:var(--ink-2);margin-bottom:26px}
+.sec{padding-top:56px}
+.sec:first-of-type{padding-top:0}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:var(--gold);
+         text-transform:uppercase;margin-bottom:6px}
+
+/* ---------- 行内元件 ---------- */
+code{font-family:var(--mono);font-size:.875em;background:var(--panel-2);
+     padding:1px 5px;border-radius:3px;word-break:break-word}
+kbd{font-family:var(--mono);font-size:.82em;background:var(--panel);
+    border:1px solid var(--rule-2);border-bottom-width:2px;border-radius:4px;
+    padding:1px 6px;white-space:nowrap;color:var(--ink)}
+.btn-ref{font-weight:600;color:var(--ink);white-space:nowrap}
+.btn-ref::before{content:"「"}.btn-ref::after{content:"」"}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;
+      border-radius:10px;vertical-align:.08em;white-space:nowrap}
+.chip.flow{background:var(--flow-soft);color:var(--flow)}
+.chip.grok{background:var(--grok-soft);color:var(--grok)}
+.chip.both{background:var(--panel-2);color:var(--muted)}
+.panelno{display:inline-flex;align-items:center;justify-content:center;
+         width:1.45em;height:1.45em;border-radius:50%;background:var(--gold);
+         color:var(--paper);font-size:.8em;font-weight:700;vertical-align:.08em;
+         margin-right:.2em;font-family:var(--mono)}
+
+/* ---------- 步骤 ---------- */
+ol.steps{list-style:none;padding:0;margin:18px 0;counter-reset:st}
+ol.steps>li{counter-increment:st;position:relative;padding:0 0 20px 40px;
+            border-left:1px solid var(--rule);margin:0}
+ol.steps>li:last-child{border-left-color:transparent;padding-bottom:0}
+ol.steps>li::before{content:counter(st);position:absolute;left:-13px;top:0;
+  width:26px;height:26px;border-radius:50%;background:var(--panel);
+  border:1px solid var(--rule-2);color:var(--ink-2);
+  font-family:var(--mono);font-size:12.5px;font-weight:600;
+  display:flex;align-items:center;justify-content:center}
+ol.steps>li>b:first-child{display:block;margin-top:1px}
+
+/* ---------- 提示块：三种，形态不同 ---------- */
+.note{margin:20px 0;padding:14px 18px;border-left:3px solid var(--rule-2);
+      background:var(--panel);font-size:15px}
+.note>:last-child{margin-bottom:0}
+.note .lbl{display:block;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;
+           font-weight:700;margin-bottom:4px;color:var(--muted)}
+.note.tip{border-left-color:var(--gold);background:var(--gold-soft)}
+.note.tip .lbl{color:var(--gold)}
+.note.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.note.warn .lbl{color:var(--warn)}
+.note.trap{border-left:0;border:1px solid var(--bad);border-radius:6px;background:var(--bad-soft)}
+.note.trap .lbl{color:var(--bad)}
+
+/* ---------- 截图 ---------- */
+figure.shot{margin:26px 0;max-width:none}
+figure.shot img{display:block;width:100%;border:1px solid var(--rule-2);
+                border-radius:8px;box-shadow:var(--shadow);cursor:zoom-in;background:var(--panel)}
+figure.shot figcaption{font-size:13.5px;color:var(--muted);margin-top:8px;line-height:1.6}
+figure.shot figcaption b{color:var(--ink-2);font-weight:600}
+.shot-todo{display:flex;align-items:center;justify-content:center;text-align:center;
+  min-height:150px;border:1px dashed var(--rule-2);border-radius:8px;
+  background:var(--panel-2);color:var(--muted);font-family:var(--mono);
+  font-size:13px;padding:24px;line-height:1.7}
+
+/* ---------- 表格 ---------- */
+.tw{overflow-x:auto;margin:20px 0;border:1px solid var(--rule);border-radius:8px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:520px}
+th{text-align:left;font-weight:650;font-size:12.5px;letter-spacing:.04em;color:var(--muted);
+   padding:10px 14px;border-bottom:1px solid var(--rule-2);white-space:nowrap;background:var(--panel-2)}
+td{padding:10px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td:first-child{white-space:nowrap}
+table.keys td:first-child{font-family:var(--mono);color:var(--gold);font-weight:600}
+table.wide td:first-child{white-space:normal}
+
+/* ---------- 代码块 ---------- */
+pre{font-family:var(--mono);font-size:13px;line-height:1.65;background:var(--panel);
+    border:1px solid var(--rule);border-radius:8px;padding:14px 16px;
+    overflow-x:auto;margin:18px 0}
+pre code{background:none;padding:0;font-size:inherit}
+
+/* ---------- 流程图 ---------- */
+.flow-map{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:28px 0}
+.flow-map .node{background:var(--panel);border:1px solid var(--rule-2);border-radius:8px;
+  padding:12px 12px 14px;position:relative}
+.flow-map .node b{display:block;font-size:15px;margin:6px 0 2px}
+.flow-map .node span{font-size:12.5px;color:var(--muted);line-height:1.5;display:block}
+.flow-map .node .n{font-family:var(--mono);font-size:11px;color:var(--gold);font-weight:700}
+
+/* ---------- 引擎对照 ---------- */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+.two>div{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:16px 18px}
+.two>div h4{margin-top:0}
+.two>div p:last-child,.two>div ul:last-child{margin-bottom:0}
+
+/* ---------- 灯箱 ---------- */
+#lb{position:fixed;inset:0;background:rgba(10,10,10,.92);display:none;
+    align-items:center;justify-content:center;z-index:99;padding:24px;cursor:zoom-out}
+#lb.on{display:flex}
+#lb img{max-width:100%;max-height:92vh;border-radius:6px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+#lb .hint{position:absolute;bottom:18px;left:0;right:0;text-align:center;
+          color:rgba(255,255,255,.6);font-size:12.5px}
+
+/* ---------- 窄屏 ---------- */
+@media (max-width:900px){
+  .wrap{grid-template-columns:1fr;gap:0}
+  .toc{position:static;max-height:none;border-bottom:1px solid var(--rule);
+       padding-block:20px;margin-bottom:8px}
+  .toc-nav{columns:2;column-gap:20px}
+  .flow-map{grid-template-columns:1fr 1fr}
+  .two{grid-template-columns:1fr}
+  main{padding-block:16px 64px}
+}
+@media (max-width:520px){
+  body{font-size:15.5px}
+  h1{font-size:27px} h2{font-size:22px}
+  .flow-map{grid-template-columns:1fr}
+  /* 400px 手机宽度仍保持目录两栏（规格 72 验收） */
+  .toc-nav{columns:2;column-gap:16px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<style>
+.hero{padding:48px 0 12px}
+.hero h1{font-size:34px;line-height:1.25;margin:8px 0 12px}
+.flow-map{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:20px 0 8px}
+@media(max-width:900px){.flow-map{grid-template-columns:1fr 1fr}}
+.flow-map .node{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:14px 14px 16px;box-shadow:var(--shadow)}
+.flow-map .n{display:inline-block;font-family:var(--mono);font-size:12px;color:var(--gold);margin-bottom:6px}
+.flow-map b{display:block;font-size:15px;margin-bottom:4px}
+.flow-map span{display:block;color:var(--muted);font-size:13px;line-height:1.45}
+code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);padding:.1em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:14px 16px;overflow:auto}
+pre code{background:transparent;padding:0}
+.sec{padding:28px 0 8px}
+.sec h2{font-size:22px;margin:0 0 12px}
+.sec h3{font-size:17px;margin:22px 0 8px}
+footer.foot{color:var(--muted);font-size:13px;padding:40px 0 64px}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<nav class="toc">
+  <div class="toc-brand">片语 Studio</div>
+  <div class="toc-ver">CUTORA · 使用说明</div>
+  <div class="toc-nav">
+<a href="#flow">怎么用这本手册</a>
+<a href="#s1">1. 开始之前</a>
+<a href="#s2">2. 欢迎页：新建或打开</a>
+<a href="#s3">3. 主界面长什么样</a>
+<a href="#s4">4. 跑通第一条片子（主线）</a>
+<a href="#s5">5. 改字幕与文案</a>
+<a href="#s6">6. 片段智能拼接（批量）</a>
+<a href="#s7">7. 片段散落（批量）</a>
+<a href="#s8">8. 分屏</a>
+<a href="#s9">9. 转场</a>
+<a href="#s10">10. 调色</a>
+<a href="#s11">11. 简易关键帧动画</a>
+<a href="#s12">12. 贴纸、音效与其它加成</a>
+<a href="#s13">13. 时间线常用快捷键</a>
+<a href="#s14">14. 设置里常去的地方</a>
+<a href="#s15">15. 出问题怎么办</a>
+<a href="#s16">16. 文件落在哪</a>
+<a href="#s17">17. 一句话对照</a>
+  </div>
+</nav>
+<main>
+<header class="hero"><div class="eyebrow">用户手册</div><h1>片语 Studio（CUTORA）使用说明</h1><p class="lede">本地优先的语义剪辑：导入、自动字幕、风格，以及拼接 / 分屏 / 转场 / 调色 / 简易关键帧等生产能力。</p></header>
+<section class="sec col" id="flow">
+<div class="eyebrow">主线 + 加成</div>
+<h2>怎么用这本手册</h2>
+<p class="lede">先跑通四步主线；需要多段口播、多路同框、换场、调色或简单推拉时，再翻后面各章。</p>
+<div class="flow-map">
+  <div class="node"><span class="n">01</span><b>导入</b><span>媒体进库上时间线</span></div>
+  <div class="node"><span class="n">02</span><b>重新识别</b><span>自动字幕 · 词级时间戳</span></div>
+  <div class="node"><span class="n">03</span><b>选风格</b><span>风格包 + 字幕细调</span></div>
+  <div class="node"><span class="n">04</span><b>导出</b><span>成片落地 · .cutora</span></div>
+</div>
+<div class="flow-map" style="margin-top:12px">
+  <div class="node"><span class="n">+</span><b>智能拼接</b><span>批量 · 按文案拼多段</span></div>
+  <div class="node"><span class="n">+</span><b>分屏 / 转场</b><span>同框 · 接缝换场</span></div>
+  <div class="node"><span class="n">+</span><b>调色</b><span>片段 / 轨道 / 工程</span></div>
+  <div class="node"><span class="n">+</span><b>简易关键帧</b><span>属性旁菱形打点</span></div>
+</div>
+</section>
+<p>把讲话变成带字幕的成片。顶栏快捷步骤是<b>最短主线</b>：</p><p><b>① 导入 → ② 重新识别 → ③ 选风格 → ④ 导出</b></p><p>除此之外，批量菜单、检查器、左栏转场库里还有一批<b>生产能力</b>：智能拼接、散落、分屏、转场、调色、简易关键帧等——下面按「先跑通，再加戏」写。</p><section class="sec col" id="s1"><h2>1. 开始之前</h2><ol class="steps"><li><p><b>Windows 10 / 11</b></p></li><li><p>解压到<b>纯英文路径</b>（例如 <code>D:\CUTORA</code>），尽量避免中文和空格</p></li><li><p>有 <b>NVIDIA 显卡</b>更顺（自动字幕会快很多）；没有也能跑，只是识别会慢</p></li><li><p>第一次用先双击 <code>CUTORA_Install.bat</code>（若提示缺少运行环境），以后日常双击 <b><code>CUTORA.bat</code></b></p></li></ol><p>本机构建一般<b>自带</b>识别模型与 FFmpeg，不必再装 Python。</p><div class="note tip"><span class="lbl">说明</span><p>内部测试包请勿对外转发。第三方许可见仓库根目录相关说明。</p></div></section><section class="sec col" id="s2"><h2>2. 欢迎页：新建或打开</h2><ul><li><b>新建项目 · 竖屏 / 横屏 / 方形</b>：按常用画布尺寸直接开工程</li><li><b>自定义尺寸…</b>：自己定宽高</li><li><b>打开项目</b>：打开 <code>.cutora</code>（也兼容旧的 <code>.asproj</code>）</li><li><b>最近项目</b>：点一条继续做</li><li>也可以把<b>视频文件拖进欢迎页</b>，会新建工程并导入</li></ul><p>底部三张卡提醒主线：<b>导入视频 → 自动字幕 → 导出成片</b>。</p></section><section class="sec col" id="s3"><h2>3. 主界面长什么样</h2><p>中间是<b>预览画布</b>，周围三块停靠栏：</p><div class="tw"><table class="wide"><tr><th>位置</th><th>名称</th><th>里面有什么</th></tr><tr><td>左</td><td><b>素材</b></td><td>媒体库 / 字幕文本 / 资产库 / 贴纸 / <b>转场</b></td></tr><tr><td>右</td><td><b>检查器</b></td><td>风格 / 字幕样式 / <b>属性</b>（变换、分屏、调色、关键帧）/ 角色映射 / 字块样式</td></tr><tr><td>下</td><td><b>时间线</b></td><td>多轨片段、字幕轨、播放头</td></tr></table></div><p>顶上快捷工具带：<b>① 导入 · ② 重新识别 · ③ 选风格 · ④ 导出</b>。</p><p>菜单里和「生产能力」关系最大的是：</p><ul><li><b>批量</b>：片段智能拼接、片段散落、批量加载、批量配乐、工程队列、共享轨道、拷贝字幕样式、录制/套用配方…</li><li><b>音频</b>：空间立体声 / 音效库、铺音效、预览时是否试听</li><li><b>视图</b>：安全区参考层、全屏预览、重置布局</li></ul></section><section class="sec col" id="s4"><h2>4. 跑通第一条片子（主线）</h2><h3>① 导入</h3><p>点 <b>① 导入</b>，或 <code>Ctrl+I</code>。视频进左侧 <b>媒体库</b>，并落到时间线。支持 mp4 / mov / mkv / avi / webm 等。</p><h3>② 重新识别（自动字幕）</h3><p>点 <b>② 重新识别</b>，选好<b>语言</b>。有 GPU 会加速。结束后字幕出现在画布与时间线；左侧 <b>字幕文本</b> 可按「句子」或「文案」修改。</p><p>词级时间戳（卡拉 OK 式高亮）在英 / 意 / 法 / 西 / 德 / 葡等语种上更完整；其它语种可能是近似词级——这是能力边界，不是坏了。</p><h3>③ 选风格</h3><p>点 <b>③ 选风格</b>。点风格包即可预览；细调用 <b>字幕样式 / 字块样式</b>。可存成风格包，也可导入 / 导出。</p><h3>④ 导出</h3><p>点 <b>④ 导出</b>（<code>Ctrl+E</code>）。批量导出：<code>Ctrl+Shift+E</code>。工程用 <code>Ctrl+S</code> 存成 <code>.cutora</code>。</p></section><section class="sec col" id="s5"><h2>5. 改字幕与文案</h2><ul><li><b>字幕文本 → 句子</b>：改错字、调断句</li><li><b>字幕文本 → 文案</b>：整篇润色或粘贴</li><li>菜单 <b>字幕</b>：重新识别、按当前排版重新断句、检查阅读速度、导入 / 导出字幕文件</li><li>再次识别可能覆盖词级时间戳——对话框会问你，看清再确认</li></ul></section><section class="sec col" id="s6"><h2>6. 片段智能拼接（批量）</h2><p>适合：同一句话拆成很多短素材（按组命名的多段口播），要按文案自动对齐、剪掉多余、拼成一条时间线。</p><p><b>入口</b>：菜单 <b>批量 → 片段智能拼接…</b></p><p>大致流程：</p><ol class="steps"><li><p><b>添加文件夹</b>（可多个，或「添加整棵目录」）→ 自动扫描分组</p></li><li><p>可用剪贴板<b>批量粘贴文案</b>（表格里一格一条）</p></li><li><p>选语言；可勾选：裁剪开头空白、切口落在静音处、接缝淡化、编码前人工复核、完成后一键全自动等</p></li><li><p>点 <b>开始拼接</b> → 先做素材体检（坏文件会中止或让你确认）</p></li><li><p>可选 <b>人工复核</b>：改保留区间、拼接顺序、是否保留某段，再 <b>确认并编码</b></p></li></ol><p>拼接成功后时间线上会带上对齐结果；若再跑识别，可能覆盖词级时间戳，界面会提醒。</p></section><section class="sec col" id="s7"><h2>7. 片段散落（批量）</h2><p>适合：有一批短 B-roll / 空镜，要按节奏「撒」到长视频的上层轨道。</p><p><b>入口</b>：菜单 <b>批量 → 片段散落…</b></p><ol class="steps"><li><p>选散落素材所在目录，勾选要用的片段</p></li><li><p>可选：撒播片段静音、清空目标轨道再铺、按长视频时长循环铺满</p></li><li><p>点 <b>切开并撒播到所选视频</b></p></li></ol><p>提示：主画面一般在 Video 1；散落请落到 <b>Video 2 或更高</b>，避免盖住主轨语义。</p></section><section class="sec col" id="s8"><h2>8. 分屏</h2><p>适合：同一时间线里多路画面同框（访谈双人、对比、九宫格等）。</p><p><b>入口</b>：在时间线选中轨道 / 相关对象 → 右侧 <b>检查器 → 属性 → 分屏</b></p><ol class="steps"><li><p>打开 <b>开启分屏</b>（工程级：任一轨道开启后，其它视频轨进入分屏，只需选格子）</p></li><li><p>选布局预设：<b>上下 / 左右 / 2×2 / 3×3 / 左1右2 / 上1下2 / 自定义</b></p></li><li><p>预览里拖分割线调比例；可为分隔线设样式（实线、渐变、玻璃、阴影等）</p></li><li><p>把各轨道画面指定到格子 A/B/…</p></li></ol><p>导出与预览共用同一套分屏几何，改完直接看预览即可。</p></section><section class="sec col" id="s9"><h2>9. 转场</h2><p><b>入口</b>：左侧 <b>素材 → 转场</b>（视频转场 / 音频转场两个库）</p><p>用法：</p><ol class="steps"><li><p>在时间线找到两段相接的视频（或音频）缝</p></li><li><p>从转场库 <b>拖到缝上</b>，或双击应用</p></li><li><p>可在检查器里改时长等参数</p></li></ol><p>常见视频转场包括：交叉溶解、黑场 / 白场、推（上下左右）、擦、缩放溶解、模糊溶解、闪白等。   音频转场包括：等功率 / 线性交叉淡化、淡入淡出、接缝淡化等。</p><p>开场片头插入等流程也会用到转场类型（如放大推入、交叉溶解），以对话框选项为准。</p></section><section class="sec col" id="s10"><h2>10. 调色</h2><p><b>入口</b>：选中片段 / 轨道 / 工程上下文 → <b>检查器 → 属性</b> 里的调色块</p><p>三层，由近到远：</p><div class="tw"><table class="wide"><tr><th>范围</th><th>名称</th><th>何时用</th></tr><tr><td>片段</td><td><b>片段调色</b></td><td>只修这一段</td></tr><tr><td>轨道</td><td><b>轨道调色</b></td><td>整条轨统一气质</td></tr><tr><td>工程</td><td><b>工程调色</b></td><td>全片统一底色</td></tr></table></div><p>可调：曝光、对比、支点、色温、色调、饱和、自然饱和；色轮（阴影 / 伽马 / 高光）；HSL 限定；以及 <b>创意 LUT</b>（导入 <code>.cube</code>、调强度）。旁路可开波形 / 矢量 / 直方图示波器辅助。</p><p>改完预览即时更新；导出走同一套参数。</p></section><section class="sec col" id="s11"><h2>11. 简易关键帧动画</h2><p>不必上完整动画曲线编辑器：在属性里给单个参数「钉两点」，画面就会从 A 变到 B。</p><p><b>入口</b>：选中时间线上的视频片段（或支持的文本层）→ <b>检查器 → 属性 → 变换</b>（以及相关行）</p><ol class="steps"><li><p>把播放头移到动画起点，调好位置 / 缩放 / 旋转 / 不透明度（视频）或音量等</p></li><li><p>点该参数右侧的 <b>菱形（关键帧）</b> 打点——提示「为此参数打关键帧」</p></li><li><p>再移播放头到终点，改参数值；开启关键帧后，改值会写到当前时间的关键帧上</p></li><li><p>播放预览；不需要时再点菱形取消该参数的关键帧</p></li></ol><p><b>视频片段</b>常见可动画路径：位置 X/Y、缩放、旋转、不透明度；音频增益也可。   <b>文本层</b>还可动不透明度、缩放、字距、填充色、阴影角度 / 距离等。</p><p>缓动支持线性、缓入、缓出、缓入缓出、定格、贝塞尔等（以界面选项为准）。预览与导出共用同一套求值，避免「预览对、导出不对」。</p><p>这是「简易」档：适合推拉、淡入淡出、轻微位移；复杂多轨曲线动画请拆成多段或用转场 / 字幕入场动画配合。</p></section><section class="sec col" id="s12"><h2>12. 贴纸、音效与其它加成</h2><ul><li><b>贴纸</b>：左栏贴纸库插入画布 / 时间线</li><li><b>音频 → 空间立体声 / 音效库</b>：卷积混响与音效；可按设置铺到当前或全部视频；预览试听会吃性能</li><li><b>视图 → 安全区参考层</b>（<code>Shift+S</code>）：平台安全区参考（数值随平台版本变化）</li><li><b>批量</b>：批量加载、批量配乐、工程队列、从选中视频拷贝字幕样式、共享轨道、录制配方并套用到文件夹、自动拆分工程等</li></ul><p>第一次用建议先跑通第 4 节主线，再按需打开本章各节。</p></section><section class="sec col" id="s13"><h2>13. 时间线常用快捷键</h2><div class="tw"><table class="wide"><tr><th>操作</th><th>默认快捷键</th></tr><tr><td>播放 / 暂停</td><td><code>Space</code></td></tr><tr><td>正放 / 倒放 / 停</td><td><code>L</code> / <code>J</code> / <code>K</code></td></tr><tr><td>上一帧 / 下一帧</td><td><code>←</code> / <code>→</code></td></tr><tr><td>前 1 秒 / 后 1 秒</td><td><code>Shift+←</code> / <code>Shift+→</code></td></tr><tr><td>分割</td><td><code>S</code></td></tr><tr><td>删除选中</td><td><code>Delete</code></td></tr><tr><td>入点 / 出点</td><td><code>I</code> / <code>O</code></td></tr><tr><td>时间线放大 / 缩小 / 全览</td><td><code>+</code> / <code>-</code> / <code>Z</code></td></tr><tr><td>全屏预览</td><td><code>F</code></td></tr><tr><td>安全区参考</td><td><code>Shift+S</code></td></tr></table></div><p>撤销 / 重做：<code>Ctrl+Z</code> / <code>Ctrl+Y</code>。完整列表见「帮助 → 快捷键」或「设置」。</p></section><section class="sec col" id="s14"><h2>14. 设置里常去的地方</h2><div class="tw"><table class="wide"><tr><th>入口</th><th>做什么</th></tr><tr><td><code>Ctrl+,</code> 设置</td><td>性能、路径、界面等</td></tr><tr><td>设置 → AI 提供商</td><td>外部 AI（若启用）</td></tr><tr><td>性能 → 释放显存</td><td>识别模型占显存过大时卸载</td></tr><tr><td>字体管理</td><td>补字体；缺字时风格可能退回默认</td></tr><tr><td>帮助 → 关于</td><td>版本、GPU、FFmpeg、第三方授权</td></tr></table></div></section><section class="sec col" id="s15"><h2>15. 出问题怎么办</h2><div class="tw"><table class="wide"><tr><th>现象</th><th>可以试</th></tr><tr><td>双击 bat 闪退</td><td>先跑 <code>CUTORA_Install.bat</code>；看是否解压完整</td></tr><tr><td>识别极慢</td><td>看是否在用 CPU；更新 NVIDIA 驱动；换更短素材试</td></tr><tr><td>拼接体检失败</td><td>看对话框列出的坏文件 / 不可读素材；换源或剔组后再拼</td></tr><tr><td>分屏格子空白</td><td>确认轨道已指定格子，且该轨有片段</td></tr><tr><td>转场看不到</td><td>确认拖在两段<b>相接缝</b>上，而不是片段中间</td></tr><tr><td>关键帧不跟着动</td><td>确认菱形已点亮，且两点时间不同、数值有变化</td></tr><tr><td>调色预览与导出不一致</td><td>少见；确认改的是片段 / 轨道 / 工程哪一层，勿叠错层</td></tr><tr><td>布局搞乱了</td><td>视图 → 重置布局</td></tr></table></div></section><section class="sec col" id="s16"><h2>16. 文件落在哪</h2><pre><code>CUTORA\
+  CUTORA.bat              日常启动
+  CUTORA_Install.bat      首次/修复环境
+  cutora\                 程序
+  runtime\                自带 Python / venv / ffmpeg / 模型等
+  resources\              品牌、音效、IR 等
+  user_data\              本机用户数据
+  说明文档\               本手册</code></pre><p>工程扩展名 <b><code>.cutora</code></b>。媒体原片默认按路径引用——挪原片前先确认工程内路径。</p></section><section class="sec col" id="s17"><h2>17. 一句话对照</h2><div class="tw"><table class="wide"><tr><th>你想…</th><th>去哪</th></tr><tr><td>最短出片</td><td>① 导入 → ② 识别 → ③ 风格 → ④ 导出</td></tr><tr><td>多段口播按文案自动成片</td><td>批量 → 片段智能拼接</td></tr><tr><td>把空镜撒到长视频上</td><td>批量 → 片段散落</td></tr><tr><td>多路同框</td><td>检查器 → 属性 → 分屏</td></tr><tr><td>两段之间换场</td><td>素材 → 转场，拖到接缝</td></tr><tr><td>调画面颜色</td><td>检查器 → 属性 → 片段/轨道/工程调色</td></tr><tr><td>推拉淡入等简单动画</td><td>属性变换旁的关键帧菱形</td></tr><tr><td>改错字</td><td>素材 → 字幕文本</td></tr><tr><td>存盘</td><td><code>Ctrl+S</code></td></tr></table></div><p>版本以「帮助 → 关于」为准。界面文案若与本文一字之差，以软件内按钮为准。</p></section>
+<footer class="foot">片语 Studio / CUTORA — 使用说明<br>
+界面文案以软件内按钮为准；版本见「帮助 → 关于」。</footer>
+</main>
+</div>
+</body>
+</html>

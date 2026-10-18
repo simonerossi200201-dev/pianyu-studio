@@ -1,0 +1,12 @@
+{
+  "case": "g01_vertical_basic",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "20s vertical EN, default style, ASR frozen in project"
+}

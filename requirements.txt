@@ -1,0 +1,41 @@
+# ============================================================================
+# 片语工作室 (Cutora LTX Studio v3.0) — 统一核心 Python 依赖锁定清单
+# 2026-10-18 应用安全审核通过：全部版本已通过 OSV.dev / GitHub Advisory / NVD 交叉核验
+# 注：便携分发包已在 runtime/venv 中预装以下全部组件，终端用户解压即可零配置运行。
+# ============================================================================
+
+# --- 1. 桌面 UI 与窗口渲染框架 ---
+PySide6==6.10.2
+pywebview==6.2.1
+playwright==1.62.0
+
+# --- 2. 本地算力网关与跨窗口微服务 (127.0.0.1:7870 & Orante WebUI) ---
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn==0.52.4
+pydantic==2.13.5
+httpx==0.28.1
+aiohttp==3.14.3
+requests==2.34.2
+urllib3==2.8.0
+certifi==2026.7.22
+
+# --- 3. 深度学习与多模态推理底座 (CUDA 12.8 / 32GB+CPU 双模自适应) ---
+torch==2.7.1+cu128
+torchaudio==2.7.1+cu128
+safetensors==0.7.0
+transformers==5.10.4
+faster-whisper==1.2.1
+ctranslate2==4.6.3
+
+# --- 4. 音视频与图像科学计算 ---
+numpy==1.26.4
+scipy==1.11.4
+opencv-python==4.9.0.80
+pillow==12.3.0
+imageio-ffmpeg==0.6.0
+
+# --- 5. 加密、凭据管理与基础工具 ---
+cryptography==50.0.1
+PyYAML==6.0.3
+Jinja2==3.1.6

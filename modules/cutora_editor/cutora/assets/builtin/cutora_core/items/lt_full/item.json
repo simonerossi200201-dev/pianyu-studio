@@ -1,0 +1,22 @@
+{
+  "id": "lt_full",
+  "type": "lower_third",
+  "name": "通栏条",
+  "license": "CUTORA-original",
+  "tags": [
+    "lower_third",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "bar.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#C8A24A",
+      "label": "主色"
+    }
+  }
+}

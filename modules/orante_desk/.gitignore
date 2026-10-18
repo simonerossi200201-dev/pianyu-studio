@@ -1,0 +1,35 @@
+# Orante 的版本记录只收「代码 + 文档」。
+# 用户数据、运行产物、备份、分发包都不收——回滚代码时它们不能跟着回滚。
+
+# 用户数据（任务库 orante.db、设置里的密钥、日志、缓存、Chrome 登录态……）
+/data/
+/workspace/
+
+# 运行环境 / 工具产物
+/.venv/
+/bin/
+__pycache__/
+*.pyc
+/.pytest_cache/
+
+# 改代码前留的备份文件（文件照旧留在原地，只是不进记录）
+*.bak-*
+
+# 临时文件 / 临时目录
+/.tmp_*
+/_claude_tmp/
+/_manual_shots_tmp/
+/_85b_dump/
+/_85b_snip/
+/_85b_analyze*
+/_wrep85.py
+
+# 分发包、导出的预设（预设里可能带账号和密钥）
+/_share/
+*.orpreset
+
+# 系统杂项
+*.log
+Thumbs.db
+desktop.ini
+.DS_Store

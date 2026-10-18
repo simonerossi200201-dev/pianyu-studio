@@ -1,0 +1,22 @@
+{
+  "id": "el_corners",
+  "type": "element",
+  "name": "四角",
+  "license": "CUTORA-original",
+  "tags": [
+    "element",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "shape.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#C8913A",
+      "label": "主色"
+    }
+  }
+}

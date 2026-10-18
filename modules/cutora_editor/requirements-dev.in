@@ -1,0 +1,8 @@
+# Development / audit tools. Not required to run CUTORA.bat.
+# Install: runtime\venv\Scripts\python.exe -m pip install -r requirements-dev.in -i https://pypi.org/simple
+
+pip-audit>=2.9.0
+pip-licenses>=5.5.0
+pytest>=8.0
+pyflakes>=3.2
+mcp>=1.0.0

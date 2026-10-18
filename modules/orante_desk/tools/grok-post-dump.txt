@@ -1,0 +1,2 @@
+grok_post_dump  2026-09-12 09:12:30端口 9251（账号库 TIK-G-SIMONE (A005)）CDP  http://127.0.0.1:9251端口 9251 上没有 Chrome。
+下次卡住时：先确认那个账号的 Chrome 还开着，再双击 tools\11-Grok-Post-Dump.bat。

@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <rect x="0" y="0" width="36" height="1920" fill="{{color.primary}}"/>
+  <rect x="1044" y="0" width="36" height="1920" fill="{{color.primary}}"/>
+</svg>

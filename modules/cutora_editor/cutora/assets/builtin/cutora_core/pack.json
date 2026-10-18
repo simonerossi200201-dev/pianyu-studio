@@ -1,0 +1,17 @@
+{
+  "id": "cutora_core",
+  "name": "CUTORA 核心",
+  "version": "1.0.0",
+  "author": "CUTORA",
+  "license": "CUTORA-original",
+  "categories": [
+    "element",
+    "frame",
+    "lower_third"
+  ],
+  "tags": [
+    "core",
+    "original"
+  ],
+  "language": "zh"
+}

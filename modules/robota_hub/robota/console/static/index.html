@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robota</title>
+<link rel="icon" href="/static/robota.svg">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div id="app">
+  <aside id="left">
+    <div class="brand"><img src="/avatar.png" alt="" style="width:28px;height:28px;border-radius:50%;object-fit:cover;margin-right:6px;"><span>Robota</span></div>
+    <button id="newChat" class="btn wide">＋ 新对话</button>
+    <div class="label">对话记录</div>
+    <ul id="sessions"></ul>
+  </aside>
+
+  <main id="center">
+    <header id="bar">
+      <label>大脑
+        <select id="mode">
+          <option value="auto">🤖 自动</option>
+          <option value="local">💬 本地聊天（快）</option>
+          <option value="local_agent">🛠 本地代理（带工具）</option>
+          <option value="agy">🚀 agy（Ultra）</option>
+          <option value="provider">🌍 外部服务</option>
+          <option value="tutor">🎓 语言导师</option>
+        </select>
+      </label>
+      <label>项目
+        <select id="project"><option value="">（无）</option></select>
+      </label>
+      <label>模型 <input id="model" placeholder="默认" size="16"></label>
+      <label class="chk"><input type="checkbox" id="speak"> 🔊 朗读回复</label>
+      <span id="route" class="pill"></span>
+      <button id="popoutMini" class="btn" style="margin-left:auto;font-size:12px;padding:4px 10px;" title="打开独立的桌面悬浮小窗">🪟 拆出独立小窗</button>
+    </header>
+
+    <div id="messages"></div>
+
+    <footer id="composer">
+      <textarea id="input" rows="2" placeholder="和 Robota 说话…  Enter 发送，Shift+Enter 换行。加 #私密 只用本地大脑"></textarea>
+      <button id="mic" class="btn icon" title="按一下开始录音，再按一下结束">🎤</button>
+      <button id="send" class="btn primary">发送</button>
+    </footer>
+  </main>
+
+  <aside id="right">
+    <section>
+      <h3>📋 队列 <span id="qstate" class="pill"></span></h3>
+      <div class="row">
+        <button class="btn sm" id="qResume">▶ 开始</button>
+        <button class="btn sm" id="qHalt">⏸ 暂停</button>
+        <button class="btn sm danger" id="qKill">⏹ 中止当前</button>
+      </div>
+      <div id="qRunning" class="muted"></div>
+      <details>
+        <summary>＋ 添加任务</summary>
+        <div class="form">
+          <input id="tTitle" placeholder="标题">
+          <select id="tKind">
+            <option value="agent">代理任务（让大脑去做）</option>
+            <option value="command">命令（直接运行）</option>
+            <option value="plugin">项目插件（如 CUTORA 队列）</option>
+          </select>
+          <select id="tProject"><option value="">（无项目）</option></select>
+          <select id="tBrain"><option value="auto">自动</option><option value="local_agent">本地代理</option><option value="agy">agy</option></select>
+          <textarea id="tBody" rows="3" placeholder="说明 / 命令"></textarea>
+          <label class="chk"><input type="checkbox" id="tGpu"> 需要显存（先卸载 Ollama）</label>
+          <button class="btn sm primary" id="tAdd">加入队列</button>
+        </div>
+      </details>
+      <ul id="tasks"></ul>
+    </section>
+
+    <section>
+      <h3>🖥 显存</h3>
+      <div id="gpu" class="muted"></div>
+      <button class="btn sm" id="gpuFree">释放显存（卸载 Ollama）</button>
+    </section>
+
+    <section>
+      <h3>📊 今天</h3>
+      <div id="usage" class="muted"></div>
+    </section>
+
+    <section>
+      <h3>🎓 语言导师</h3>
+      <div class="row">
+        <input id="tutorLang" placeholder="目标语言，如 Italian" size="14">
+        <button class="btn sm" id="tutorSet">保存</button>
+      </div>
+      <button class="btn sm" id="tutorSum">把本次陪练记进学习档案</button>
+    </section>
+
+    <section>
+      <h3>🔌 服务</h3>
+      <div id="services" class="muted"></div>
+    </section>
+  </aside>
+</div>
+
+<div id="modal" class="hidden"><div class="box"><button id="modalClose" class="btn sm">关闭</button><pre id="modalBody"></pre></div></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

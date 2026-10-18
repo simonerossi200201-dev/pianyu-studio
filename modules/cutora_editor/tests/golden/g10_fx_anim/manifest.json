@@ -1,0 +1,12 @@
+{
+  "case": "g10_fx_anim",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "v2 fx.anim phases + emphasis. 6 cues x 3s, g01 media 20s. Glossary frozen in style._glossary. c1 text SDK READY. / 56pt so stomp 1.70x stays in SAFE_MARGIN."
+}

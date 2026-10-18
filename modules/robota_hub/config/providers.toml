@@ -1,0 +1,53 @@
+# L2 external providers (OpenAI-compatible chat endpoints).
+# A provider is used ONLY if its key file exists in D:\0_Robota\secrets\ (e.g. secrets\mistral.key).
+# No key = silently skipped. Verify each provider's current free tier & terms before adding a key.
+
+[provider.mistral]
+label = "Mistral (France, EU)"
+base_url = "https://api.mistral.ai/v1"
+model = "mistral-large-latest"
+key_file = "mistral.key"
+use_for = ["chat", "fallback"]
+
+[provider.groq]
+label = "Groq (US) - very fast"
+base_url = "https://api.groq.com/openai/v1"
+model = "llama-3.3-70b-versatile"
+key_file = "groq.key"
+use_for = ["chat", "voice_fast"]
+
+[provider.cerebras]
+label = "Cerebras (US) - very fast"
+base_url = "https://api.cerebras.ai/v1"
+model = "llama-3.3-70b"
+key_file = "cerebras.key"
+use_for = ["chat", "voice_fast"]
+
+[provider.nebius]
+label = "Nebius AI Studio (Netherlands)"
+base_url = "https://api.studio.nebius.com/v1"
+model = "meta-llama/Llama-3.3-70B-Instruct"
+key_file = "nebius.key"
+use_for = ["chat", "fallback"]
+
+[provider.meta]
+label = "Meta Model API (Muse Spark, US preview)"
+base_url = "https://api.meta.ai/v1"
+model = "muse-spark"
+key_file = "meta.key"
+use_for = ["chat"]
+
+[provider.github]
+label = "GitHub Models (Microsoft, US)"
+base_url = "https://models.github.ai/inference"
+model = "openai/gpt-4.1-mini"
+key_file = "github.key"
+use_for = ["chat"]
+
+# DeepL is not OpenAI-compatible; handled by robota/brains/providers.py translate()
+[provider.deepl]
+label = "DeepL (Germany) - translation"
+base_url = "https://api-free.deepl.com/v2"
+kind = "deepl"
+key_file = "deepl.key"
+use_for = ["translate"]

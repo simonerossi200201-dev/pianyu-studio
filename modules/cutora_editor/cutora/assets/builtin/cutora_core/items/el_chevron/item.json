@@ -1,0 +1,22 @@
+{
+  "id": "el_chevron",
+  "type": "element",
+  "name": "指示",
+  "license": "CUTORA-original",
+  "tags": [
+    "element",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "shape.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#8FA89B",
+      "label": "主色"
+    }
+  }
+}

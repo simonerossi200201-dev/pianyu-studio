@@ -1,0 +1,27 @@
+{
+  "id": "lt_bullet",
+  "type": "lower_third",
+  "name": "圆点条",
+  "license": "CUTORA-original",
+  "tags": [
+    "lower_third",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "bar.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#8FA89B",
+      "label": "主色"
+    },
+    "color.secondary": {
+      "type": "color",
+      "default": "#C8A24A",
+      "label": "辅色"
+    }
+  }
+}

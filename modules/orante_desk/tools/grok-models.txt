@@ -1,0 +1,94 @@
+You are not authenticated.
+
+Default model: grok-4.6
+
+Available models:
+  * grok-4.6 (default)
+  - grok-4.5
+---- 
+
+  Environment
+  └ Version: 1.0.13 [stable]
+  └ CWD: D:\0_Dev\Orante\tools
+  └ Project trusted: yes
+
+  Project Instructions (0)
+  └ (none)
+
+  Permissions
+  └ Source: (none)
+  └ 0 loaded, 0 skipped
+
+  Login Policy
+  └ disable_api_key_auth: (unset)
+  └ force_login_team_uuid: (none)
+  └ api_key_auth_disabled: false
+
+  Skills (24)
+  └ build-with-ai                  bundled
+  └ code-review                    bundled
+  └ create-skill                   bundled
+  └ create-workflow                bundled
+  └ design                         bundled
+  └ docx                           bundled
+  └ execute-plan                   bundled
+  └ game-animation-frames          bundled
+  └ game-asset-core                bundled
+  └ game-character-consistency     bundled
+  └ game-tilesets                  bundled
+  └ game-ui-icons                  bundled
+  └ imagine                        bundled [collides with /imagine → /bundled:imagine]
+  └ implement                      bundled
+  └ long-running-background-tasks  bundled
+  └ pdf                            bundled
+  └ pptx                           bundled
+  └ pr-babysit                     bundled
+  └ resume-claude                  bundled
+  └ resume-codex                   bundled
+  └ resume-cursor                  bundled
+  └ review                         bundled
+  └ skill-design-principles        bundled
+  └ statusline                     bundled
+
+  Agents (3)
+  └ general-purpose  builtin
+  └ explore          builtin
+  └ plan             builtin
+
+  Plugins (0)
+  └ (none)
+
+  Marketplaces (0)
+  └ (none)
+
+  MCP Servers (0)
+  └ (none) — see `grok mcp add --help`
+
+  LSP Servers (0)
+  └ (none)
+
+  Hooks (0)
+  └ (none)
+
+  Config Sources
+  └ User: C:\Users\Timco\.grok\config.toml
+  └ Project: (none)
+
+  Harness Compatibility
+  └ cursor
+    └ skills     on   (default)
+    └ rules      on   (default)
+    └ agents     on   (default)
+    └ mcps       on   (default)
+    └ hooks      on   (default)
+    └ sessions   on   (default)
+  └ claude
+    └ skills     on   (default)
+    └ rules      on   (default)
+    └ agents     on   (default)
+    └ mcps       on   (default)
+    └ hooks      on   (default)
+    └ sessions   on   (default)
+  └ codex
+    └ sessions   on   (default)
+

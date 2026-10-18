@@ -1,0 +1,15 @@
+{
+  "name": "弹出词",
+  "tags": [
+    "竖屏",
+    "弹出"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "WOW",
+  "description_zh": "单词随机大小位置弹出"
+}

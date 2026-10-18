@@ -1,0 +1,16 @@
+{
+  "name": "字幕条·深蓝",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "字幕条"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Find its place",
+  "description_zh": "深蓝底条，无逐词高亮"
+}

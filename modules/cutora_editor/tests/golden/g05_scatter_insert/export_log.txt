@@ -1,0 +1,1 @@
+render host.mp4 -> D:\0_Dev\CUTORA\tests\golden\g05_scatter_insert\expected.mp4 (13.4s) err=[]

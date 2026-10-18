@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "counts": {
+    "tasks": 1,
+    "placed": 1
+  },
+  "artifacts": [
+    "D:\\0_Dev\\CUTORA\\tests\\golden\\g05_scatter_insert\\project.asproj.json"
+  ],
+  "per_task": [
+    {
+      "video": "host.mp4",
+      "start": 3.0,
+      "end": 19.0,
+      "duration": 20.0
+    }
+  ],
+  "project": "D:\\0_Dev\\CUTORA\\tests\\golden\\g05_scatter_insert\\project.asproj.json",
+  "image": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g05\\card.png",
+  "platform_copies": null,
+  "next_hint": "图片已写入工程 Images 轨道。用界面打开检查，要出片就 batch_export。",
+  "op": "insert_image",
+  "started_at": "2026-09-08T11:10:11+08:00",
+  "finished_at": "2026-09-08T11:10:12+08:00",
+  "human_needed": false,
+  "error": null,
+  "result_path": "D:\\0_Dev\\CUTORA\\tests\\golden\\g05_scatter_insert\\_state\\02_insert_image.json"
+}

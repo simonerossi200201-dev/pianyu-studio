@@ -1,0 +1,1222 @@
+{
+  "version": 2,
+  "created_at": "2026-09-14 00:00:00",
+  "app": "CUTORA",
+  "export_video_mode": "compressed",
+  "tasks": [
+    {
+      "video": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g01\\video.mp4",
+      "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g01\\video.mp4",
+      "text": "Open the API in 2026. SDK READY. Measure the longest token here. First we align every word. Highlight journey and studio. Check the glossary term CUTORA.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 3.0,
+          "words": [
+            {
+              "word": "Open",
+              "start": 0.0,
+              "end": 0.6,
+              "wid": 0
+            },
+            {
+              "word": "the",
+              "start": 0.6,
+              "end": 1.2,
+              "wid": 1
+            },
+            {
+              "word": "API",
+              "start": 1.2,
+              "end": 1.7999999999999998,
+              "wid": 2
+            },
+            {
+              "word": "in",
+              "start": 1.7999999999999998,
+              "end": 2.4,
+              "wid": 3
+            },
+            {
+              "word": "2026.",
+              "start": 2.4,
+              "end": 3.0,
+              "wid": 4
+            }
+          ],
+          "text": "Open the API in 2026.",
+          "role": "an_pop",
+          "lang": "en",
+          "lines": [
+            "Open the API",
+            "in 2026."
+          ]
+        },
+        {
+          "start": 3.0,
+          "end": 6.0,
+          "words": [
+            {
+              "word": "SDK",
+              "start": 3.0,
+              "end": 4.5,
+              "wid": 5
+            },
+            {
+              "word": "READY.",
+              "start": 4.5,
+              "end": 6.0,
+              "wid": 6
+            }
+          ],
+          "text": "SDK READY.",
+          "role": "an_stomp",
+          "lang": "en",
+          "lines": [
+            "SDK READY."
+          ]
+        },
+        {
+          "start": 6.0,
+          "end": 9.0,
+          "words": [
+            {
+              "word": "Measure",
+              "start": 6.0,
+              "end": 6.6,
+              "wid": 7
+            },
+            {
+              "word": "the",
+              "start": 6.6,
+              "end": 7.2,
+              "wid": 8
+            },
+            {
+              "word": "longest",
+              "start": 7.2,
+              "end": 7.8,
+              "wid": 9
+            },
+            {
+              "word": "token",
+              "start": 7.8,
+              "end": 8.4,
+              "wid": 10
+            },
+            {
+              "word": "here.",
+              "start": 8.4,
+              "end": 9.0,
+              "wid": 11
+            }
+          ],
+          "text": "Measure the longest token here.",
+          "role": "an_zoom",
+          "lang": "en",
+          "lines": [
+            "Measure",
+            "the longest token here."
+          ]
+        },
+        {
+          "start": 9.0,
+          "end": 12.0,
+          "words": [
+            {
+              "word": "First",
+              "start": 9.0,
+              "end": 9.6,
+              "wid": 12
+            },
+            {
+              "word": "we",
+              "start": 9.6,
+              "end": 10.2,
+              "wid": 13
+            },
+            {
+              "word": "align",
+              "start": 10.2,
+              "end": 10.8,
+              "wid": 14
+            },
+            {
+              "word": "every",
+              "start": 10.8,
+              "end": 11.4,
+              "wid": 15
+            },
+            {
+              "word": "word.",
+              "start": 11.4,
+              "end": 12.0,
+              "wid": 16
+            }
+          ],
+          "text": "First we align every word.",
+          "role": "an_kara",
+          "lang": "en",
+          "lines": [
+            "First we align",
+            "every word."
+          ]
+        },
+        {
+          "start": 12.0,
+          "end": 15.0,
+          "words": [
+            {
+              "word": "Highlight",
+              "start": 12.0,
+              "end": 12.75,
+              "wid": 17
+            },
+            {
+              "word": "journey",
+              "start": 12.75,
+              "end": 13.5,
+              "wid": 18
+            },
+            {
+              "word": "and",
+              "start": 13.5,
+              "end": 14.25,
+              "wid": 19
+            },
+            {
+              "word": "studio.",
+              "start": 14.25,
+              "end": 15.0,
+              "wid": 20
+            }
+          ],
+          "text": "Highlight journey and studio.",
+          "role": "an_fade",
+          "lang": "en",
+          "lines": [
+            "Highlight journey",
+            "and studio."
+          ]
+        },
+        {
+          "start": 15.0,
+          "end": 18.0,
+          "words": [
+            {
+              "word": "Check",
+              "start": 15.0,
+              "end": 15.6,
+              "wid": 21
+            },
+            {
+              "word": "the",
+              "start": 15.6,
+              "end": 16.2,
+              "wid": 22
+            },
+            {
+              "word": "glossary",
+              "start": 16.2,
+              "end": 16.8,
+              "wid": 23
+            },
+            {
+              "word": "term",
+              "start": 16.8,
+              "end": 17.4,
+              "wid": 24
+            },
+            {
+              "word": "CUTORA.",
+              "start": 17.4,
+              "end": 18.0,
+              "wid": 25
+            }
+          ],
+          "text": "Check the glossary term CUTORA.",
+          "role": "an_type",
+          "lang": "en",
+          "lines": [
+            "Check",
+            "the glossary term CUTORA."
+          ]
+        }
+      ],
+      "overlays": [],
+      "text_overlays": [],
+      "image_overlays": [],
+      "audio_clips": [],
+      "dims": [
+        1080,
+        1920
+      ],
+      "style": {
+        "font_family": "SN Pro",
+        "fontsize": 70,
+        "bold": true,
+        "italic": false,
+        "pos_x": 540,
+        "pos_y": 1114,
+        "anchor": "bottom-center",
+        "offset_x_pct": 0.0,
+        "offset_y_pct": -0.42,
+        "fontsize_pct": 0.064815,
+        "rotation": 0,
+        "color_text": "#F4EBD8",
+        "color_high": "#F4EBD8",
+        "color_bg": "#0B1A33",
+        "opacity_bg": 180,
+        "opacity_shadow": 255,
+        "use_box": false,
+        "box_padding_x": 20,
+        "box_padding_y": 8,
+        "box_radius": 8,
+        "box_blur": 0,
+        "use_stroke": false,
+        "border_width": 0,
+        "opacity_outline": 255,
+        "color_outline": "#141A26",
+        "wrap_lines": 2,
+        "line_spacing": 4,
+        "dynamic_box": false,
+        "anim_in_type": "none",
+        "anim_out_type": "none",
+        "fade_in_out_enabled": false,
+        "high_grad": {
+          "enabled": false,
+          "mode": 1,
+          "dir": 0,
+          "c1": "#F4EBD8",
+          "c2": "#F4EBD8",
+          "c3": "#F4EBD8"
+        },
+        "fx": {
+          "fill": {
+            "type": "solid",
+            "colors": [
+              "#F4EBD8"
+            ]
+          },
+          "stroke": {
+            "width_em": 0.03,
+            "color": "#141A26",
+            "join": "round"
+          },
+          "glow": {
+            "sigma_em": 0,
+            "color": "#22D3EE"
+          },
+          "bg": {
+            "type": "none"
+          },
+          "fonts": {
+            "body": "SN Pro"
+          },
+          "emphasis": {
+            "auto": [
+              "numbers"
+            ],
+            "words": [],
+            "color": "#C45C26",
+            "scale": 1.2,
+            "font": "body",
+            "anim": "none",
+            "max_per_cue": 2
+          },
+          "anim": {
+            "in": "pop_in",
+            "loop": "none",
+            "out": "none",
+            "unit": "word",
+            "in_s": 0.35,
+            "out_s": 0.4,
+            "stagger_s": 0.05,
+            "seed": 0
+          },
+          "scatter": {
+            "enabled": false
+          }
+        }
+      },
+      "src_volume": 1.0,
+      "intro_media": null,
+      "video_overlay": {},
+      "audio_tracks": [],
+      "duration": 20.0,
+      "trim_end_sec": 20.0,
+      "subtitle_roles": {
+        "an_pop": {
+          "name": "入场 pop_in / numbers",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4EBD8",
+            "color_high": "#F4EBD8",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4EBD8"
+                ]
+              },
+              "stroke": {
+                "width_em": 0.03,
+                "color": "#141A26",
+                "join": "round"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "emphasis": {
+                "auto": [
+                  "numbers"
+                ],
+                "words": [],
+                "color": "#C45C26",
+                "scale": 1.2,
+                "font": "body",
+                "anim": "none",
+                "max_per_cue": 2
+              },
+              "anim": {
+                "in": "pop_in",
+                "loop": "none",
+                "out": "none",
+                "unit": "word",
+                "in_s": 0.35,
+                "out_s": 0.4,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "an_stomp": {
+          "name": "入场 stomp / caps",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 56,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.05185185185185185,
+            "rotation": 0,
+            "color_text": "#F4EBD8",
+            "color_high": "#F4EBD8",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4EBD8"
+                ]
+              },
+              "stroke": {
+                "width_em": 0.03,
+                "color": "#141A26",
+                "join": "round"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "emphasis": {
+                "auto": [
+                  "caps"
+                ],
+                "words": [],
+                "color": "#C45C26",
+                "scale": 1.2,
+                "font": "body",
+                "anim": "none",
+                "max_per_cue": 2
+              },
+              "anim": {
+                "in": "stomp",
+                "loop": "none",
+                "out": "none",
+                "unit": "word",
+                "in_s": 0.35,
+                "out_s": 0.4,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "an_zoom": {
+          "name": "循环 zoom_slow / longest",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4EBD8",
+            "color_high": "#F4EBD8",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4EBD8"
+                ]
+              },
+              "stroke": {
+                "width_em": 0.03,
+                "color": "#141A26",
+                "join": "round"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "emphasis": {
+                "auto": [
+                  "longest"
+                ],
+                "words": [],
+                "color": "#C45C26",
+                "scale": 1.2,
+                "font": "body",
+                "anim": "none",
+                "max_per_cue": 2
+              },
+              "anim": {
+                "in": "none",
+                "loop": "zoom_slow",
+                "out": "none",
+                "unit": "segment",
+                "in_s": 0.35,
+                "out_s": 0.4,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "an_kara": {
+          "name": "循环 karaoke / list",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4EBD8",
+            "color_high": "#F4EBD8",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4EBD8"
+                ]
+              },
+              "stroke": {
+                "width_em": 0.03,
+                "color": "#141A26",
+                "join": "round"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "emphasis": {
+                "auto": [
+                  "list"
+                ],
+                "words": [],
+                "color": "#C45C26",
+                "scale": 1.2,
+                "font": "body",
+                "anim": "none",
+                "max_per_cue": 2
+              },
+              "anim": {
+                "in": "none",
+                "loop": "karaoke",
+                "out": "none",
+                "unit": "word",
+                "in_s": 0.35,
+                "out_s": 0.4,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "an_fade": {
+          "name": "出场 fade / 双色跳字",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4EBD8",
+            "color_high": "#F4EBD8",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4EBD8"
+                ]
+              },
+              "stroke": {
+                "width_em": 0.03,
+                "color": "#141A26",
+                "join": "round"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "emphasis": {
+                "auto": [],
+                "words": [
+                  "journey",
+                  "studio"
+                ],
+                "color": "#C45C26",
+                "palette": [
+                  "#7C3AED",
+                  "#22D3EE"
+                ],
+                "scale": 1.2,
+                "font": "body",
+                "anim": "none",
+                "max_per_cue": 2
+              },
+              "anim": {
+                "in": "none",
+                "loop": "none",
+                "out": "fade",
+                "unit": "word",
+                "in_s": 0.35,
+                "out_s": 0.4,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "an_type": {
+          "name": "入场 typewriter / glossary",
+          "style": {
+            "font_family": "SN Pro",
+            "fontsize": 70,
+            "bold": true,
+            "italic": false,
+            "pos_x": 540,
+            "pos_y": 1114,
+            "anchor": "bottom-center",
+            "offset_x_pct": 0.0,
+            "offset_y_pct": -0.42,
+            "fontsize_pct": 0.064815,
+            "rotation": 0,
+            "color_text": "#F4EBD8",
+            "color_high": "#F4EBD8",
+            "color_bg": "#0B1A33",
+            "opacity_bg": 180,
+            "opacity_shadow": 255,
+            "use_box": false,
+            "box_padding_x": 20,
+            "box_padding_y": 8,
+            "box_radius": 8,
+            "box_blur": 0,
+            "use_stroke": false,
+            "border_width": 0,
+            "opacity_outline": 255,
+            "color_outline": "#141A26",
+            "wrap_lines": 2,
+            "line_spacing": 4,
+            "dynamic_box": false,
+            "anim_in_type": "none",
+            "anim_out_type": "none",
+            "fade_in_out_enabled": false,
+            "high_grad": {
+              "enabled": false,
+              "mode": 1,
+              "dir": 0,
+              "c1": "#F4EBD8",
+              "c2": "#F4EBD8",
+              "c3": "#F4EBD8"
+            },
+            "fx": {
+              "fill": {
+                "type": "solid",
+                "colors": [
+                  "#F4EBD8"
+                ]
+              },
+              "stroke": {
+                "width_em": 0.03,
+                "color": "#141A26",
+                "join": "round"
+              },
+              "glow": {
+                "sigma_em": 0,
+                "color": "#22D3EE"
+              },
+              "bg": {
+                "type": "none"
+              },
+              "fonts": {
+                "body": "SN Pro"
+              },
+              "emphasis": {
+                "auto": [
+                  "glossary"
+                ],
+                "words": [],
+                "color": "#C45C26",
+                "scale": 1.2,
+                "font": "body",
+                "anim": "none",
+                "max_per_cue": 2
+              },
+              "anim": {
+                "in": "typewriter",
+                "loop": "none",
+                "out": "none",
+                "unit": "word",
+                "in_s": 0.8,
+                "out_s": 0.4,
+                "stagger_s": 0.05,
+                "seed": 0
+              },
+              "scatter": {
+                "enabled": false
+              }
+            },
+            "_glossary": [
+              "CUTORA"
+            ]
+          }
+        },
+        "default": {
+          "name": "默认"
+        }
+      },
+      "timeline": {
+        "width": 1080,
+        "height": 1920,
+        "fps": 30.0,
+        "sources": {
+          "bceb25104eee48abafceaa2f9a5c5497": {
+            "id": "bceb25104eee48abafceaa2f9a5c5497",
+            "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g01\\video.mp4",
+            "duration": 20.0,
+            "has_video": true,
+            "has_audio": true
+          }
+        },
+        "tracks": [
+          {
+            "id": "5468956f127d4c8986784f392b71fb14",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": true,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [
+              {
+                "source_id": "bceb25104eee48abafceaa2f9a5c5497",
+                "in_t": 0.0,
+                "out_t": 20.0,
+                "start_t": 0.0,
+                "fit_mode": "fill",
+                "blend_mode": "normal",
+                "x": 0.0,
+                "y": 0.0,
+                "scale": 1.0,
+                "rotation": 0.0,
+                "flip_x": false,
+                "flip_y": false,
+                "speed": 1.0,
+                "loop": false,
+                "match_duration": false,
+                "transition_preset": "none",
+                "transition_duration": 0.35,
+                "gain_db": 0.0,
+                "pitch_semitones": 0.0,
+                "fade_in_dur": 0.0,
+                "fade_out_dur": 0.0,
+                "spatial_enabled": false,
+                "spatial_amount": 0.0,
+                "spatial_preset": "cathedral",
+                "spatial_user_set": false,
+                "is_main": false,
+                "audio_role": ""
+              }
+            ],
+            "transitions": []
+          },
+          {
+            "id": "f9fdf6b363b643d8aef4414485b167e7",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "0d7857248de44e5fbaa5cecd0a2bddfe",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "6b3323d134834c6aa7868fa11fbce33c",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "19c16280a9b84c219f7468ca296734d1",
+            "type": "video",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "279b51d244e140d98e81feafbda11a02",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "3379c7de3db54131aaf440ffd3d70f21",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "046bb7d5f0384e88865fd27cbc398875",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "13d75c4ac456483f9a41c4c9f61575f9",
+            "type": "image",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "c586853490f64d2a96bac6801280c7cf",
+            "type": "text",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "038a24349027453090f84934326f7020",
+            "type": "text",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "df8c24ffc7954129a7c35834b8535421",
+            "type": "text",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "e791b5c25bf64186829ff12f5102b6bb",
+            "type": "subs",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "visual",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "6a4d7283ffbe4f9985712ccf45c823bd",
+            "type": "audio",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "audio",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [
+              {
+                "source_id": "bceb25104eee48abafceaa2f9a5c5497",
+                "in_t": 0.0,
+                "out_t": 20.0,
+                "start_t": 0.0,
+                "fit_mode": "fill",
+                "blend_mode": "normal",
+                "x": 0.0,
+                "y": 0.0,
+                "scale": 1.0,
+                "rotation": 0.0,
+                "flip_x": false,
+                "flip_y": false,
+                "speed": 1.0,
+                "loop": false,
+                "match_duration": false,
+                "transition_preset": "none",
+                "transition_duration": 0.35,
+                "gain_db": 0.0,
+                "pitch_semitones": 0.0,
+                "fade_in_dur": 0.0,
+                "fade_out_dur": 0.0,
+                "spatial_enabled": false,
+                "spatial_amount": 0.0,
+                "spatial_preset": "cathedral",
+                "spatial_user_set": false,
+                "is_main": true,
+                "audio_role": ""
+              }
+            ],
+            "transitions": []
+          },
+          {
+            "id": "0db06272b69e4d09bb61f82d0771bc77",
+            "type": "audio",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "audio",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          },
+          {
+            "id": "6bc8844a20964f63a67f7c315e410684",
+            "type": "audio",
+            "enable_batch": false,
+            "is_main_video": false,
+            "domain": "audio",
+            "visible": true,
+            "locked": false,
+            "order": 0,
+            "pinned": false,
+            "blend_mode": "normal",
+            "clips": [],
+            "transitions": []
+          }
+        ]
+      },
+      "layout_rules": {
+        "max_chars_per_line": 32,
+        "max_lines": 2,
+        "balance_lines": true,
+        "line_break": "space"
+      }
+    }
+  ],
+  "curr_idx": 0,
+  "ui": {
+    "timeline_zoom": 20,
+    "timeline_scroll_x": 0,
+    "timeline_scroll_y": 0
+  },
+  "headless": true
+}

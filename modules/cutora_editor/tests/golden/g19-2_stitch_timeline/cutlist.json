@@ -1,0 +1,74 @@
+{
+  "T035": [
+    {
+      "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s001-p03.mp4",
+      "name": "T0035-s001-p03.mp4",
+      "keep": true,
+      "in_t": 0.0,
+      "out_t": 8.0,
+      "segs": [
+        [
+          0.0,
+          8.0
+        ]
+      ],
+      "dur": 8.0
+    },
+    {
+      "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s004-p02.mp4",
+      "name": "T0035-s004-p02.mp4",
+      "keep": true,
+      "in_t": 0.0,
+      "out_t": 4.71,
+      "segs": [
+        [
+          0.0,
+          4.71
+        ]
+      ],
+      "dur": 4.71
+    },
+    {
+      "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s014-p04.mp4",
+      "name": "T0035-s014-p04.mp4",
+      "keep": true,
+      "in_t": 0.0,
+      "out_t": 4.0,
+      "segs": [
+        [
+          0.0,
+          4.0
+        ]
+      ],
+      "dur": 4.0
+    },
+    {
+      "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s021-p03.mp4",
+      "name": "T0035-s021-p03.mp4",
+      "keep": true,
+      "in_t": 1.45,
+      "out_t": 6.0,
+      "segs": [
+        [
+          1.45,
+          6.0
+        ]
+      ],
+      "dur": 6.0
+    },
+    {
+      "path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s027-p01.mp4",
+      "name": "T0035-s027-p01.mp4",
+      "keep": true,
+      "in_t": 0.0,
+      "out_t": 8.0,
+      "segs": [
+        [
+          0.0,
+          8.0
+        ]
+      ],
+      "dur": 8.0
+    }
+  ]
+}

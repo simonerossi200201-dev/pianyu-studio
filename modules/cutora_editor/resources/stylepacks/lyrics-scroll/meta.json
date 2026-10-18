@@ -1,0 +1,15 @@
+{
+  "name": "滚动歌词",
+  "tags": [
+    "竖屏",
+    "歌词"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Find its place",
+  "description_zh": "现有滚动字幕作为风格"
+}

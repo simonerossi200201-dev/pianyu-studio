@@ -1,0 +1,15 @@
+{
+  "name": "霓虹·青",
+  "tags": [
+    "竖屏",
+    "霓虹"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "NEON",
+  "description_zh": "青色霓虹，无外圈分层描边"
+}

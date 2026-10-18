@@ -1,0 +1,46 @@
+{
+  "fit_mode": "fill",
+  "n": 5,
+  "placements": [
+    {
+      "source_path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s001-p03.mp4",
+      "in_t": 0.0,
+      "out_t": 8.0,
+      "start_t": 0.0,
+      "link_audio": true,
+      "fit_mode": "fill"
+    },
+    {
+      "source_path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s004-p02.mp4",
+      "in_t": 0.0,
+      "out_t": 4.71,
+      "start_t": 8.0,
+      "link_audio": true,
+      "fit_mode": "fill"
+    },
+    {
+      "source_path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s014-p04.mp4",
+      "in_t": 0.0,
+      "out_t": 4.0,
+      "start_t": 12.71,
+      "link_audio": true,
+      "fit_mode": "fill"
+    },
+    {
+      "source_path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s021-p03.mp4",
+      "in_t": 1.45,
+      "out_t": 6.0,
+      "start_t": 16.71,
+      "link_audio": true,
+      "fit_mode": "fill"
+    },
+    {
+      "source_path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g19_stitch_timeline\\T0035-s027-p01.mp4",
+      "in_t": 0.0,
+      "out_t": 8.0,
+      "start_t": 21.26,
+      "link_audio": true,
+      "fit_mode": "fill"
+    }
+  ]
+}

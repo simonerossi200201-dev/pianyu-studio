@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>右键表格工具 · 使用说明</title>
+<style>
+:root{
+  --paper:#f7f7f5; --panel:#fff; --ink:#191a1b; --ink2:#3d3e3f; --muted:#6e6d68;
+  --rule:#e2e1dc; --blue:#1a73e8; --blue-soft:#e8f0fe; --ok:#3f6b47; --ok-soft:#e5efe7;
+  --warn:#9a6a12; --warn-soft:#f7edd8; --shadow:0 1px 2px rgba(25,26,27,.06),0 8px 24px -16px rgba(25,26,27,.25);
+  --sans:"PingFang SC","Microsoft YaHei UI","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.65 var(--sans)}
+.wrap{max-width:920px;margin:0 auto;padding:32px 22px 80px}
+header{margin-bottom:28px}
+header h1{font-size:1.75rem;margin:0 0 8px;letter-spacing:.02em}
+header p{margin:0;color:var(--ink2)}
+nav{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:14px 18px;margin:20px 0 28px;box-shadow:var(--shadow)}
+nav a{color:var(--blue);text-decoration:none;margin-right:14px;line-height:2}
+nav a:hover{text-decoration:underline}
+h2{font-size:1.25rem;margin:36px 0 12px;padding-top:8px;border-top:1px solid var(--rule)}
+h3{font-size:1.05rem;margin:22px 0 10px;color:var(--ink2)}
+p,li{color:var(--ink)}
+ul,ol{padding-left:1.3em}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:16px 18px;margin:14px 0;box-shadow:var(--shadow)}
+.note{background:var(--warn-soft);border-left:3px solid var(--warn);padding:10px 14px;margin:14px 0;border-radius:0 8px 8px 0}
+.ok{background:var(--ok-soft);border-left:3px solid var(--ok);padding:10px 14px;margin:14px 0;border-radius:0 8px 8px 0}
+figure{margin:16px 0;background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:10px;box-shadow:var(--shadow)}
+figure img{display:block;max-width:100%;height:auto;border-radius:8px;margin:0 auto}
+figcaption{font-size:13px;color:var(--muted);text-align:center;margin-top:8px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{border:1px solid var(--rule);padding:8px 10px;text-align:left}
+th{background:#f0efec}
+code{font-family:Consolas,ui-monospace,monospace;background:#f0efec;padding:1px 6px;border-radius:4px;font-size:.92em}
+footer{margin-top:48px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>右键表格工具 · 使用说明</h1>
+  <p>批量改名、上传 / 下载 Google Drive、批量建文件夹。下面配的是本机实际界面截图。</p>
+</header>
+
+<nav>
+  <a href="#install">安装</a>
+  <a href="#main">主界面</a>
+  <a href="#daily">日常用法</a>
+  <a href="#ext">批量改后缀</a>
+  <a href="#auth">连接 Google 账号</a>
+  <a href="#download">网盘下载</a>
+  <a href="#mkdir">建文件夹</a>
+  <a href="#uninstall">卸载</a>
+</nav>
+
+<h2 id="install">安装</h2>
+<ol>
+  <li>电脑需要 <strong>Python 3.10 或更高</strong>（安装时勾选 Add python.exe to PATH）</li>
+  <li>把整个「右键表格工具」文件夹拷过去（不要拆开）</li>
+  <li>双击 <strong>安装.bat</strong></li>
+  <li>在任意文件夹空白处右键 → <strong>右键表格工具</strong></li>
+</ol>
+<p>不需要管理员权限。程序装在 <code>%LOCALAPPDATA%\RightClickTableTool</code>。</p>
+
+<h2 id="main">主界面</h2>
+<p>中间是改名表格：左边各列拼成新文件名，右边是预览、网盘链接和上传状态。</p>
+<figure>
+  <img src="截图/01-main.png" alt="主界面">
+  <figcaption>主界面（改名表）</figcaption>
+</figure>
+<div class="card">
+  <ul>
+    <li><strong>⬇ 下载</strong>：网盘下载面板（<code>Ctrl+Shift+D</code>）</li>
+    <li><strong>📁 建文件夹</strong>：批量建文件夹（<code>Ctrl+Shift+N</code>）</li>
+    <li>右上角 <strong>连接网盘 / 网盘已连接</strong>：授权或管理 Google 账号</li>
+  </ul>
+</div>
+
+<h2 id="daily">日常用法（改名 / 上传）</h2>
+<ul>
+  <li><strong>勾选</strong>后的行才会改名、填序号、上传。</li>
+  <li>左边列从左到右拼成新文件名，<code>Ctrl+Enter</code> 执行改名。</li>
+  <li>在「网盘链接」列粘贴目标文件夹网址（支持从 Google Sheet 直接粘带链接的单元格）。</li>
+  <li>点「上传勾选」：通过本机 rclone 的 <code>gdrive</code> 远程上传。</li>
+  <li>工程自动写入隐藏文件 <code>.renamer_project.json</code>，可导出 / 导入、还原原名。</li>
+</ul>
+<div class="note">还没连接 Google 账号就点上传时，会自动弹出连接窗口；连好后再点「继续上传」即可。</div>
+
+<h2 id="ext">批量添加 / 修改文件后缀名</h2>
+<p>别人上传到网盘的文件有时候没带后缀，下载下来就是光秃秃的 <code>a022</code>，一个个手改很麻烦。
+菜单 <strong>命名规则 → 🏷 批量设置扩展名…</strong>（视图菜单里也有，并显示当前模式）。</p>
+<div class="ok">只改后缀，<strong>文件名部分一个字都不动</strong>。</div>
+<table>
+  <tr><th>模式</th><th>效果</th></tr>
+  <tr><td><strong>沿用原来的扩展名</strong></td><td>默认。<code>a022.mp4</code> 改名后还是 <code>.mp4</code>，本来没后缀的还是没有</td></tr>
+  <tr><td><strong>统一用这个后缀</strong></td><td>填 <code>.mp4</code>（不填点也行，会自动补）。勾上「只补给本来没有后缀的文件」就只补缺，不动已有后缀的；取消勾选则全部换成这个后缀</td></tr>
+  <tr><td><strong>去掉扩展名</strong></td><td>新文件名里不带任何后缀</td></tr>
+</table>
+<p>弹窗底部实时显示「勾选的 N 个文件里，M 个的后缀会变」，并列出前几条对照。应用后先看
+<strong>预览：新文件名</strong> 列，确认无误再点「执行重命名」。</p>
+<p><strong>作用于哪张表</strong>：弹窗顶部有「作用于：✎ 改名表 / ⬇ 下载表」，各显示勾选了几个文件，点哪个就改哪张，两张表互不影响。
+默认选你正在编辑的那张；那张一个勾选都没有、另一张有时，会自动选另一张。</p>
+<p><strong>已经下载好的文件</strong>：在下载表里应用后，若勾选的行已经下载到磁盘、名字还没后缀，会再问一句是否一起补上，确认后直接在下载文件夹里改好（只改后缀，不会覆盖任何文件）。</p>
+<p><strong>只显示视频</strong>：没有后缀的文件认不出类型，不会再被这个开关藏起来。</p>
+<div class="note">下载面板里也能用。在下载表设成「统一用 .mp4」，下载下来的文件直接就带后缀，不用事后再改一遍。
+改名表和下载表各记各的设置，都会存进工程文件。</div>
+
+<h2 id="auth">连接 Google 账号（授权）</h2>
+<p>上传和网盘下载都要用你自己的 Google Drive。授权一般只需做一次：浏览器里登录并点「允许」，其余自动完成。</p>
+
+<h3>从哪里打开</h3>
+<ul>
+  <li>菜单栏右上角 <strong>连接网盘</strong>（已连接时为 <strong>网盘已连接</strong>）</li>
+  <li>或 <strong>设置 → Google Drive 网盘连接</strong></li>
+  <li>上传 / 下载时若未连接，也会自动弹出</li>
+</ul>
+<figure>
+  <img src="截图/05b-drive-pill.png" alt="网盘按钮">
+  <figcaption>右上角网盘按钮</figcaption>
+</figure>
+
+<h3>第一次连接</h3>
+<p>点 <strong>一键连接</strong>。窗口会列出四步：准备 rclone → 浏览器点「允许」→ 保存 <code>gdrive</code> 配置 → 测试连接。</p>
+<figure>
+  <img src="截图/06-drive-intro-dlg.png" alt="第一次连接">
+  <figcaption>连接 Google Drive（一键连接）</figcaption>
+</figure>
+
+<h3>在浏览器里授权</h3>
+<p>选择 Google 账号，在权限页点 <strong>允许</strong>（应用名显示为 <strong>rclone</strong>，属正常现象）。若浏览器没自动打开，用窗口里的「点这里打开授权页」。</p>
+<figure>
+  <img src="截图/07-drive-auth-step-dlg.png" alt="授权步骤">
+  <figcaption>等待在浏览器中点「允许」</figcaption>
+</figure>
+
+<h3>已连接 / 连接成功</h3>
+<p>之后可随时点「网盘已连接」查看空间、测试连接、换账号或断开。</p>
+<figure>
+  <img src="截图/05-drive-connected-dlg.png" alt="已连接">
+  <figcaption>Google Drive 已连接</figcaption>
+</figure>
+<figure>
+  <img src="截图/09-drive-success-dlg.png" alt="连接成功">
+  <figcaption>连接成功</figcaption>
+</figure>
+
+<h3>断开连接</h3>
+<figure>
+  <img src="截图/08-drive-switch-dlg.png" alt="确认断开">
+  <figcaption>确认断开连接</figcaption>
+</figure>
+
+<div class="ok">
+  <strong>安全说明：</strong>授权只保存在这台电脑的 rclone 配置文件里。工具不会上传、记录或分享它；别人拿到这个工具，连的是他自己的网盘。
+</div>
+<p>若提示缺少 rclone：重新运行文件夹里的 <strong>安装.bat</strong>，再回来点「一键连接」。</p>
+
+<h2 id="download">网盘下载</h2>
+<figure>
+  <img src="截图/02-download.png" alt="下载面板">
+  <figcaption>网盘下载面板</figcaption>
+</figure>
+<ul>
+  <li>把文件或文件夹链接贴到「网盘链接」列；文件夹会展开为多个文件。</li>
+  <li>左边列拼下载后的本地文件名；空行则用网盘原名。</li>
+  <li>点「开始下载」。重名自动加 (2)(3)；失败会重试。</li>
+</ul>
+
+<h2 id="mkdir">批量新建文件夹</h2>
+<figure>
+  <img src="截图/03-mkdir.png" alt="建文件夹">
+  <figcaption>批量新建文件夹</figcaption>
+</figure>
+<ul>
+  <li>每一行 = 一个文件夹；左边列拼文件夹名。</li>
+  <li>「建在」默认当前目录，可改路径。</li>
+  <li>可撤销刚才创建的<strong>空</strong>文件夹。</li>
+</ul>
+
+<h2 id="uninstall">卸载</h2>
+<p>双击 <strong>卸载.bat</strong>。只删程序和右键菜单，不动视频和工程文件。</p>
+
+<h2>快捷键</h2>
+<table>
+  <tr><th>快捷键</th><th>作用</th></tr>
+  <tr><td><code>Ctrl+Enter</code></td><td>执行改名 / 下载 / 建文件夹</td></tr>
+  <tr><td><code>Ctrl+Shift+D</code></td><td>网盘下载面板</td></tr>
+  <tr><td><code>Ctrl+Shift+N</code></td><td>建文件夹面板</td></tr>
+  <tr><td><code>Ctrl+Shift+C</code></td><td>复制文件名</td></tr>
+  <tr><td><code>Ctrl+Shift+P</code></td><td>复制完整路径</td></tr>
+</table>
+
+<footer>界面截图来自本机实际运行窗口。若版本按钮文案略有出入，以窗口显示为准。</footer>
+</div>
+</body>
+</html>

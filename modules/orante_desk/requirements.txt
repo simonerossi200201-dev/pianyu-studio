@@ -1,0 +1,11 @@
+# 2026-10-05 安全审核：锁到本机已安装、并且用 OSV 核对过的版本。
+# urllib3 从 2.7.0 升到 2.8.0，修复 GHSA-8988-9cw3-xx77（HTTPS 代理的 TLS 配置会被盖掉）。
+fastapi==0.141.1
+uvicorn==0.52.4
+playwright==1.62.0
+pillow==12.3.0
+pywebview==6.2.1
+requests==2.34.2
+cryptography==50.0.1
+imageio-ffmpeg==0.6.0
+urllib3==2.8.0

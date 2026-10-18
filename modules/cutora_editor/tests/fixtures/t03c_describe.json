@@ -1,0 +1,629 @@
+{
+  "app": "CUTORA",
+  "version": "7.0.0",
+  "ops": [
+    {
+      "name": "stitch",
+      "summary": "把一个目录里的片段按文案智能拼接成整条视频，并写出可打开的工程文件",
+      "in": "dir",
+      "out": "project",
+      "implemented": true,
+      "params": {
+        "dir": {
+          "type": "path",
+          "required": true,
+          "desc": "素材目录。里面是按组命名的短视频，例如 01.mp4、01 (2).mp4、01a.mp4"
+        },
+        "captions": {
+          "type": "text|path",
+          "required": true,
+          "desc": "文案。三种写法：1) 直接把全文放进这个字段；2) @文件路径 读取文本文件；3) 字符串 \"-\" 表示从 stdin 读。文本格式二选一：每段以「01|文案」或「01:文案」开头；或按空行分段，段数必须和素材组数一致。"
+        },
+        "language": {
+          "type": "string",
+          "default": "en",
+          "desc": "识别/对齐语言。常用 en（英语）或 it（意大利语）"
+        },
+        "out_dir": {
+          "type": "path",
+          "default": "<dir>\\\\_stitched",
+          "desc": "成品目录。默认是素材目录下的 _stitched"
+        },
+        "allow_blocking": {
+          "type": "bool",
+          "default": false,
+          "desc": "素材体检发现断号/无音轨/组内分辨率不一致时，默认停下。true 才继续"
+        },
+        "quarantine": {
+          "type": "bool",
+          "default": true,
+          "desc": "把根本不是视频的坏文件挪到 <dir>/_invalid/。只移动不删除"
+        },
+        "write_project": {
+          "type": "bool",
+          "default": true,
+          "desc": "成功后写出 stitched.asproj.json，供后续 auto_subtitle / 导出使用"
+        },
+        "allow_missing": {
+          "type": "bool",
+          "default": false,
+          "desc": "有缺失文案时默认 exit 3 不写时间线。true 仍写出时间线工程"
+        },
+        "analyze": {
+          "type": "bool",
+          "default": true,
+          "desc": "false = 只跑素材体检，不调 whisper、不写时间线。给「仅检查」用"
+        },
+        "encode": {
+          "type": "bool",
+          "default": true,
+          "desc": "false = 分析到 cutlist 为止。true 写出时间线工程（不再拼中间 mp4）"
+        }
+      },
+      "exit_codes": {
+        "0": "成功，成品 mp4 和工程文件已写出",
+        "3": "闸门未过：有缺失文案，或体检需要人工确认。未编码",
+        "1": "失败",
+        "4": "被单实例锁挡住"
+      },
+      "idempotent": true,
+      "note": "有缺失文案时默认不写时间线，会导出「缺失文案清单.txt」并以 3 退出。补齐缺失片段后用同一命令重跑即可；未改动的组会复用上次转录缓存。成功时写出 stitched.asproj.json，不生成 _stitched 中间 mp4。"
+    },
+    {
+      "name": "import_media",
+      "summary": "把一组成品视频（通常是 _stitched 里的 mp4）写成片语工程文件",
+      "in": "dir",
+      "out": "project",
+      "implemented": true,
+      "params": {
+        "videos": {
+          "type": "path|list",
+          "required": true,
+          "desc": "视频目录，或视频路径数组。目录下按文件名排序"
+        },
+        "captions": {
+          "type": "text|path",
+          "required": false,
+          "desc": "可选文案，格式同 stitch。按文件名中的组号对应"
+        },
+        "out": {
+          "type": "path",
+          "required": false,
+          "desc": "工程输出路径。默认 <目录>/imported.asproj.json"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败",
+        "2": "参数错误"
+      },
+      "idempotent": true,
+      "note": "stitch 成功时已经自动写过工程。只有手里只有 mp4+文案、没有工程文件时才需要这个。"
+    },
+    {
+      "name": "auto_subtitle",
+      "summary": "按每条视频的文案强制对齐，生成字幕时间轴（对应界面「一键全自动」）",
+      "in": "project",
+      "out": "project",
+      "implemented": true,
+      "params": {
+        "project": {
+          "type": "path",
+          "required": true,
+          "desc": "工程文件 .asproj.json"
+        },
+        "out": {
+          "type": "path",
+          "required": false,
+          "desc": "写出路径。默认覆盖原工程"
+        },
+        "force_relayout": {
+          "type": "bool",
+          "default": false,
+          "desc": "当所有视频已经有字幕时，默认不重打轴。true 才会覆盖已有时间轴"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败"
+      },
+      "idempotent": false,
+      "note": "静默覆盖已调好的时间轴是不可逆的，所以 force_relayout 默认 false。只处理「有文案但还没有字幕分段」的条目。"
+    },
+    {
+      "name": "save_project",
+      "summary": "读取工程并重新规范化后写回（另存为）",
+      "in": "project",
+      "out": "project",
+      "implemented": true,
+      "params": {
+        "project": {
+          "type": "path",
+          "required": true,
+          "desc": "源工程"
+        },
+        "out": {
+          "type": "path",
+          "required": false,
+          "desc": "目标路径，默认覆盖源文件"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败"
+      },
+      "idempotent": true,
+      "note": "不弹窗、不改用户的最近项目列表。"
+    },
+    {
+      "name": "split_project",
+      "summary": "按列表顺序把一个工程切成多个较小的工程文件",
+      "in": "project",
+      "out": "project[]",
+      "implemented": true,
+      "params": {
+        "project": {
+          "type": "path",
+          "required": true,
+          "desc": "源工程"
+        },
+        "chunk": {
+          "type": "int",
+          "default": 80,
+          "desc": "每个工程最多几条视频。225 条 chunk=80 → 80/80/65"
+        },
+        "outdir": {
+          "type": "path",
+          "required": false,
+          "desc": "输出目录，默认与源工程同目录"
+        },
+        "name_pattern": {
+          "type": "string",
+          "required": false,
+          "desc": "默认 <原名>_<start>-<end>.asproj.json"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败"
+      },
+      "idempotent": true,
+      "note": "不修改原工程。产出的每个文件都可以单独用界面打开或交给 auto_subtitle / batch_export。图形界面：文件 → 自动拆分工程。"
+    },
+    {
+      "name": "queue_run",
+      "summary": "按工程队列依次导出；每个工程都在全新进程里跑完再进入下一个（等价于软件重启）",
+      "in": "project[]",
+      "out": "video[]",
+      "implemented": true,
+      "params": {
+        "projects": {
+          "type": "path|list",
+          "required": false,
+          "desc": "工程文件、目录、或数组。目录下按给定顺序收取 .asproj.json"
+        },
+        "project": {
+          "type": "path",
+          "required": false,
+          "desc": "单个工程。和 chunk 一起用时先拆分再排队"
+        },
+        "chunk": {
+          "type": "int",
+          "required": false,
+          "desc": "与 project 联用：先按条数切开，再按切片排队。例 100 条 chunk=40 → 3 个工程"
+        },
+        "outdir": {
+          "type": "path",
+          "required": false,
+          "desc": "拆分输出目录，默认与源工程同目录"
+        },
+        "name_pattern": {
+          "type": "string",
+          "required": false,
+          "desc": "拆分文件名，默认 <原名>_<start>-<end>.asproj.json"
+        },
+        "sort": {
+          "type": "string",
+          "default": "given",
+          "desc": "projects 排序：given（保持传入顺序）/ name / mtime"
+        },
+        "stop_on_error": {
+          "type": "bool",
+          "default": true,
+          "desc": "某一个工程失败时是否停下。false 则继续后面的"
+        },
+        "workers": {
+          "type": "int|null",
+          "default": null,
+          "desc": "传给每个工程的 batch_export.workers"
+        },
+        "gpu": {
+          "type": "bool|null",
+          "default": null,
+          "desc": "传给每个工程的 batch_export.gpu"
+        },
+        "mode": {
+          "type": "string",
+          "default": "quality",
+          "desc": "传给每个工程的 batch_export.mode"
+        },
+        "auto_subtitle": {
+          "type": "bool",
+          "default": true,
+          "desc": "每个工程导出前先跑 auto_subtitle（一键全自动）并写回工程。拆分后还没有字幕时必须开。已有字幕的条目默认不重打轴"
+        }
+      },
+      "exit_codes": {
+        "0": "全部成功",
+        "1": "有工程失败",
+        "2": "参数错误",
+        "4": "被锁挡住"
+      },
+      "idempotent": true,
+      "note": "每个工程默认：auto_subtitle（有缺字幕才跑）→ 写回工程 → 再 spawn batch_export。batch_export 子进程退出后再开下一个，用来释放显存/内存，对应图形界面「工程队列」的重启策略。拆分后的工程没有字幕，不要把 auto_subtitle 设成 false。耗时长请加 --async，再用 --status 看当前工程进度和队列剩余。图形界面：文件 → 自动拆分工程 / 工程队列。"
+    },
+    {
+      "name": "batch_export",
+      "summary": "按工程里的字幕把每条视频渲染成带字幕的成品，写到「字幕成品」目录",
+      "in": "project",
+      "out": "video[]",
+      "implemented": true,
+      "params": {
+        "project": {
+          "type": "path",
+          "required": true,
+          "desc": "工程文件"
+        },
+        "workers": {
+          "type": "int|null",
+          "default": null,
+          "desc": "并行进程数。null 表示按当时内存/显存/CPU 自动算"
+        },
+        "gpu": {
+          "type": "bool|null",
+          "default": null,
+          "desc": "是否用 NVENC。null 表示有 NVIDIA 显卡就尝试，不够再降级"
+        },
+        "mode": {
+          "type": "string",
+          "default": "quality",
+          "desc": "渲染质量。quality 或 fast，与界面一致"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败",
+        "4": "被锁挡住"
+      },
+      "idempotent": true,
+      "note": "耗时长时请加 --async，立刻返回 job id，再用 --status 查进度。导出期间右下角会弹出独立的监视器小窗，这是正常的。成品在每条原视频旁边的「字幕成品」文件夹。"
+    },
+    {
+      "name": "add_text_overlay",
+      "summary": "给工程里每条视频加上一条文字覆层（署名 / Generated with AI #XY）",
+      "in": "project",
+      "out": "project",
+      "implemented": true,
+      "params": {
+        "project": {
+          "type": "path",
+          "required": true,
+          "desc": "工程文件 .asproj.json"
+        },
+        "preset": {
+          "type": "string",
+          "default": "credit.default",
+          "desc": "文本预设 id（或显示名）。读 UserData/presets/text_presets.json。默认 credit.default（署名）"
+        },
+        "content": {
+          "type": "string",
+          "required": false,
+          "desc": "覆盖预设文案。默认用预设里的 Generated with AI #XY"
+        },
+        "replace": {
+          "type": "bool",
+          "default": true,
+          "desc": "true 时先删掉同名预设的旧覆层，再写一条新的"
+        },
+        "out": {
+          "type": "path",
+          "required": false,
+          "desc": "写出路径，默认覆盖原工程"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败",
+        "2": "参数错误"
+      },
+      "idempotent": true,
+      "note": "只改工程，不渲染。要出片再跑 batch_export。需要加插图时先这一步再打开界面。"
+    },
+    {
+      "name": "add_bgm",
+      "summary": "从音频文件夹给工程里每条视频配一首够长的背景音乐（对齐界面「全部配乐」）",
+      "in": "project",
+      "out": "project",
+      "implemented": true,
+      "params": {
+        "project": {
+          "type": "path",
+          "required": true,
+          "desc": "工程文件 .asproj.json"
+        },
+        "dir": {
+          "type": "path",
+          "required": true,
+          "desc": "音频文件夹（mp3/wav/m4a/flac/ogg/aac）"
+        },
+        "volume": {
+          "type": "number",
+          "default": 0.1,
+          "desc": "线性音量，默认 0.10，与界面批量配乐一致。短于视频的音频会循环"
+        },
+        "out": {
+          "type": "path",
+          "required": false,
+          "desc": "写出路径，默认覆盖原工程"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败",
+        "2": "参数错误"
+      },
+      "idempotent": true,
+      "note": "按视频时长挑一首更长的音频，尽量不重复。只改工程，不渲染。"
+    },
+    {
+      "name": "merge_projects",
+      "summary": "把多个工程文件的视频条目合并成一个工程，每条视频自己的字幕、署名、配乐都保留",
+      "in": "project[]",
+      "out": "project",
+      "implemented": true,
+      "params": {
+        "projects": {
+          "type": "path|list",
+          "required": true,
+          "desc": "工程文件、目录、或数组。目录下收取全部 .asproj.json / .asproj。也可写 params.dir 当目录用。"
+        },
+        "out": {
+          "type": "path",
+          "required": false,
+          "desc": "写出路径。默认放在第一份工程旁边，名叫 merged.asproj.json"
+        },
+        "sort": {
+          "type": "string",
+          "default": "name",
+          "desc": "name 按文件名自然序（Tik001 在 Tik002 前）；mtime 按修改时间；given 按传入顺序"
+        },
+        "dedupe": {
+          "type": "bool",
+          "default": true,
+          "desc": "同一视频路径只留第一次出现的那条"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败",
+        "2": "参数错误"
+      },
+      "idempotent": true,
+      "note": "不会重新打轴、不会重跑 whisper。任务里已有的 segments / text / 覆层原样并进新工程。用界面打开即可继续加插图或导出。"
+    },
+    {
+      "name": "scatter_broll",
+      "summary": "把短视频按固定时长切开，静音后循环铺到工程每条长视频的 Video2（或指定轨道）",
+      "in": "project + dir",
+      "out": "project",
+      "implemented": true,
+      "params": {
+        "project": {
+          "type": "path",
+          "required": true,
+          "desc": "工程文件 .asproj.json，例如 八段视频.asproj.json"
+        },
+        "clips_dir": {
+          "type": "path",
+          "required": true,
+          "desc": "待散落的源视频目录。只读该目录下一层，切片写到其中 _scatter/"
+        },
+        "clip_sec": {
+          "type": "number",
+          "default": 4,
+          "desc": "每段裁剪时长（秒）。源视频最后一段不足此时长也保留"
+        },
+        "interval_sec": {
+          "type": "number",
+          "default": 20,
+          "desc": "工程时间线上相邻两段落点的间隔（秒）"
+        },
+        "start_sec": {
+          "type": "number",
+          "default": null,
+          "desc": "第一条落点。默认等于 interval_sec（开头不放，从第 20 秒起）"
+        },
+        "mute": {
+          "type": "bool",
+          "default": true,
+          "desc": "true 时切片去掉音频，也不写入音轨"
+        },
+        "video_track": {
+          "type": "int",
+          "default": 2,
+          "desc": "目标 Video 轨道编号。1 是主视频，禁止写入。默认 2"
+        },
+        "replace": {
+          "type": "bool",
+          "default": true,
+          "desc": "true 时先清空目标轨道再铺，并拿掉该目录素材残留音轨"
+        },
+        "out_dir": {
+          "type": "path",
+          "required": false,
+          "desc": "切片输出目录。默认 <clips_dir>/_scatter"
+        },
+        "out": {
+          "type": "path",
+          "required": false,
+          "desc": "写出工程路径。默认覆盖原工程"
+        },
+        "indices": {
+          "type": "string|list",
+          "required": false,
+          "desc": "只处理这些序号（1 起）。例 \"1-3,5\" 或 [1,2,5]。默认全部"
+        },
+        "videos": {
+          "type": "list",
+          "required": false,
+          "desc": "只处理这些文件名，如 [\"Tik001.mp4\",\"Tik003.mp4\"]"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败",
+        "2": "参数错误"
+      },
+      "idempotent": true,
+      "note": "先按 clip_sec 切开（末段不足也保留），再从 start_sec 起每隔 interval_sec 在每条长视频的 Video 轨道上循环铺切片。默认静音、不进音轨、不碰主视频。只改工程，不渲染。"
+    },
+    {
+      "name": "insert_image",
+      "summary": "把同一张图批量铺到工程每条视频的 Images 轨道，默认 1 分钟后出现、铺到片尾、铺满 9:16 画面",
+      "in": "project + image",
+      "out": "project",
+      "implemented": true,
+      "params": {
+        "project": {
+          "type": "path",
+          "required": true,
+          "desc": "工程文件 .asproj.json"
+        },
+        "image": {
+          "type": "path",
+          "required": true,
+          "desc": "图片路径，如 C:\\\\Users\\\\Timco\\\\Downloads\\\\Bible_study.png"
+        },
+        "start_sec": {
+          "type": "number|string",
+          "default": 60,
+          "desc": "起始空余。秒数或 m:ss。此前不出现。默认 60（1 分钟）"
+        },
+        "end_pad_sec": {
+          "type": "number|string",
+          "default": 0,
+          "desc": "结束空余：距片尾多少秒消失。默认 0=铺到视频结尾"
+        },
+        "end_sec": {
+          "type": "number|string",
+          "required": false,
+          "desc": "绝对结束时间（秒或 m:ss）。若提供则覆盖 end_pad_sec"
+        },
+        "image_track": {
+          "type": "int",
+          "default": 1,
+          "desc": "Images 轨道编号，默认 1"
+        },
+        "fit": {
+          "type": "string",
+          "default": "fill",
+          "desc": "fill 铺满画面；fit 完整放下；stretch 拉伸"
+        },
+        "scale": {
+          "type": "number",
+          "default": 1.0,
+          "desc": "额外缩放，1=适配画面"
+        },
+        "x": {
+          "type": "number",
+          "default": 0,
+          "desc": "水平偏移像素"
+        },
+        "y": {
+          "type": "number",
+          "default": 0,
+          "desc": "垂直偏移像素"
+        },
+        "replace": {
+          "type": "bool",
+          "default": true,
+          "desc": "true 时先去掉本脚本上次插的同一张图"
+        },
+        "platform_copies": {
+          "type": "object",
+          "required": false,
+          "desc": "多平台副本。例 {\"youtube\":\"a.png\",\"instagram\":\"b.png\",\"tiktok\":\"c.png\"}。默认同一次渲染：字幕烧一遍再叠图。可加 \"render_mode\":\"each\" 做多次单独渲染（字幕盖住图片）。文件名前加 Youtube_ / Instagram_ / TikTok_"
+        },
+        "render_mode": {
+          "type": "string",
+          "default": "once",
+          "desc": "once=一次性渲染（默认，更快）；each=多次单独渲染（字幕盖住图片）。写入 platform_copies"
+        },
+        "out": {
+          "type": "path",
+          "required": false,
+          "desc": "写出工程路径。默认覆盖原工程"
+        },
+        "indices": {
+          "type": "string|list",
+          "required": false,
+          "desc": "只处理这些序号（1 起）。例 \"1-3,5\"。默认全部"
+        },
+        "videos": {
+          "type": "list",
+          "required": false,
+          "desc": "只处理这些文件名，如 [\"Tik001.mp4\"]"
+        }
+      },
+      "exit_codes": {
+        "0": "成功",
+        "1": "失败",
+        "2": "参数错误"
+      },
+      "idempotent": true,
+      "note": "只改工程 image_overlays，不渲染。默认铺满 9:16 画面、从第 60 秒到片尾、Images 1。带 platform_copies 时预览仍只插一张图，导出才按平台分份。render_mode 默认 once（一次渲染叠图）；each 为每平台单独渲染。"
+    }
+  ],
+  "recipes": [
+    {
+      "name": "batch_subtitles",
+      "summary": "一批口播素材：拼接 → 按 80 切开工程 → 打轴 → 导出字幕成品",
+      "steps": [
+        "stitch",
+        "split_project",
+        "auto_subtitle",
+        "batch_export"
+      ],
+      "note": "stitch 若以退出码 3 停下，先按「缺失文案清单.txt」补片段，再重跑 stitch，不要继续导出。多份工程要连续导出请改走 split_and_queue_export。"
+    },
+    {
+      "name": "split_and_queue_export",
+      "summary": "大工程按条数切开，再按工程队列逐份导出；每份结束都起一个新进程（释放显存）",
+      "steps": [
+        "split_project",
+        "queue_run"
+      ],
+      "note": "一条命令也可以：--do queue_run --params {\"project\":\"...\",\"chunk\":40}。100 条 chunk=40 → 3 个工程；每份先 auto_subtitle 再导出。"
+    },
+    {
+      "name": "longtik_finish",
+      "summary": "长文案成片：拼接 → 打轴 → 署名 → 配乐 →（可选）导出。要加插图就停在工程，不要导出",
+      "steps": [
+        "stitch",
+        "auto_subtitle",
+        "add_text_overlay",
+        "add_bgm",
+        "batch_export"
+      ],
+      "note": "署名默认预设 credit.default（署名）= Generated with AI。最后一步 batch_export 可省略：只保存工程，再用图形界面加插图后导出。"
+    },
+    {
+      "name": "merge_then_edit",
+      "summary": "多组成片工程合成一份，再打开界面加插图 / 导出",
+      "steps": [
+        "merge_projects"
+      ],
+      "note": "merge_projects 之后用片语 Studio 打开 artifacts 里的 merged 工程。字幕已经在每条视频上。"
+    }
+  ]
+}

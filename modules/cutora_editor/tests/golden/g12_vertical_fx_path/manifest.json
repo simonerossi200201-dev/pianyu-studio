@@ -1,0 +1,14 @@
+{
+  "case": "g12_vertical_fx_path",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "T11g-1b fx-path mirror of g02_vertical_fx. v1 style kept; style.fx filled from color/stroke/font/bg plus mapped anim_* / fade_*.",
+  "mirror_of": "g02_vertical_fx",
+  "path": "fx"
+}

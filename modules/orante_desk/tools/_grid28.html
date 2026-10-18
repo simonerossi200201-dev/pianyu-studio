@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>spec 28 grid fixture</title>
+<link rel="stylesheet" href="/ui/vendor/tabulator_midnight.min.css">
+<link rel="stylesheet" href="/ui/css/app.css">
+<style>
+html,body,#app{height:100%;margin:0}
+body{background:#121110;color:#EFEAE0}
+main.stage{position:relative;height:100vh;overflow:hidden;padding:8px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="/ui/vendor/vue.global.prod.js"></script>
+<script src="/ui/vendor/tabulator.min.js"></script>
+<script>
+window.store = Vue.reactive({
+  version: 'test', accounts: [
+    {id:'a1', name:'Lucy', engine:'flow'},
+    {id:'a2', name:'TIK-G-SIMONE', engine:'grok'},
+  ],
+  tasks: [], settings: {}, jobs: [], i18n: {},
+});
+window.ui = Vue.reactive({ node: 'tasks', drawer: null, toasts: [] });
+window.t = (k, vars) => {
+  const dict = {
+    'node.tasks':'任务', 'tasks.empty':'空',
+    'tasks.col.sel':'选','tasks.col.id':'#','tasks.col.name':'任务名','tasks.col.copy':'文案',
+    'tasks.col.image':'图片来源','tasks.col.type':'任务类型','tasks.col.account':'账号',
+    'tasks.col.duration':'时长','tasks.col.status':'状态','tasks.col.gen_mode':'生成方式','prio.col':'优先级',
+    'tasks.gen_mode.follow':'跟随引擎','gen.mode.first':'逐段首帧','gen.mode.anchor':'锚点 + 接片',
+    'tasks.type.long':'长文案','tasks.type.short':'短文案','tasks.duration.empty':'（空）',
+    'tasks.group.flow':'Flow','tasks.group.grok':'Grok',
+    'tasks.hint.sel':'勾','tasks.hint.id':'#','tasks.hint.name':'名','tasks.hint.copy':'文',
+    'tasks.hint.image':'图','tasks.hint.type':'类','tasks.hint.account':'号','prio.hint':'优',
+    'tasks.hint.duration':'时','tasks.hint.status':'态','tasks.hint.gen_mode':'方式',
+    'tasks.paste':'从 Google Sheet 粘贴','tasks.import':'导入','tasks.add_row':'+ 行…',
+    'tasks.save':'保存表格','tasks.prepare':'开始准备','tasks.prepare_selected':'只准备选中的',
+    'tasks.selected':'已选 {n} / 共 {m}','tasks.add_confirm':'要加 {n} 行吗？',
+    'tasks.add_range':'一次只能加 1～2000 行','tasks.paste_added':'粘贴时自动加了 {n} 行',
+    'tasks.paste.links':'其中 {n} 格从超链接还原了网址',
+    'tasks.paste.link_title':'从 Google Sheet 的超链接还原：{name}',
+    'tasks.warn.image_link':'这里需要网址；如果你是从 Google Sheet 复制的名字，请确认那一列是超链接',
+    'tasks.density.compact':'紧凑','tasks.density.comfy':'舒适',
+    'tasks.find.find':'查找','tasks.find.replace':'替换为','tasks.find.case':'区分大小写',
+    'tasks.find.cell':'整格匹配','tasks.find.prev':'上一个','tasks.find.next':'下一个',
+    'tasks.find.all':'全部替换','tasks.find.none':'没有找到',
+    'tasks.find.replace_n':'会改 {n} 格，确定替换？','tasks.find.replaced':'改了 {n} 格',
+    'tasks.warn.n':'{n} 处可能有问题','tasks.warn.jump':'逐个看',
+    'tasks.paste.title':'粘贴','tasks.paste.placeholder':'','tasks.paste.confirm':'追加',
+    'common.cancel':'取消','common.ok':'好','tasks.where':'哪','tasks.where.current':'根',
+    'tasks.where.pick':'选','tasks.where.remember':'记',
+    'tasks.status.draft':'草稿','search.count':'{i}/{n}',
+    'tasks.ctx.prepare':'准备','tasks.ctx.open_folder':'开','tasks.ctx.copy':'复制文案',
+    'tasks.ctx.trash':'回收','tasks.ctx.hard':'删',
+    'tasks.ctx.cut':'剪切','tasks.ctx.copy_range':'复制','tasks.ctx.paste':'粘贴',
+    'tasks.ctx.clear':'清除内容','tasks.ctx.started':'已开工，要改先打回草稿',
+    'tasks.ctx.nowrite':'这列不能改',
+    'tasks.cut.done':'已剪切 {r} 行 × {c} 列',
+    'tasks.cut.skipped':'{n} 格已开工，没有清（要改先打回草稿）',
+    'tasks.move.range':'移动 {r}×{c}','tasks.copy.range':'复制 {r}×{c}',
+    'tasks.move.added':'移动时自动加了 {n} 行',
+    'tasks.move.blocked':'去不了：{cells}（{reason}）',
+    'tasks.move.started':'已开工，要改先打回草稿',
+    'tasks.move.nocol':'不是数据列，不能写',
+    'tasks.del_sel':'删除选中','tasks.del.title':'要删掉 {n} 行：',
+    'tasks.del.draft':'{n} 行还是草稿（没有任务号、没建文件夹）→ 直接删掉',
+    'tasks.del.trash':'{n} 行已经开工（{ids}）→ 移进「回收」，磁盘文件不动',
+    'tasks.del.running':'{ids} 正在生成，先停掉再删','tasks.del.confirm':'确认',
+    'tasks.del.toast':'删掉 {d} 行草稿 · {t} 个任务移进回收',
+    'tasks.del.toast_d':'删掉 {d} 行草稿','tasks.del.toast_t':'{t} 个任务移进回收',
+    'tasks.del.none':'没有可删的行','tasks.handle':'拖动排序',
+    'tasks.status.prepared':'已准备','tasks.status.generating':'生成中',
+  };
+  let s = dict[k] !== undefined ? dict[k] : k;
+  if (vars) for (const [a,b] of Object.entries(vars)) s = s.replaceAll('{'+a+'}', b);
+  return s;
+};
+window.toast = (text) => { window._toasts = window._toasts || []; window._toasts.push(String(text)); console.log('toast', text); };
+window.API = {
+  post: async (u, d) => { window._posts = window._posts || []; window._posts.push({u,d}); return {ok:true, settings: (d&&d.set)||{}, saved:[], tasks:[], rows:[]}; },
+  get: async () => ({ok:true}),
+  del: async () => ({ok:true}),
+  job: async () => ({ok:true}),
+};
+window.PrioFlagLogic = { buttonHtml: () => '', openPop: () => {}, closePop: () => {} };
+window.registerFlush = () => {};
+window.unregisterFlush = () => {};
+window._toasts = [];
+window._posts = [];
+</script>
+<script src="/ui/js/parts/sheet.js"></script>
+<script src="/ui/js/parts/gen-mode.js"></script>
+<script src="/ui/js/panels/tasks.js"></script>
+<script>
+const app = Vue.createApp({
+  components: { Panel_tasks },
+  template: '<main class="stage"><Panel_tasks/></main>'
+});
+app.mount('#app');
+window.__ready = true;
+</script>
+</body>
+</html>

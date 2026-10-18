@@ -1,0 +1,12 @@
+{
+  "case": "g08_fx_static",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "v2 style.fx static hold, 8 roles, 20s 1080x1920, g01 media. Font SN Pro + bold:true = Bold (stem 7). Anim none."
+}

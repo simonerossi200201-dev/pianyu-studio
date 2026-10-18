@@ -1,0 +1,38 @@
+{
+  "loudness_mode": "off",
+  "export_video_mode": "compressed",
+  "parallel_export_enabled": true,
+  "parallel_export_workers": 6,
+  "parallel_warn_shown": true,
+  "audio_fx": {
+    "spatial_enabled": true,
+    "spatial_preset": "stage",
+    "spatial_wet": 0.1,
+    "spatial_width": 0.6,
+    "mic_texture": true,
+    "mic_amount": 0.2,
+    "sfx_volume": 0.18,
+    "sfx_interval_sec": 30.0,
+    "sfx_duration_sec": 5.0,
+    "sfx_jitter_sec": 8.0,
+    "sfx_start_offset_sec": 8.0,
+    "sfx_auto_apply": false,
+    "sfx_enabled": {
+      "crowd_applause": false,
+      "crowd_amen": false,
+      "venue_ambience": false,
+      "birds": false,
+      "ocean": false,
+      "river": false,
+      "rain": false,
+      "wind": false
+    },
+    "ai_enabled": false,
+    "ai_provider": "gemini",
+    "gemini_model": "gemini-2.0-flash",
+    "ollama_host": "http://127.0.0.1:11434",
+    "ollama_model": "llava",
+    "xai_model": "grok-2-vision-1212"
+  },
+  "insert_image_render_mode": "once"
+}

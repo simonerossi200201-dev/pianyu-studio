@@ -1,0 +1,27 @@
+{
+  "id": "lt_split",
+  "type": "lower_third",
+  "name": "双色条",
+  "license": "CUTORA-original",
+  "tags": [
+    "lower_third",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "bar.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#EFE7DA",
+      "label": "主色"
+    },
+    "color.secondary": {
+      "type": "color",
+      "default": "#7D9B6A",
+      "label": "辅色"
+    }
+  }
+}

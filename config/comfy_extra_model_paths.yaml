@@ -1,0 +1,21 @@
+# 片语工作室 (D:\0_LTX) 便携 ComfyUI 模型路径映射配置
+# 通过 --extra-model-paths-config 挂载，使 runtime/comfyui 直接读取 runtime/models 下的乐高扩展包权重，零重复占用磁盘空间。
+
+pianyu_ltx25:
+    base_path: ../models/ltx25
+    diffusion_models: diffusion_models
+    unet: diffusion_models
+    text_encoders: text_encoders
+    clip: text_encoders
+    vae: vae
+    loras: loras
+    latent_upscale_models: latent_upscale_models
+
+pianyu_flux2:
+    base_path: ../models/flux2
+    diffusion_models: diffusion_models
+    unet: diffusion_models
+    text_encoders: text_encoders
+    clip: text_encoders
+    vae: vae
+    loras: loras

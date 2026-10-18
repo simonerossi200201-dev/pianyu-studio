@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <circle cx="96" cy="1680" r="36" fill="{{color.secondary}}"/>
+  <rect x="160" y="1640" width="840" height="80" fill="{{color.primary}}"/>
+</svg>

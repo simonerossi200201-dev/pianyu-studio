@@ -1,0 +1,36 @@
+{
+  "clips": [
+    {
+      "file": "T0040-s002-p09.mp4",
+      "dur": 8.0,
+      "ref": "Many people use Scripture to condemn others, but forget that Jesus also brought grace, mercy."
+    },
+    {
+      "file": "T0035-s021-p03.mp4",
+      "dur": 6.0,
+      "ref": "John 16:13 says when he the Spirit of truth is come"
+    },
+    {
+      "file": "T0035-s001-p03.mp4",
+      "dur": 8.0,
+      "ref": "If a Christian dies with a sin they have not yet had time to confess"
+    },
+    {
+      "file": "T0040-s001-p03.mp4",
+      "dur": 8.0,
+      "ref": "Is remarrying after divorce a sin for Christians? The Bible's answer may surprise you."
+    },
+    {
+      "file": "T0035-s008-p08.mp4",
+      "dur": 8.0,
+      "ref": "Look at David and the people of Nineveh. They were not only sorrowful over sin."
+    }
+  ],
+  "floor": {
+    "default": 0.90,
+    "asr-small": 0.85,
+    "asr-medium": 0.90,
+    "asr-large-v3": 0.90
+  },
+  "tail_slack_sec": 1.0
+}

@@ -1,0 +1,5 @@
+# Digest of the font files load_embedded_fonts actually scans
+# (resources/fonts, skipping _quarantine / _extra / fonts_pending / Noto_Color_Emoji).
+# Pinned at the 2026-09-13 re-record of g01–g07 and g09. See RERECORD_NOTES.md.
+count=240
+80429c0971f116bfb759c58db8db60baa539f3762be8dcd4da46f6b00e510e2f

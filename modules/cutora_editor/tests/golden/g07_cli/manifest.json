@@ -1,0 +1,13 @@
+{
+  "case": "g07_cli",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "autosub_cli batch_export of g01 copy",
+  "cli_artifact": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g07\\字幕成品\\video_sub.mp4"
+}

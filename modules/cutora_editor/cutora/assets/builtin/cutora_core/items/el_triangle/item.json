@@ -1,0 +1,22 @@
+{
+  "id": "el_triangle",
+  "type": "element",
+  "name": "三角",
+  "license": "CUTORA-original",
+  "tags": [
+    "element",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "shape.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#E0BE68",
+      "label": "主色"
+    }
+  }
+}

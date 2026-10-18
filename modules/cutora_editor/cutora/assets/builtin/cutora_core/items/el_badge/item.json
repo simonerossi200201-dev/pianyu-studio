@@ -1,0 +1,27 @@
+{
+  "id": "el_badge",
+  "type": "element",
+  "name": "徽章",
+  "license": "CUTORA-original",
+  "tags": [
+    "element",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "shape.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#B4544A",
+      "label": "主色"
+    },
+    "color.secondary": {
+      "type": "color",
+      "default": "#EFE7DA",
+      "label": "辅色"
+    }
+  }
+}

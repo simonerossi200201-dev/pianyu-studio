@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <path d="M40 40 H240 V70 H70 V240 H40 Z" fill="{{color.primary}}"/>
+  <path d="M1040 40 H840 V70 H1010 V240 H1040 Z" fill="{{color.primary}}"/>
+  <path d="M40 1880 H240 V1850 H70 V1680 H40 Z" fill="{{color.primary}}"/>
+  <path d="M1040 1880 H840 V1850 H1010 V1680 H1040 Z" fill="{{color.primary}}"/>
+</svg>

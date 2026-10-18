@@ -1,0 +1,12 @@
+{
+  "case": "g19b-2_stitch_crossfade",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "Ten-report: g19b retired. Same as g19-2 plus cross_dissolve 0.35s on seams."
+}

@@ -1,0 +1,12 @@
+{
+  "case": "g19-2_stitch_timeline",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "Ten-report: g19 retired. Export seek CAP_PROP_POS_FRAMES + half-open clip interval. Same 5-clip timeline as g19."
+}

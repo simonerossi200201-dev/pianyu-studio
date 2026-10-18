@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orante 制片台</title>
+<link rel="icon" href="/ui/assets/png/icon-64.png">
+<link rel="stylesheet" href="/ui/vendor/tabulator_midnight.min.css">
+<link rel="stylesheet" href="/ui/css/app.css">
+<script src="/ui/vendor/vue.global.prod.js"></script>
+<script src="/ui/vendor/tabulator.min.js"></script>
+</head>
+<body>
+<div id="app" v-cloak>
+  <header class="top">
+    <div class="brand"><img src="/ui/assets/png/icon-64.png" width="22" height="22" alt="" style="width:22px;height:22px;vertical-align:-5px;margin-right:8px;border-radius:5px">Orante <small>{{ t('app.version') }} {{ store.version }}</small><small class="top-port" v-if="portLabel">{{ portLabel }}</small></div>
+    <button class="tb" type="button" :title="t('top.new_window_tip')" @click="newWindow">＋ {{ t('top.new_window') }}</button>
+    <task-pick class="tp-cap" variant="capsule" v-model="capTid" min-status="draft" :tasks="capTasks"></task-pick>
+    <div class="spacer"></div>
+    <button class="tb" v-if="descQueue && descQueue.on" @click="goNode('gemini')" :title="t('gemini.queue')">
+      <span class="dot on" :class="{pause: descQueue.paused}"></span>{{ t('top.descq') }}
+      <span class="muted mono">{{ descQueue.done }}/{{ descQueue.total }}</span>
+    </button>
+    <div class="tb-wrap" @click.stop>
+      <button class="tb ico" :class="{warn: !sseOk, spin: refreshing && !refreshOk, done: refreshOk}"
+              :title="sseOk ? t('top.refresh_tip') : t('top.refresh_sse')"
+              @click.left="doRefresh(false)"
+              @contextmenu.prevent="refreshMenu=true">
+        <span class="ri">{{ refreshOk ? '✓' : '⟳' }}</span>
+      </button>
+      <div class="tb-pop" v-if="refreshMenu">
+        <div @click.stop="doRefresh(true); refreshMenu=false">{{ t('top.refresh_deep') }}</div>
+        <div @click.stop="openRescan(); refreshMenu=false">{{ t('top.refresh_rescan') }}</div>
+      </div>
+    </div>
+    <suite-bar></suite-bar>
+    <button class="tb" @click="ui.drawer='accounts'"><span class="dot" :class="{on: readyAccounts>0}"></span>{{ t('top.accounts') }} <span class="muted mono">{{ store.accounts.length }}</span></button>
+    <button class="tb" @click="ui.drawer='logs'"><span class="dot" :class="{on: activeJobs.length>0}"></span>{{ t('top.logs') }} <span class="muted mono" v-if="activeJobs.length">{{ activeJobs.length }}</span></button>
+    <button class="tb" @click="ui.drawer='settings'">{{ t('top.settings') }}</button>
+  </header>
+
+  <div class="credit-banner" v-if="creditHalt">
+    <span>{{ creditHalt.message || t('job.halted') }}</span>
+    <button class="btn sm" @click="ackCredit">{{ t('gen.credit_continue') }}</button>
+  </div>
+  <div class="cfg-banner" v-if="cfgNotice">
+    <span>{{ cfgNoticeText }}</span>
+    <button class="btn sm" type="button" @click="applyCfgRefresh">{{ t('top.cfg_refresh') }}</button>
+  </div>
+
+  <main class="stage">
+    <component :is="currentPanel" :key="panelKey"></component>
+  </main>
+
+  <node-bar :node="ui.node" :lamps="lamps" :tips="lampTips" :subs="nodeSubs" @go="goNode"></node-bar>
+
+  <accounts-drawer v-if="ui.drawer==='accounts'" @close="ui.drawer=null"></accounts-drawer>
+  <settings-drawer v-if="ui.drawer==='settings'" @close="ui.drawer=null"></settings-drawer>
+  <log-drawer v-if="ui.drawer==='logs'" @close="ui.drawer=null"></log-drawer>
+  <setup-wizard v-if="showSetup"></setup-wizard>
+
+  <div class="toasts">
+    <div v-for="m in ui.toasts" :key="m.id" class="toast" :class="m.kind">
+      {{ m.text }}
+      <small v-if="m.hint">{{ m.hint }}</small>
+      <div class="toast-actions" v-if="m.actions && m.actions.length">
+        <button v-for="(a, i) in m.actions" :key="i" type="button" class="btn sm"
+                :class="a.kind || ''" @click.stop="runToastAction(m, a)">{{ a.label }}</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="boot-mask" v-if="store.boot && store.boot.status !== 'ok'" data-boot="1">
+    <div class="boot-box">
+      <p v-if="store.boot.status === 'connecting'" class="boot-msg">正在连接后端…（第 {{ store.boot.attempt }} 次）</p>
+      <template v-else>
+        <p class="boot-msg">连不上后端 {{ store.boot.url }}</p>
+        <p class="boot-err" v-if="store.boot.error">{{ store.boot.error }}</p>
+        <p class="boot-err" v-if="store.boot.copied">诊断信息已复制</p>
+        <div class="boot-acts">
+          <button class="btn primary" type="button" @click="bootRetry">重试</button>
+          <button class="btn" type="button" @click="bootOpenLogs">打开日志文件夹</button>
+          <button class="btn" type="button" @click="bootCopyDiag">复制诊断信息</button>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <div class="rs-mask" v-if="rescan.st.on" @click.self="rescan.close()">
+    <div class="rs-box">
+      <h3>{{ t('rescan.title') }}</h3>
+      <div class="muted" v-if="rescan.st.loading">…</div>
+      <template v-else-if="rescan.st.preview">
+        <p class="rs-sum">{{ t('rescan.sum', {
+          disk: String(rescan.st.preview.disk_n || 0),
+          lib: String(rescan.st.preview.library_n || 0)
+        }) }}</p>
+        <div class="rs-block" v-if="(rescan.st.preview.renamed || []).length">
+          <div>✓ {{ t('rescan.renamed', { n: String(rescan.st.preview.renamed.length) }) }}</div>
+          <div class="rs-list">{{ (rescan.st.preview.renamed || []).map(rescan.renamedLine).join('　') }}</div>
+        </div>
+        <div class="rs-block" v-else-if="(rescan.st.preview.recognized || []).length">
+          <div>✓ {{ t('rescan.same', { n: String(rescan.st.preview.recognized.length) }) }}</div>
+        </div>
+        <div class="rs-block add" v-for="it in (rescan.st.preview.added || [])" :key="'a'+it.new_p">
+          + {{ t('rescan.added', { file: it.file, p: it.new_p }) }}
+        </div>
+        <div class="rs-block del" v-for="it in (rescan.st.preview.deleted || [])" :key="'d'+it.old_p">
+          − {{ rescan.deletedLine(it) }}
+        </div>
+        <div class="rs-block warn" v-for="(it, i) in (rescan.st.preview.dupes || [])" :key="'u'+i">
+          ⚠ {{ rescan.dupeLine(it) }}
+        </div>
+        <p class="rs-foot" v-if="(rescan.st.preview.remap_segs || []).length || rescan.st.preview.remap_pins">
+          {{ t('rescan.remap', {
+            segs: String((rescan.st.preview.remap_segs || []).length),
+            pins: String(rescan.st.preview.remap_pins || 0)
+          }) }}
+        </p>
+        <p class="rs-foot frozen" v-if="(rescan.st.preview.frozen || []).length">
+          {{ t('rescan.frozen', { segs: (rescan.st.preview.frozen || []).join('、') }) }}
+        </p>
+      </template>
+      <div class="rs-acts">
+        <button class="btn" :disabled="rescan.st.applying" @click="rescan.close()">{{ t('common.cancel') }}</button>
+        <button class="btn primary" :disabled="rescan.st.loading || rescan.st.applying || !rescan.st.preview"
+                @click="rescan.apply()">{{ t('rescan.apply') }}</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="rs-mask" v-if="rescan.st.pickOn" @click.self="rescan.closePick()">
+    <div class="rs-box rs-pick">
+      <h3>{{ t('rescan.pick_title', { p: rescan.st.pickP }) }}</h3>
+      <p class="muted">{{ t('rescan.pick_hint') }}</p>
+      <div class="rs-grid">
+        <button v-for="im in rescan.st.pickImages" :key="im.p" type="button" class="rs-pk"
+                :disabled="rescan.st.pickBusy" @click="rescan.pickOne(im.p)">
+          <img :src="srcWithV(im.file, im.mtime, rescan.st.tid)" :alt="im.p">
+          <span>{{ im.p }}</span>
+        </button>
+      </div>
+      <div class="rs-acts">
+        <button class="btn" @click="rescan.closePick()">{{ t('common.cancel') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/ui/js/api.js"></script>
+<script src="/ui/js/store.js"></script>
+<script src="/ui/js/media.js"></script>
+<script src="/ui/js/colors.js"></script>
+<script src="/ui/js/parts/nodebar.js"></script>
+<script src="/ui/js/parts/accounts.js"></script>
+<script src="/ui/js/parts/suites.js"></script>
+<script src="/ui/js/parts/desc-cards.js"></script>
+<script src="/ui/js/parts/settings.js"></script>
+<script src="/ui/js/parts/langpack.js"></script>
+<script src="/ui/js/parts/setup.js"></script>
+<script src="/ui/js/parts/logdrawer.js"></script>
+<script src="/ui/js/parts/cropper.js"></script>
+<script src="/ui/js/parts/ctxmenu.js"></script>
+<script src="/ui/js/parts/rescan.js"></script>
+<script src="/ui/js/parts/pickgest.js"></script>
+<script src="/ui/js/parts/taskpick.js"></script>
+<script src="/ui/js/parts/expand-ui.js"></script>
+<script src="/ui/js/parts/flag.js"></script>
+<script src="/ui/js/parts/textsearch.js"></script>
+<script src="/ui/js/parts/sheet.js"></script>
+<script src="/ui/js/parts/gen-mode.js"></script>
+<script src="/ui/js/parts/image-source.js"></script>
+<script src="/ui/js/parts/regen-acc.js"></script>
+<script src="/ui/js/panels/tasks.js"></script>
+<script src="/ui/js/panels/gemini.js"></script>
+<script src="/ui/js/panels/track.js"></script>
+<script src="/ui/js/panels/generate.js"></script>
+<script src="/ui/js/panels/review.js"></script>
+<script src="/ui/js/app.js"></script>
+</body>
+</html>

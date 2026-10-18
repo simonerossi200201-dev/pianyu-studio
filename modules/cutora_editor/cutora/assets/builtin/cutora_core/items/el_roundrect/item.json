@@ -1,0 +1,22 @@
+{
+  "id": "el_roundrect",
+  "type": "element",
+  "name": "圆角板",
+  "license": "CUTORA-original",
+  "tags": [
+    "element",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "shape.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#8A6E2E",
+      "label": "主色"
+    }
+  }
+}

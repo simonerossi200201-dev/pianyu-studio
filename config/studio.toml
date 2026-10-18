@@ -1,0 +1,61 @@
+# 片语工作室 (LTX Studio) 全局统一配置文件
+# 安全声明：本文件严禁存放任何明文 API Key 或 OAuth Token；所有密钥统一由 Windows 凭据管理器 (WinVaultKeyring) 托管。
+
+[suite]
+name = "片语工作室"
+name_en = "Cutora LTX Studio"
+version = "3.0.0"
+root_dir = "D:\\0_LTX"
+license_mode = "internal_non_commercial"
+
+[network]
+bind_host = "127.0.0.1"
+orante_port = 9400
+studio_gateway_port = 7870
+comfy_port = 8188
+robota_port = 9600
+voice_port = 9611
+hf_hub_offline = true
+transformers_offline = true
+block_cn_endpoints = true
+
+[workspace]
+preferred_root = "E:\\2_Orante"
+fallback_root = "D:\\2_Orante"
+
+[signals]
+# 四大跨模块闭环信号（默认全开）
+sync_task_table_to_cutora = true
+realtime_gapfill_feedback = true
+robota_zero_token_replenish = true
+post_export_rename_and_upload = true
+blocked_image_fallback_to_ltx25 = true
+default_local_video_engine = "ltx25"
+
+[hardware]
+# 32GB 内存 + CPU 机器保障策略与 16GB 单卡显存互斥策略
+baseline_ram_gb = 32.0
+ram_headroom_gb = 6.0
+ram_pause_gb = 2.0
+ram_shed_gb = 1.5
+vram_mutex_before_heavy_gen = true
+min_vram_for_ltx25_gb = 12.0
+min_vram_for_flux2_gb = 10.0
+min_vram_for_relight_gpu_gb = 3.0
+allow_cpu_fallback_for_tier2 = true
+
+[robota]
+# 默认本地大脑切换为本机 Google Gemma 4，不耗费云端 Token，不经过任何第三方服务器
+local_model = "gemma4:12b"
+local_model_light = "gemma4:e4b"
+ollama_url = "http://127.0.0.1:11434"
+prefer_l0_deterministic = true
+enable_recipe_recorder = true
+
+[paths]
+ffmpeg_exe = "D:\\0_LTX\\runtime\\bin\\ffmpeg.exe"
+ffprobe_exe = "D:\\0_LTX\\runtime\\bin\\ffprobe.exe"
+rclone_exe = "D:\\0_LTX\\runtime\\bin\\rclone.exe"
+mimalloc_dll = "D:\\0_LTX\\runtime\\bin\\mimalloc.dll"
+models_root = "D:\\0_LTX\\runtime\\models"
+spine_db = "D:\\0_LTX\\data\\studio_spine.db"

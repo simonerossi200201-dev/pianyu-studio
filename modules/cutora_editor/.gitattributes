@@ -1,0 +1,44 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+*.ps1 text eol=crlf
+# T01 拆包前 AutoSub_debug.py 保持 CRLF（通用规范唯一例外）
+core/AutoSub_debug.py text eol=crlf
+*.exe binary
+*.dll binary
+*.pyd binary
+*.so binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.wav binary
+*.mp3 binary
+*.m4a binary
+*.aac binary
+*.flac binary
+*.mp4 binary
+*.mov binary
+*.mkv binary
+*.avi binary
+*.webm binary
+*.ttf binary
+*.otf binary
+*.ttc binary
+*.woff binary
+*.woff2 binary
+*.bin binary
+*.pt binary
+*.pth binary
+*.ckpt binary
+*.npz binary
+*.npy binary
+*.zip binary
+*.7z binary
+*.pkl binary
+*.pickle binary
+*.safetensors binary
+*.pdf binary

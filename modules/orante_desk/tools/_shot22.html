@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/ui/css/app.css">
+<style>
+body{overflow:auto;padding:24px;background:#121110}
+.wrap{display:flex;gap:24px;align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:8px}
+.lab{font-family:var(--mono);font-size:12px;color:#8A8274}
+.fake-grid{display:grid;gap:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="col">
+    <div class="lab">中 · 5 列 · 卡片约 220px</div>
+    <div class="panel-review">
+      <div class="fake-grid" style="grid-template-columns:repeat(5,220px)">
+        <div class="rv-card">
+          <div class="stage" style="background:#333;aspect-ratio:9/16"></div>
+          <div class="meta">
+            <div class="line1">
+              <span class="lb"><i class="swatch" style="background:#8FB06A"></i>p04</span>
+              <span class="rt">6.0s</span>
+            </div>
+            <div class="flags">
+              <span class="flag st st-collected">已收</span>
+              <span class="flag lock">🔒 已锁定</span>
+              <button class="swap-chip">换图</button>
+            </div>
+            <div class="tools">
+              <button class="mk">标记重生</button>
+              <button>提示词</button>
+              <button>视频</button>
+              <button>原图</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="lab">中 · 更窄 192px（1280 窗）</div>
+    <div class="panel-review">
+      <div class="fake-grid" style="grid-template-columns:repeat(5,192px)">
+        <div class="rv-card">
+          <div class="stage" style="background:#333;aspect-ratio:9/16"></div>
+          <div class="meta">
+            <div class="line1">
+              <span class="lb"><i class="swatch" style="background:#8FB06A"></i>p04</span>
+              <span class="rt">6.0s</span>
+            </div>
+            <div class="flags">
+              <span class="flag st st-collected">已收</span>
+              <span class="flag miss">缺片</span>
+              <button class="swap-chip">换图</button>
+            </div>
+            <div class="tools">
+              <button class="mk">标记重生</button>
+              <button>提示词</button>
+              <button>视频</button>
+              <button>原图</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "id": "lt_stripe",
+  "type": "lower_third",
+  "name": "侧条字幕",
+  "license": "CUTORA-original",
+  "tags": [
+    "lower_third",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "bar.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#E0BE68",
+      "label": "主色"
+    },
+    "color.secondary": {
+      "type": "color",
+      "default": "#262019",
+      "label": "辅色"
+    }
+  }
+}

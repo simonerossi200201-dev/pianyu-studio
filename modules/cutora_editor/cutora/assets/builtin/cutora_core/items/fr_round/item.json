@@ -1,0 +1,22 @@
+{
+  "id": "fr_round",
+  "type": "frame",
+  "name": "圆角框",
+  "license": "CUTORA-original",
+  "tags": [
+    "frame",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "frame.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#8A6E2E",
+      "label": "主色"
+    }
+  }
+}

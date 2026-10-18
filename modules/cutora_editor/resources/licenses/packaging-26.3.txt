@@ -1,0 +1,3 @@
+License identifier from the wheel: Apache-2.0 OR BSD-2-Clause
+Project URL: https://github.com/pypa/packaging
+The wheel did not ship a recognizable LICENSE file. See the project URL for the official text.

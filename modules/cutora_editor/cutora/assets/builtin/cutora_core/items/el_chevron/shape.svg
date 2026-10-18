@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <path d="M120 80 L392 256 L120 432 L120 352 L280 256 L120 160 Z" fill="{{color.primary}}"/>
+</svg>

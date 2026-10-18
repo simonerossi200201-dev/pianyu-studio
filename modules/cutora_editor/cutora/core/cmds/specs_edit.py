@@ -1,0 +1,2431 @@
+# -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""subtitle / style / timeline / audio / export command specs."""
+from __future__ import annotations
+
+from cutora.core.cmds.specutil import arr, s, spec, seg_id_param, seg_ids_param
+
+H = "cutora.core.cmds.gui"
+
+
+def build() -> list:
+    return [
+        spec(
+            "subtitle.export_srt", "导出 SRT",
+            "把一条视频的字幕分段写成 .srt 到 out_dir，不启动渲染子进程。"
+            "优先用 project 参数或同目录 project.asproj.json 里的分段。"
+            "失败常见原因：没有字幕、out_dir 不可写。",
+            "cutora.core.cmds.light:cmd_subtitle_export_srt",
+            params={
+                "media": s("string", "视频路径"),
+                "out_dir": s("string", "SRT 输出目录"),
+                "project": s("string", "可选工程文件，用来取字幕"),
+            },
+            required=["media", "out_dir"],
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.import_file", "导入字幕文件",
+            "从 SRT / WebVTT / ASS / TXT / JSON 读取字幕写入当前或指定视频。"
+            "mode=replace 替换当前轨，append 追加。TXT 只填文案、不写 segments（待对齐）。"
+            "无窗口时必须给 project（或视频同目录工程）。失败常见原因：文件不存在、工程无匹配任务。",
+            "cutora.core.cmds.light:cmd_subtitle_import_file",
+            params={
+                "path": s("string", "字幕文件路径"),
+                "mode": s(
+                    "string",
+                    "replace 替换当前 / append 追加",
+                    enum=["replace", "append"],
+                ),
+                "format": s("string", "srt/vtt/ass/ssa/txt/json；省略则按扩展名"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["path"],
+            undoable=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.export_file", "导出字幕文件",
+            "把当前或指定视频的字幕写成 SRT / WebVTT / ASS / TXT / JSON。"
+            "SRT 默认 UTF-8 无 BOM，bom=true 时写 BOM。ASS 在有 words 时用 \\k 卡拉OK。"
+            "无窗口时必须给 project。失败常见原因：没有字幕、路径不可写。",
+            "cutora.core.cmds.light:cmd_subtitle_export_file",
+            params={
+                "path": s("string", "输出文件路径，扩展名决定格式"),
+                "format": s("string", "srt/vtt/ass/ssa/txt/json；省略则按扩展名"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+                "bom": s("boolean", "仅 SRT：true 时写出 UTF-8 BOM"),
+                "karaoke": s("boolean", "仅 ASS：false 时不写逐字 \\k 标签"),
+            },
+            required=["path"],
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.relayout", "按当前排版重新断句",
+            "按当前字号、行数和边距重新断行并切分字幕，写入 segment.lines，"
+            "保留原文与词时间、不重跑 ASR。装不下就在词边界拆成多条，"
+            "行数硬上限。跳过 locked。无窗口时给 project。失败常见原因：工程无字幕。",
+            "cutora.core.cmds.light:cmd_subtitle_relayout",
+            params={
+                "scope": s(
+                    "string", "all 全部 / selected 选中",
+                    enum=["all", "selected"],
+                ),
+                "seg_ids": seg_ids_param("只处理这些分段；优先于 scope=selected"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+                "max_chars": s("integer", "每行最多字符，默认 42"),
+                "max_lines": s("integer", "最多行数，默认 2"),
+            },
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.check_cps", "检查阅读速度",
+            "列出全部 CPS（字符数÷时长）超过阈值的句子。默认阈值 17。"
+            "不改时间轴。无窗口时给 project。失败常见原因：工程无匹配任务。",
+            "cutora.core.cmds.light:cmd_subtitle_check_cps",
+            params={
+                "threshold": s("number", "CPS 上限，默认 17"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            headless=True,
+        ),
+        spec(
+            "subtitle.extend_durations", "延长显示时间",
+            "把超 CPS 的句子延长到阈值以内，但不与下一句重叠（保留 min_gap）。"
+            "跳过 locked。无窗口时给 project。失败常见原因：工程无字幕。",
+            "cutora.core.cmds.light:cmd_subtitle_extend_durations",
+            params={
+                "threshold": s("number", "CPS 上限，默认 17"),
+                "min_gap": s("number", "与下一句的最小间隔秒，默认 0.08"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.status", "字幕状态",
+            "只读：查一条视频或当前工程有没有字幕分段。返回 has_segments、"
+            "segment_count、language。不启动识别、不改工程。配方 skip_if 用它"
+            "决定要不要跑 subtitle.auto。失败常见原因：media 路径无效。",
+            "cutora.core.cmds.light:cmd_subtitle_status",
+            params={
+                "media_id": s("integer", "媒体下标；省略则用当前选中或 media 路径"),
+                "media": s("string", "视频路径，无窗口时用来读同目录工程"),
+                "project": s("string", "可选工程文件"),
+            },
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.auto", "自动字幕",
+            "对当前工程跑「一键全自动」对齐：有文案但还没有分段的条目会打轴；"
+            "force=true 时覆盖已有时间轴。需要图形界面，不能无头调用。"
+            "配方里请用 skip_if + subtitle.status 跳过已有字幕的文件。"
+            "失败常见原因：没有文案、模型未安装、未打开工程。",
+            H + ":cmd_subtitle_auto",
+            params={
+                "media_id": s("integer", "只处理这一条；省略则按界面规则处理全部"),
+                "language": {
+                    "description": (
+                        "省略 = 用当前设置的语言；\"auto\" = 听前 30 秒自动检测。"
+                        "也可传语言代码数组，对同一素材依次识别。"
+                    ),
+                    "oneOf": [
+                        {"type": "string"},
+                        {"type": "array", "items": {"type": "string"}},
+                    ],
+                },
+                "model": s(
+                    "string",
+                    "识别档位 small / medium / large-v3 / large-v3-turbo；省略则用当前已装模型",
+                ),
+                "glossary": {
+                    "description": (
+                        "本次额外术语，字符串或字符串数组，一行一个，"
+                        "拼进 initial_prompt 与 hotwords（前 200 token）"
+                    ),
+                    "oneOf": [
+                        {"type": "string"},
+                        {"type": "array", "items": {"type": "string"}},
+                    ],
+                },
+                "force": s("boolean", "true 时强制重打轴"),
+            },
+            undoable=True,
+            requires_project=True,
+            async_job=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.list", "列出字幕",
+            "列出指定媒体（默认当前选中）的字幕分段：下标、起止时间、文本、角色。"
+            "不改动时间轴。失败常见原因：media_id 越界。",
+            H + ":cmd_subtitle_list",
+            params={"media_id": s("integer", "媒体下标，省略则用当前选中")},
+            requires_project=True,
+        ),
+        spec(
+            "subtitle.set_text", "改字幕文本",
+            "把指定分段的文本改成 text。有 words 时用最长公共子序列保住时间，"
+            "对不上的词按字符长度在句内插值，并锁定该句。无窗口时给 project。"
+            "失败常见原因：seg_id 未找到。",
+            "cutora.core.cmds.light:cmd_subtitle_set_text",
+            params={
+                "seg_id": seg_id_param(),
+                "text": s("string", "新文本"),
+                "media_id": s("integer", "媒体下标，省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["seg_id", "text"],
+            undoable=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.merge", "合并字幕",
+            "把 seg_id 与相邻段合并成一条，时间取并集、文本拼接，结果锁定。"
+            "direction=next 与下一句并，prev 与上一句并。无窗口时给 project。"
+            "失败常见原因：没有相邻段。",
+            "cutora.core.cmds.light:cmd_subtitle_merge",
+            params={
+                "seg_id": seg_id_param(),
+                "direction": s(
+                    "string", "next 与下一句 / prev 与上一句",
+                    enum=["next", "prev"],
+                ),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["seg_id"],
+            undoable=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.split", "拆分字幕",
+            "在光标字符 at_char 或 time 秒处把一句拆成两段，时间按字符比例切，两侧锁定。"
+            "都省略则取中点。无窗口时给 project。失败常见原因：seg_id 越界、切完有一侧为空。",
+            "cutora.core.cmds.light:cmd_subtitle_split",
+            params={
+                "seg_id": seg_id_param(),
+                "time": s("number", "拆分点（秒）；省略则取中点"),
+                "at_char": s("integer", "按字符下标拆；优先于 time"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["seg_id"],
+            undoable=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.delete", "删除字幕",
+            "删除指定分段，只删字幕不删视频。不可恢复，除非随后撤销。命令体不弹确认框。"
+            "无窗口时给 project。失败常见原因：seg_id 越界。",
+            "cutora.core.cmds.light:cmd_subtitle_delete",
+            params={
+                "seg_id": seg_id_param(),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["seg_id"],
+            undoable=True,
+            dangerous=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.trim_segment", "裁剪字幕段",
+            "把指定字幕段的 start/end 写成给定秒，并把 words 从旧窗口线性映射到新窗口。"
+            "对应时间线拖边缘松手一次。失败常见原因：seg_id 越界。",
+            "cutora.core.cmds.light:cmd_subtitle_trim_segment",
+            params={
+                "seg_id": seg_id_param(),
+                "start": s("number", "新的开始（秒）"),
+                "end": s("number", "新的结束（秒）"),
+                "media_id": s("integer", "媒体下标，省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["seg_id", "start", "end"],
+            undoable=True,
+            requires_project=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.trim_word", "微调词边界",
+            "拖一条字幕里第 word_index 个词的左或右边界到 t 秒，相邻词的共享边界跟着让位，"
+            "其余词的时间一个都不改。钳制重叠和负时长。对应时间线展开后拖词块松手。"
+            "失败常见原因：seg_id / word_index 越界。",
+            "cutora.core.cmds.light:cmd_subtitle_trim_word",
+            params={
+                "seg_id": seg_id_param(),
+                "word_index": s("integer", "词下标，从 0 起"),
+                "edge": s("string", "left 左边界 / right 右边界",
+                          enum=["left", "right"]),
+                "t": s("number", "新的边界时间（秒）"),
+                "media_id": s("integer", "媒体下标，省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["seg_id", "word_index", "edge", "t"],
+            undoable=True,
+            requires_project=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.move_segments", "移动字幕段",
+            "把一组字幕段平移到新的 start，时长不变，words 同步平移。"
+            "对应时间线多选拖动松手一次。失败常见原因：seg_id 越界。",
+            "cutora.core.cmds.light:cmd_subtitle_move_segments",
+            params={
+                "segments": s(
+                    "array",
+                    "[{seg_id, start}, ...]",
+                    items={"type": "object", "additionalProperties": True},
+                ),
+                "media_id": s("integer", "媒体下标，省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["segments"],
+            undoable=True,
+            requires_project=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.retime_segments", "变速字幕段",
+            "按 pivot + scale 缩放一组字幕段的起止时间，words 用同一线性映射。"
+            "t' = pivot + (t - pivot) * scale。对应时间线两端拉伸松手。"
+            "失败常见原因：seg_id 越界、scale 非正。",
+            "cutora.core.cmds.light:cmd_subtitle_retime_segments",
+            params={
+                "seg_ids": seg_ids_param(),
+                "pivot": s("number", "不动点（秒）"),
+                "scale": s("number", "时长倍率，必须为正"),
+                "media_id": s("integer", "媒体下标，省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["seg_ids", "pivot", "scale"],
+            undoable=True,
+            requires_project=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.delete_segments", "删除多条字幕",
+            "按 seg_ids 删除多条字幕，只删字幕不删视频。下标从大到小删以免错位。"
+            "对应时间线 Delete。命令体不弹确认框。失败常见原因：seg_id 越界。",
+            "cutora.core.cmds.light:cmd_subtitle_delete_segments",
+            params={
+                "seg_ids": seg_ids_param(),
+                "media_id": s("integer", "媒体下标，省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["seg_ids"],
+            undoable=True,
+            dangerous=True,
+            requires_project=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.duplicate_segments", "复制字幕段",
+            "把指定字幕段复制一份，整组平移到 time 秒（最早一条对齐播放头），words 同步平移。"
+            "可传 seg_ids 或 items 快照。与当前媒体绑定，不录入配方。"
+            "失败常见原因：seg_id 越界、没有可复制的段。",
+            "cutora.core.cmds.light:cmd_subtitle_duplicate_segments",
+            params={
+                "seg_ids": seg_ids_param(),
+                "items": s(
+                    "array", "字幕段快照",
+                    items={"type": "object", "additionalProperties": True},
+                ),
+                "time": s("number", "复制后最早一条的开始秒"),
+                "media_id": s("integer", "媒体下标，省略则用当前选中"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            undoable=True,
+            requires_project=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.emphasis.auto", "设置自动强调",
+            "写 style.fx.emphasis：auto 规则、词表、每条上限。add_word / remove_word "
+            "给 Transcript 右键强调。无窗口时给 project。失败常见原因：工程无匹配任务。",
+            "cutora.core.cmds.light:cmd_subtitle_emphasis_auto",
+            params={
+                "auto": arr("string", "规则 numbers/caps/glossary/longest/list"),
+                "words": arr("string", "显式强调词，整词匹配"),
+                "add_word": s("string", "加入词表"),
+                "remove_word": s("string", "从词表去掉"),
+                "max_per_cue": s("integer", "自动强调每条上限 0–8，0=不限"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.lock", "锁定或解锁字幕",
+            "把指定句子的 locked 设为 true 或 false。锁定后自动断行和时间轴优化会跳过。"
+            "无窗口时给 project。失败常见原因：工程无匹配任务。",
+            "cutora.core.cmds.light:cmd_subtitle_lock",
+            params={
+                "seg_id": seg_id_param("单个分段；也可只用 seg_ids"),
+                "seg_ids": seg_ids_param(),
+                "locked": s("boolean", "true 锁定 / false 解锁，默认 true"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            undoable=True,
+            headless=True,
+        ),
+        spec(
+            "subtitle.find", "查找字幕文本",
+            "在当前或指定视频的全部分句里查找 query，可开正则与区分大小写。"
+            "只读，不改工程。无窗口时给 project。失败常见原因：工程无匹配任务。",
+            "cutora.core.cmds.light:cmd_subtitle_find",
+            params={
+                "query": s("string", "查找串或正则"),
+                "regex": s("boolean", "true 时按正则"),
+                "case": s("boolean", "true 时区分大小写"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["query"],
+            headless=True,
+        ),
+        spec(
+            "subtitle.replace", "替换字幕文本",
+            "在全部分句或选中句里把 query 换成 replacement，可开正则与区分大小写。"
+            "改过的句子走 LCS 保时间并锁定。无窗口时给 project。失败常见原因：工程无字幕。",
+            "cutora.core.cmds.light:cmd_subtitle_replace",
+            params={
+                "query": s("string", "查找串或正则"),
+                "replacement": s("string", "替换为"),
+                "regex": s("boolean", "true 时按正则"),
+                "case": s("boolean", "true 时区分大小写"),
+                "scope": s(
+                    "string", "all 全部 / selected 选中",
+                    enum=["all", "selected"],
+                ),
+                "seg_ids": seg_ids_param("只处理这些分段；优先于 scope=selected"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["query"],
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.transform_case", "变换字幕大小写",
+            "对全部或选中句做全部大写 / 全部小写 / 首字母大写，改过的句子锁定并重映射时间。"
+            "无窗口时给 project。失败常见原因：mode 不是 upper/lower/title。",
+            "cutora.core.cmds.light:cmd_subtitle_transform_case",
+            params={
+                "mode": s(
+                    "string", "upper 全大写 / lower 全小写 / title 首字母大写",
+                    enum=["upper", "lower", "title"],
+                ),
+                "scope": s(
+                    "string", "all 全部 / selected 选中",
+                    enum=["all", "selected"],
+                ),
+                "seg_ids": seg_ids_param("只处理这些分段；优先于 scope=selected"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["mode"],
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.strip_end_punct", "移除句末标点",
+            "去掉全部或选中句末尾的标点和空白，改过的句子锁定并重映射时间。"
+            "无窗口时给 project。失败常见原因：工程无匹配任务。",
+            "cutora.core.cmds.light:cmd_subtitle_strip_end_punct",
+            params={
+                "scope": s(
+                    "string", "all 全部 / selected 选中",
+                    enum=["all", "selected"],
+                ),
+                "seg_ids": seg_ids_param("只处理这些分段；优先于 scope=selected"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.apply_glossary", "按词典批量替换",
+            "用两列 CSV（csv）或 pairs 列表在字幕里做查找替换，长词优先，改过的句子锁定。"
+            "不另建存储。无窗口时给 project。失败常见原因：CSV 读不到。",
+            "cutora.core.cmds.light:cmd_subtitle_apply_glossary",
+            params={
+                "csv": s("string", "两列 CSV 路径，左查找右替换"),
+                "pairs": arr("object", "[{from,to}, ...] 或二元数组"),
+                "scope": s(
+                    "string", "all 全部 / selected 选中",
+                    enum=["all", "selected"],
+                ),
+                "seg_ids": seg_ids_param("只处理这些分段；优先于 scope=selected"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.check_overlong", "检查超长字幕",
+            "列出字符数超过 max_chars_per_line×max_lines 的句子（会超出画面）。"
+            "只读。无窗口时给 project。失败常见原因：工程无匹配任务。",
+            "cutora.core.cmds.light:cmd_subtitle_check_overlong",
+            params={
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            headless=True,
+        ),
+        spec(
+            "subtitle.apply_preset", "套用字幕预设",
+            "把名为 name 的字幕样式预设套到当前（或 media_id）视频，效果与样式面板下拉框相同。"
+            "失败常见原因：预设不存在。",
+            H + ":cmd_subtitle_apply_preset",
+            params={
+                "name": s("string", "预设名"),
+                "media_id": s("integer", "媒体下标，省略则用当前选中"),
+            },
+            required=["name"],
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "subtitle.word_appear.set", "逐词出现",
+            "打开或关闭「逐词出现」（内部对应 metronome 入场动画），作用在当前样式面板/当前视频。"
+            "on=false 时恢复为 none。不改渲染算法本身。",
+            H + ":cmd_subtitle_word_appear",
+            params={"on": s("boolean", "true 打开逐词出现")},
+            required=["on"],
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "style.list_presets", "列出样式预设",
+            "列出字幕、文本、关键词三类预设的名称。不套用、不改文件。"
+            "给机器人先查有什么预设再 apply。",
+            "cutora.core.cmds.light:cmd_style_list_presets",
+            headless=True,
+        ),
+        spec(
+            "style.apply_subtitle_preset", "套用字幕样式预设",
+            "按名称读取字幕样式预设并套到当前视频的 style。失败常见原因：name 不存在、未选中视频。",
+            H + ":cmd_style_apply_subtitle",
+            params={"name": s("string", "预设名")},
+            required=["name"],
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "style.apply_text_preset", "套用文本样式预设",
+            "按名称读取文本覆层预设。只返回样式数据并交给当前文本覆层逻辑；"
+            "失败常见原因：name 不存在。",
+            H + ":cmd_style_apply_text",
+            params={"name": s("string", "预设名")},
+            required=["name"],
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "style.apply_keyword_preset", "套用关键词预设",
+            "按名称读取关键词着色规则并套到当前选中视频，高亮词表与颜色一并替换。"
+            "失败常见原因：name 不存在、未选中视频。",
+            H + ":cmd_style_apply_keyword",
+            params={"name": s("string", "预设名")},
+            required=["name"],
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "style.save_current_as", "保存当前为预设",
+            "把当前字幕样式存成名为 name 的用户风格包，风格页和预设下拉都是这一份。"
+            "同名用户包会原地更新。失败常见原因：name 为空、未选中视频。",
+            H + ":cmd_style_save_current",
+            params={"name": s("string", "新预设名")},
+            required=["name"],
+            requires_project=True,
+        ),
+        spec(
+            "stylepack.list", "列出风格包",
+            "列出内置与用户目录里的风格包：id、名称、标签、是否缺字体、预览路径。"
+            "不改工程。失败常见原因：目录不可读。",
+            "cutora.core.cmds.light:cmd_stylepack_list",
+            headless=True,
+        ),
+        spec(
+            "stylepack.apply", "应用风格包",
+            "把 path 指向的风格包套到当前或指定视频。apply_animation=false 时保留用户现有动画。"
+            "字体不在打包集里则退回默认。无窗口时给 project。失败常见原因：路径无效。",
+            "cutora.core.cmds.light:cmd_stylepack_apply",
+            params={
+                "path": s("string", "风格包目录"),
+                "apply_animation": s("boolean", "是否覆盖动画，默认 true"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["path"],
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "stylepack.import_file", "导入风格包",
+            "把 .cutorastyle zip 解到用户风格包目录。拒绝绝对路径、父目录穿越、非白名单扩展名。"
+            "失败常见原因：压缩包损坏、含恶意路径。",
+            "cutora.core.cmds.light:cmd_stylepack_import",
+            params={"path": s("string", ".cutorastyle 或 .zip 路径")},
+            required=["path"],
+            headless=True,
+        ),
+        spec(
+            "stylepack.export_file", "导出风格包",
+            "把一个风格包目录打成 .cutorastyle zip。失败常见原因：目录不是风格包、路径不可写。",
+            "cutora.core.cmds.light:cmd_stylepack_export",
+            params={
+                "pack_dir": s("string", "风格包目录"),
+                "path": s("string", "输出 zip 路径"),
+            },
+            required=["pack_dir", "path"],
+            headless=True,
+        ),
+        spec(
+            "stylepack.save_current", "保存当前为风格包",
+            "把当前视频的字幕样式写成用户目录下的一个风格包。失败常见原因：未选中视频、name 为空。",
+            "cutora.core.cmds.light:cmd_stylepack_save_current",
+            params={
+                "name": s("string", "风格包显示名"),
+                "tags": s("string", "逗号分隔标签，默认用户"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["name"],
+            headless=True,
+        ),
+        spec(
+            "stylepack.delete", "删除用户风格包",
+            "删除用户目录里的一个风格包目录。拒绝内置包。失败常见原因：路径不是风格包、试图删内置。",
+            "cutora.core.cmds.light:cmd_stylepack_delete",
+            params={"path": s("string", "风格包目录")},
+            required=["path"],
+            headless=True,
+        ),
+        spec(
+            "stylepack.update", "覆盖保存用户风格包",
+            "把当前字幕样式写回 path 指向的用户风格包，保留原 id 与目录，更新 meta.updated_at。"
+            "拒绝内置包。失败常见原因：path 是内置目录、不是风格包、未选中视频。",
+            "cutora.core.cmds.light:cmd_stylepack_update",
+            params={
+                "path": s("string", "用户风格包目录"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["path"],
+            headless=True,
+        ),
+        spec(
+            "stylepack.rename", "重命名用户风格包",
+            "改用户风格包 meta.json 里的显示名，不改目录名。拒绝内置包。失败常见原因：name 为空、不是用户包。",
+            "cutora.core.cmds.light:cmd_stylepack_rename",
+            params={
+                "path": s("string", "风格包目录"),
+                "name": s("string", "新显示名"),
+            },
+            required=["path", "name"],
+            headless=True,
+        ),
+        spec(
+            "text_preset.list", "列出文本预设",
+            "列出内置与用户文本层模板：id、名称、锚点、是否内置。不改工程。"
+            "失败常见原因：预设目录不可读。",
+            "cutora.core.cmds.light:cmd_text_preset_list",
+            headless=True,
+        ),
+        spec(
+            "text_preset.save", "保存文本预设",
+            "把一条文本层模板写入 UserData/presets/text_presets.json。"
+            "定位用九宫格锚点 + 相对画布短边的边距和字号。失败常见原因：name 为空、试图覆盖内置。",
+            "cutora.core.cmds.light:cmd_text_preset_save",
+            params={
+                "name": s("string", "显示名"),
+                "id": s("string", "预设 id，省略则新建"),
+                "text": s("string", "文案"),
+                "layout": s("object", "anchor / margin_x / margin_y / size_pct"),
+                "style": s("object", "字体颜色描边阴影背景"),
+                "animation": s("string", "入场动画，默认 none"),
+                "overlay": s("object", "从现有文本覆层推断"),
+                "media_id": s("integer", "媒体下标，配合 overlay 省略时用当前选中覆层"),
+            },
+            headless=True,
+        ),
+        spec(
+            "text_preset.delete", "删除用户文本预设",
+            "删除用户目录里的一条文本层模板。拒绝内置预设。"
+            "失败常见原因：id 不存在、试图删内置。",
+            "cutora.core.cmds.light:cmd_text_preset_delete",
+            params={"id": s("string", "预设 id")},
+            required=["id"],
+            headless=True,
+        ),
+        spec(
+            "text_preset.apply", "应用文本预设",
+            "按模板新建一条文本覆层（不是改现有层）。idempotent=true 时按"
+            "source_preset_id 幂等，同一预设只保留一层，供自动署名。"
+            "失败常见原因：id 不存在、工程无视频。",
+            "cutora.core.cmds.light:cmd_text_preset_apply",
+            params={
+                "id": s("string", "预设 id"),
+                "idempotent": s("boolean", "自动署名路径，默认 false"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["id"],
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "stylepack.convert_preset", "预设转风格包",
+            "字幕预设就是风格包。按显示名找到那一个目录并返回路径，不另写第二份。"
+            "失败常见原因：没有这个名字。",
+            "cutora.core.cmds.light:cmd_stylepack_convert_preset",
+            params={"name": s("string", "字幕预设名")},
+            required=["name"],
+            headless=True,
+        ),
+        spec(
+            "timeline.info", "时间线摘要",
+            "返回当前视频时间线的宽高帧率、轨道列表（id/type）、播放头位置（毫秒）。"
+            "不改动时间线。失败常见原因：未选中视频。",
+            H + ":cmd_timeline_info",
+            requires_project=True,
+        ),
+        spec(
+            "timeline.add_track", "添加轨道",
+            "给当前视频加一条空轨道，type 为 video/text/image/audio。对应轨头右键「添加轨道」。"
+            "失败常见原因：type 非法、未选中视频。",
+            H + ":cmd_timeline_add_track",
+            params={"type": s("string", "video / text / image / audio / adjust（调整轨）")},
+            required=["type"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.remove_track", "删除轨道",
+            "按 track_id 删除一条空轨道。轨道上还有片段时失败（与界面「只能删除空轨道」一致）。"
+            "命令体不弹提示框。",
+            H + ":cmd_timeline_remove_track",
+            params={"track_id": s("string", "轨道 id")},
+            required=["track_id"],
+            undoable=True,
+            dangerous=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.split_at", "在时间点切开",
+            "在 time 秒处切开当前视频各轨道上覆盖该时刻的片段。失败常见原因：time 越界、没有片段。",
+            H + ":cmd_timeline_split_at",
+            params={"time": s("number", "切开点（秒）")},
+            required=["time"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.join_clips", "合并接缝两侧片段",
+            "把同一轨道上相邻且同源、源出入点连续（±1 帧）、速度相同、接缝无转场的两个片段合回一个。"
+            "失败常见原因：不同素材、出入点不连续、速度不同、接缝上已有转场。",
+            H + ":cmd_timeline_join_clips",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "left_index": s("integer", "左侧片段下标"),
+                "right_index": s("integer", "右侧片段下标"),
+            },
+            required=["track_id", "left_index", "right_index"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.add_transition", "在接缝添加转场",
+            "在指定轨道的 start_t 处写入一条独立 TransitionItem（视频或音频）。"
+            "已有重叠转场时替换预设与时长。失败常见原因：找不到轨道。",
+            H + ":cmd_timeline_add_transition",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "start_t": s("number", "转场起点（秒）"),
+                "duration": s("number", "转场时长（秒）"),
+                "preset": s("string", "转场预设名"),
+                "domain": s("string", "visual 或 audio", enum=["visual", "audio"]),
+            },
+            required=["track_id", "start_t", "duration", "preset"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.set_transition", "调整转场时长",
+            "改一条已有 TransitionItem 的起点和时长。拖左右手柄松手时调用一次，"
+            "对边不动。时长最短一帧，允许拖过源余量（不够的部分冻结补帧）。"
+            "失败常见原因：找不到轨道或转场。",
+            H + ":cmd_timeline_set_transition",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "transition_id": s("string", "转场 id，省略则按 start_t 匹配"),
+                "start_t": s("number", "新的转场起点（秒）"),
+                "duration": s("number", "新的转场时长（秒）"),
+                "preset": s("string", "可选，同时改预设名"),
+            },
+            required=["track_id"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.delete_transition", "删除转场",
+            "从指定轨道删掉一条独立转场。优先按 transition_id 查找，没有 id 时按 start_t"
+            "（容差万分之一秒）并可用 domain 区分同一时刻的视频和音频转场。"
+            "锁定轨道会拒绝。撤销后这条转场连同预设、时长、方向和羽化回到原处。",
+            H + ":cmd_timeline_delete_transition",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "transition_id": s("string", "转场 id，省略则按 start_t 匹配"),
+                "start_t": s("number", "转场起点（秒），没有 id 时用来匹配"),
+                "domain": s(
+                    "string", "visual 或 audio，按起点匹配时区分同位置的两条",
+                    enum=["visual", "audio"],
+                ),
+            },
+            required=["track_id"],
+            undoable=True,
+            dangerous=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.delete_clip", "删除片段",
+            "按 track_id + clip_index 删除一个片段。命令体不弹确认框。"
+            "失败常见原因：轨道或下标不存在。",
+            H + ":cmd_timeline_delete_clip",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标，从 0 起"),
+            },
+            required=["track_id", "clip_index"],
+            undoable=True,
+            dangerous=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.move_clip", "移动片段",
+            "把指定片段的时间线起点改到 start 秒。不改源入出点。"
+            "失败常见原因：轨道或下标不存在。",
+            H + ":cmd_timeline_move_clip",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标"),
+                "start": s("number", "新的时间线起点（秒）"),
+            },
+            required=["track_id", "clip_index", "start"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.trim_clip", "裁剪片段",
+            "把指定片段的源入点/出点和时间线起点、速率写成给定数值。"
+            "对应拖边缘松手一次。失败常见原因：轨道或下标不存在。",
+            H + ":cmd_timeline_trim_clip",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标，从 0 起"),
+                "in_t": s("number", "源入点（秒）"),
+                "out_t": s("number", "源出点（秒）"),
+                "start_t": s("number", "时间线起点（秒）"),
+                "speed": s("number", "播放速率，省略则不改"),
+            },
+            required=["track_id", "clip_index", "in_t", "out_t", "start_t"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.trim_clips", "裁剪多条片段",
+            "把一组片段的源入点/出点和时间线起点写成给定数值。对应链接对同侧边缘松手一次，"
+            "一次命令一次撤销。失败常见原因：轨道或下标不存在。",
+            H + ":cmd_timeline_trim_clips",
+            params={
+                "clips": s(
+                    "array",
+                    "[{track_id, clip_index, in_t, out_t, start_t, speed?}, ...]",
+                    items={"type": "object", "additionalProperties": True},
+                ),
+            },
+            required=["clips"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.unlink_clips", "解绑音视频",
+            "把指定片段的 link_group_id 清掉，之后拖视频不再带走原声。可撤销。"
+            "失败常见原因：轨道或下标不存在。",
+            H + ":cmd_timeline_unlink_clips",
+            params={
+                "clips": s(
+                    "array",
+                    "[{track_id, clip_index}, ...]",
+                    items={"type": "object", "additionalProperties": True},
+                ),
+            },
+            required=["clips"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.link_clips", "重新绑定音视频",
+            "给选中的片段写同一枚新的 link_group_id。通常是 1 视频 + 1 音频；"
+            "配乐也可以手动绑到视频。失败常见原因：少于两条、轨道不存在。",
+            H + ":cmd_timeline_link_clips",
+            params={
+                "clips": s(
+                    "array",
+                    "[{track_id, clip_index}, ...]",
+                    items={"type": "object", "additionalProperties": True},
+                ),
+            },
+            required=["clips"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.set_clip_fades", "设置片段淡化",
+            "把指定音频片段的淡入、淡出时长写成给定秒数。时间线条上手柄松手和检查器淡化滑条走同一条命令，"
+            "写的是已有的 fade_in_dur / fade_out_dur，可撤销。失败常见原因：轨道或下标不存在。",
+            H + ":cmd_timeline_set_clip_fades",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标，从 0 起"),
+                "fade_in_dur": s("number", "淡入秒数"),
+                "fade_out_dur": s("number", "淡出秒数"),
+            },
+            required=["track_id", "clip_index"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.move_clips", "移动片段",
+            "把一组片段的时间线起点改到给定秒。参数是 JSON 数组，"
+            "每项含 track_id、clip_index、start。对应拖动松手一次，不换轨。"
+            "失败常见原因：轨道或下标不存在。",
+            H + ":cmd_timeline_move_clips",
+            params={
+                "clips": s(
+                    "array",
+                    "[{track_id, clip_index, start}, ...]",
+                    items={"type": "object", "additionalProperties": True},
+                ),
+            },
+            required=["clips"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.move_clip_to_track", "片段换轨",
+            "把指定片段从当前轨道挪到 dest_track_id，并设置时间线起点。"
+            "对应跨轨拖放松手。失败常见原因：轨道不存在、类型不同。",
+            H + ":cmd_timeline_move_clip_to_track",
+            params={
+                "track_id": s("string", "源轨道 id"),
+                "clip_index": s("integer", "片段下标，从 0 起"),
+                "dest_track_id": s("string", "目标轨道 id"),
+                "start": s("number", "新的时间线起点（秒）"),
+            },
+            required=["track_id", "clip_index", "dest_track_id", "start"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.duplicate_clips", "复制片段",
+            "把指定片段复制到 time 秒（最早一条对齐播放头）。可传 clips 下标或 items 快照。"
+            "与当前媒体绑定，不录入配方。失败常见原因：轨道或下标不存在。",
+            H + ":cmd_timeline_duplicate_clips",
+            params={
+                "clips": s(
+                    "array",
+                    "[{track_id, clip_index}, ...]",
+                    items={"type": "object", "additionalProperties": True},
+                ),
+                "items": s(
+                    "array", "片段快照",
+                    items={"type": "object", "additionalProperties": True},
+                ),
+                "time": s("number", "复制后最早一条的开始秒"),
+            },
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.ripple_intro", "开场视频 ripple",
+            "按给定入出点重套当前任务的开场视频（remove→re-apply），"
+            "后面的主视频跟着平移。对应拖开场片段松手。失败常见原因：没有开场视频。",
+            H + ":cmd_timeline_ripple_intro",
+            params={
+                "in_t": s("number", "开场源入点（秒）"),
+                "out_t": s("number", "开场源出点（秒）"),
+                "start_t": s("number", "时间线起点（秒）"),
+                "intro_duration": s("number", "开场时长，省略则 out_t-in_t"),
+            },
+            required=["in_t", "out_t", "start_t"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.ripple_delete", "Ripple 删除",
+            "删除选中 clip/字幕，并把后方同轨对象、字幕、标记前移被删时长。"
+            "跨越删除区的字幕截断并同步 words。一次命令一次撤销，不录入配方。"
+            "失败常见原因：targets 为空或下标越界。",
+            H + ":cmd_timeline_ripple_delete",
+            params={
+                "targets": s(
+                    "array",
+                    "[{kind:clip|seg, track_id, clip_index|seg_id}, ...]",
+                    items={"type": "object", "additionalProperties": True},
+                ),
+            },
+            required=["targets"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.ripple_insert", "Ripple 插入空隙",
+            "在 t 秒、指定轨道插入 duration 秒空隙，后方同轨对象和字幕、标记后移。"
+            "跨越插入点的对象整体后移、不拉伸。不录入配方。失败常见原因：缺少 track_id。",
+            H + ":cmd_timeline_ripple_insert",
+            params={
+                "t": s("number", "插入点（秒）"),
+                "duration": s("number", "空隙时长（秒）"),
+                "track_id": s("string", "轨道 id，省略则用焦点轨"),
+            },
+            required=["t", "duration"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.close_gaps", "闭合间隙",
+            "消除指定轨道上的间隙（全部，或 at_t 所在那一处），后方对象前移。"
+            "字幕和标记按同一时间映射。不录入配方。失败常见原因：轨道不存在。",
+            H + ":cmd_timeline_close_gaps",
+            params={
+                "track_id": s("string", "轨道 id，省略则用焦点轨"),
+                "at_t": s("number", "只闭合包含该时刻的间隙；省略则闭合全部"),
+            },
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.set_track_mute", "轨道静音",
+            "设置指定轨道 mute。影响预览和导出，写入工程。on=true 静音。"
+            "与当前媒体绑定，不录入配方。失败常见原因：轨道不存在。",
+            H + ":cmd_timeline_set_track_mute",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "on": s("boolean", "true 静音"),
+            },
+            required=["track_id", "on"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.track.solo", "轨道独奏",
+            "设置指定轨道预览独奏。只影响预览混音，不写入工程、不影响导出。"
+            "on=true 独奏该轨。失败常见原因：轨道不存在。",
+            H + ":cmd_timeline_track_solo",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "on": s("boolean", "true 独奏"),
+            },
+            required=["track_id", "on"],
+            undoable=False,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.set_track_locked", "锁定轨道",
+            "设置指定轨道 locked。锁定后仍渲染但不能编辑。写入工程。"
+            "与当前媒体绑定，不录入配方。失败常见原因：轨道不存在。",
+            H + ":cmd_timeline_set_track_locked",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "on": s("boolean", "true 锁定"),
+            },
+            required=["track_id", "on"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.set_track_height", "设置轨道高度",
+            "改一条或全部轨道的高度（像素）。拖轨头底边松手一次写一条撤销；"
+            "Shift+拖或右键「所有轨道高度」一次改全部。失败常见原因：找不到轨道。",
+            H + ":cmd_timeline_set_track_height",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "height": s("number", "轨道高度（像素）"),
+                "all": s("boolean", "true 时所有轨道设为同一高度"),
+            },
+            required=["track_id", "height"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "track.set_props", "设置轨道属性",
+            "把 patch 写到 track_ids 列出的每一条轨道（变换 / 不透明 / 混合 / 名字）。"
+            "图钉多轨时一次命令写 N 条，undo 一次全部回滚。不录入配方。"
+            "失败常见原因：轨道不存在、patch 字段未知。",
+            H + ":cmd_track_set_props",
+            params={
+                "track_ids": arr("string", "要写入的轨道 id 列表"),
+                "patch": s("object", "要合并的轨道属性，如 x/y/scale/opacity/blend_mode/name"),
+            },
+            required=["track_ids", "patch"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "split.set_layout", "设置分屏布局",
+            "写入工程级 task.split：选预设生成格子和分界线，或开关分屏、改描边。"
+            "任何轨道开启分屏即工程开启。不录入配方。失败常见原因：未打开工程、未知布局。",
+            H + ":cmd_split_set_layout",
+            params={
+                "layout": s(
+                    "string",
+                    "top_bottom / left_right / left_right_fit / grid_2x2 / grid_3x3 / left1_right2 / top1_bottom2 / custom",
+                ),
+                "enabled": s("boolean", "是否开启分屏；省略且给了 layout 则开启"),
+                "border": s("object", "可选描边补丁 style/width_px/color/curve/shadow_px/glass_sigma"),
+                "backdrop": s("object", "分屏留白处的背景补丁 mode(each 每格各自 / full 单个视频撑满整幅（任何布局）/ first 老左右完整整幅)/cell(full 用哪一格的视频)/blur(0–100)/style(lens/legacy)/highlights/dim"),
+            },
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "split.set_divider", "设置分界线",
+            "改一条全局分界线的位置、旋转、羽化或圆圈/椭圆大小与宽高比，并联动重算相邻格子 rect。"
+            "分界线是工程级的，所有参与轨共用。不录入配方。失败常见原因：分界线不存在。",
+            H + ":cmd_split_set_divider",
+            params={
+                "id": s("string", "分界线 id，如 d1"),
+                "pos": s("number", "归一化位置 0–1"),
+                "cx": s("number", "圆圈/椭圆中心 X 0–1"),
+                "cy": s("number", "圆圈/椭圆中心 Y 0–1"),
+                "r": s("number", "圆圈/椭圆大小半径 0.04–0.48"),
+                "aspect": s("number", "椭圆宽高比 0.30–3.00"),
+                "rotation_deg": s("number", "旋转角度"),
+                "feather_px": s("number", "羽化像素"),
+                "apply_all_circles": s("boolean", "是否同步作用于所有圆圈/椭圆"),
+            },
+            required=["id"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "track.set_cell", "设置轨道分屏格子",
+            "把一条视频轨填进分屏格子（A/B/…），或 cell=null 不参与、全屏叠最上。"
+            "已占用的格子会报错。不录入配方。失败常见原因：轨道不存在、格子被占。",
+            H + ":cmd_track_set_cell",
+            params={
+                "track_id": s("string", "轨道 id"),
+                "cell": {
+                    "description": "格子 id；空或 null 表示不参与",
+                    "oneOf": [{"type": "string"}, {"type": "null"}],
+                },
+            },
+            required=["track_id"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.set_playhead", "设置播放头",
+            "把播放头移到 time 秒并刷新预览，等价时间线点击。失败常见原因：未打开视频。",
+            H + ":cmd_timeline_set_playhead",
+            params={"time": s("number", "秒")},
+            required=["time"],
+            requires_project=True,
+        ),
+        spec(
+            "timeline.set_in_point", "设置入点",
+            "把当前视频的入点设为 t 秒。绝对时间，与当前媒体绑定，不录入配方。"
+            "失败常见原因：未选中视频。",
+            H + ":cmd_timeline_set_in_point",
+            params={"t": s("number", "入点（秒）")},
+            required=["t"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.set_out_point", "设置出点",
+            "把当前视频的出点设为 t 秒。绝对时间，与当前媒体绑定，不录入配方。"
+            "失败常见原因：未选中视频。",
+            H + ":cmd_timeline_set_out_point",
+            params={"t": s("number", "出点（秒）")},
+            required=["t"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "timeline.clear_io_points", "清除入出点",
+            "清除当前视频的入点、出点或两者。which=in/out/both，默认 both。"
+            "与当前媒体绑定，不录入配方。失败常见原因：未选中视频。",
+            H + ":cmd_timeline_clear_io_points",
+            params={"which": s("string", "in / out / both")},
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "marker.add", "添加标记",
+            "在当前视频 t 秒处加一个标记，返回 uuid。name 和 color 可省略。"
+            "t 是绝对时间，与当前媒体绑定，不录入配方。失败常见原因：未选中视频。",
+            H + ":cmd_marker_add",
+            params={
+                "t": s("number", "绝对秒"),
+                "name": s("string", "显示名，可空"),
+                "color": s("string", "十六进制颜色，默认 #F5B700"),
+            },
+            required=["t"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "marker.remove", "删除标记",
+            "按 uuid 列表删除当前视频上的标记。ids 里有找不到的 id 则失败。"
+            "与当前媒体绑定，不录入配方。失败常见原因：id 不存在。",
+            H + ":cmd_marker_remove",
+            params={"ids": arr("string", "标记 uuid 列表")},
+            required=["ids"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "marker.rename", "重命名标记",
+            "把指定 uuid 标记的 name 改成新字符串，空字符串表示只显示三角。"
+            "与当前媒体绑定，不录入配方。失败常见原因：id 不存在。",
+            H + ":cmd_marker_rename",
+            params={
+                "id": s("string", "标记 uuid"),
+                "name": s("string", "新名称，可空"),
+            },
+            required=["id", "name"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "marker.move", "移动标记",
+            "把指定 uuid 标记的时间改到 t 秒。t 是绝对时间，与当前媒体绑定，不录入配方。"
+            "失败常见原因：id 不存在。",
+            H + ":cmd_marker_move",
+            params={
+                "id": s("string", "标记 uuid"),
+                "t": s("number", "绝对秒"),
+            },
+            required=["id", "t"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "marker.set_color", "设置标记颜色",
+            "把指定 uuid 标记的 color 改成 #RRGGBB。非法颜色回落到默认金。"
+            "与当前媒体绑定，不录入配方。失败常见原因：id 不存在。",
+            H + ":cmd_marker_set_color",
+            params={
+                "id": s("string", "标记 uuid"),
+                "color": s("string", "#RRGGBB"),
+            },
+            required=["id", "color"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "overlay.set_fade", "设置叠层四边渐隐",
+            "把 fade_top/bottom/left/right（0–0.5，包围盒比例）写到图片覆层、"
+            "图片/形状元素或视频片段。缺字段视为 0。无窗口时给 project。"
+            "失败常见原因：下标不存在、工程无匹配任务。",
+            "cutora.core.cmds.light:cmd_overlay_set_fade",
+            params={
+                "target": s(
+                    "string", "overlay / element / clip",
+                    enum=["overlay", "element", "clip"],
+                ),
+                "overlay_index": s("integer", "image_overlays 下标"),
+                "element_index": s("integer", "elements 下标，仅 target=element"),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "fade_top": s("number", "上渐隐 0–0.5"),
+                "fade_bottom": s("number", "下渐隐 0–0.5"),
+                "fade_left": s("number", "左渐隐 0–0.5"),
+                "fade_right": s("number", "右渐隐 0–0.5"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["target"],
+            undoable=True,
+            headless=True,
+        ),
+        spec(
+            "overlay.insert_sticker", "插入贴纸",
+            "按 Unicode codepoint（sticker_id）在画面中心插入一张贴纸，默认边长为"
+            "画面短边的 12%。走现有图片元素路径。无窗口时给 project。"
+            "失败常见原因：未知 sticker_id、工程无匹配任务。",
+            "cutora.core.cmds.light:cmd_overlay_insert_sticker",
+            params={
+                "sticker_id": s("string", "Unicode codepoint，如 1f525"),
+                "anim_in": s("string", "淡入/缩放入/无", enum=["fade", "scale_in", "none"]),
+                "anim_out": s("string", "淡出/缩放/无", enum=["fade", "scale_in", "none"]),
+                "start": s("number", "开始秒，默认 0"),
+                "end": s("number", "结束秒，默认主视频时长"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["sticker_id"],
+            undoable=True,
+            headless=True,
+        ),
+        spec(
+            "overlay.split", "切开覆层",
+            "在 t 秒处把 image/text 覆层拆成两段，右半从切开点起。"
+            "undoable，portable=False（按下标寻址）。锁定轨拒绝。"
+            "失败常见原因：kind 非法、下标越界、切开点不在覆层内、轨道已锁定。",
+            "cutora.core.cmds.light:cmd_overlay_split",
+            params={
+                "kind": s("string", "image 或 text", enum=["image", "text"]),
+                "idx": s("integer", "覆层下标，从 0 起"),
+                "t": s("number", "切开点（秒）"),
+                "media_id": s("integer", "媒体下标；有窗口时省略则用当前选中"),
+                "media": s("string", "视频路径，无窗口时用来匹配工程任务"),
+                "project": s("string", "工程文件；无窗口且未给则试视频同目录"),
+            },
+            required=["kind", "idx", "t"],
+            undoable=True,
+            headless=True,
+            portable=False,
+        ),
+        spec(
+            "timeline.razor", "切刀",
+            "在 time 秒处切开所选视频/音频/字幕/覆层。一次命令一条 undo。"
+            "video/audio 走 clip.split_at，字幕走 subtitle.split，覆层走 overlay.split。"
+            "锁定轨拒绝，工程 JSON 不变。失败常见原因：轨道已锁定、切开点不在对象内。",
+            H + ":cmd_timeline_razor",
+            params={
+                "time": s("number", "切开点（秒）"),
+                "clips": arr("object", "[{track_id, clip_index}]"),
+                "overlays": arr("object", "[{kind, idx}]"),
+                "subtitles": arr("object", "[{idx}]"),
+            },
+            required=["time"],
+            undoable=True,
+            requires_project=True,
+            portable=False,
+        ),
+        spec(
+            "keyframe.set", "打关键帧",
+            "在对象局部时间 t 给 path 写入一个关键帧（同 t 覆盖）。ease 为 linear/"
+            "ease_in/ease_out/ease_in_out/hold/bezier；bezier 时带 bez 四个控制点。"
+            "锁定轨拒绝。无窗口时给 project。失败常见原因：找不到对象、path 为空。",
+            "cutora.core.cmds.light:cmd_keyframe_set",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "path": s("string", "参数路径，如 x 或 fill.colors[0]"),
+                "t": s("number", "相对对象起点的秒"),
+                "v": s("number", "数字值；颜色请用 color"),
+                "color": s("string", "颜色 #RRGGBB，path 为颜色时用"),
+                "ease": s(
+                    "string", "缓动",
+                    enum=["linear", "ease_in", "ease_out", "ease_in_out", "hold", "bezier"],
+                ),
+                "bez": arr("number", "cubic-bezier 四元组"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["path", "t"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "grade.set", "设置调色",
+            "把一级调色写到 clip / track / project。patch 与 identity_grade 同形。"
+            "锁定轨拒绝。失败常见原因：找不到对象、patch 不是对象。",
+            "cutora.core.cmds.light:cmd_grade_set",
+            params={
+                "target": s(
+                    "string", "clip / track / project",
+                    enum=["clip", "track", "project"],
+                ),
+                "track_id": s("string", "轨道 id，target=clip 或 track"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "patch": s("object", "调色字段，缺的保持原值"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["target", "patch"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "fx.mask_add", "添加遮罩",
+            "给视频片段 / 图片层 / 文本层加一个形状遮罩。mask: type(rect/ellipse/polygon/bezier)、"
+            "rect [nx,ny,nw,nh] 或 points [[nx,ny],…]（图层自己的 0–1 坐标；bezier 每点 [nx,ny,进手柄dx,dy,出手柄dx,dy]）、rotation、radius、"
+            "feather、expand、opacity、invert、mode(add/subtract/intersect)、enabled、name。锁定轨拒绝。",
+            "cutora.core.cmds.light:cmd_fx_mask_add",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "mask": s("object", "遮罩定义"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["mask"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "fx.mask_update", "修改遮罩",
+            "按 mask_id 找到那个遮罩，把 patch 里的字段合并进去（字段同 fx.mask_add 的 mask），"
+            "合并后重新规范化。锁定轨拒绝。失败常见原因：找不到遮罩、多边形点数不足。",
+            "cutora.core.cmds.light:cmd_fx_mask_update",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "mask_id": s("string", "遮罩 id"),
+                "patch": s("object", "要改的字段"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["mask_id", "patch"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "fx.mask_delete", "删除遮罩",
+            "按 mask_id 删掉对象上的一个遮罩，其余顺序不变；没有遮罩了就摘掉 masks 键。"
+            "锁定轨拒绝。失败常见原因：找不到遮罩。",
+            "cutora.core.cmds.light:cmd_fx_mask_delete",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "mask_id": s("string", "遮罩 id"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["mask_id"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "fx.mask_reorder", "调整遮罩顺序",
+            "order = 对象上全部遮罩 id 的新顺序，叠加运算（加 / 减 / 交）按这个顺序从上到下算。"
+            "锁定轨拒绝。失败常见原因：order 漏了或多了 id。",
+            "cutora.core.cmds.light:cmd_fx_mask_reorder",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "order": arr("string", "遮罩 id 顺序"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["order"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "fx.keyer_set", "设置蓝绿幕抠像",
+            "合并 patch 到视频片段 / 图片层的抠像设置：enabled、color(#RRGGBB)、gain、balance、"
+            "despill、preblur、black、white、gamma、erode、blur、despot、view(comp/matte/source/spill)。"
+            "全部回到默认且未启用时清掉。锁定轨拒绝。",
+            "cutora.core.cmds.light:cmd_fx_keyer_set",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "patch": s("object", "要改的字段"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["patch"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "ai.matte.set", "设置 AI 抠像",
+            "合并 patch 到视频片段的 AI 抠像设置：enabled、model、feather（画布像素）、shrink（+收缩/−扩张）、"
+            "refine（导向滤波精修边缘）、merge（相邻「保留」对象合成一整块去接缝，默认开）、view(comp/matte/overlay)、objects（按 id 改 name/color/enabled/mode：add 保留 / subtract 挖掉）。"
+            "不改提示点和会话。锁定轨拒绝。",
+            "cutora.core.cmds.light:cmd_ai_matte_set",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "patch": s("object", "要改的字段"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["patch"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "ai.matte.object", "AI 抠像对象增删",
+            "op=add 给图层新建一个要抠的对象（最多 8 个，各有颜色）；op=remove 删掉 object_id 及它在所有帧上的提示点。"
+            "结果缓存里该对象的 mask 由界面在后台清理。锁定轨拒绝。",
+            "cutora.core.cmds.light:cmd_ai_matte_object",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "op": s("string", "add / remove", enum=["add", "remove"]),
+                "object_id": s("integer", "op=remove 时要删的对象 id"),
+                "name": s("string", "op=add 时的名字（可选）"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["op"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "ai.matte.prompt", "AI 抠像提示点",
+            "在源帧 frame 上 op=add 一个提示（prompt={obj,x,y,label} 正点 label=1 / 负点 0，或 {obj,box:[x0,y0,x1,y1]}，"
+            "坐标为源帧归一化 0–1）；op=clear 清掉这一帧（object_id 可选）的提示。只改数据，分割由界面后台任务做。",
+            "cutora.core.cmds.light:cmd_ai_matte_prompt",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "op": s("string", "add / clear", enum=["add", "clear"]),
+                "frame": s("integer", "源帧号"),
+                "prompt": s("object", "op=add 时的提示"),
+                "object_id": s("integer", "op=clear 时只清这个对象（可选）"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["frame"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "ai.matte.session", "AI 抠像会话",
+            "op=create 给图层建结果缓存会话并建第一个对象（已有则原样返回，可带 model）；op=clear 清空全部提示点和缓存结果"
+            "（保留对象和设置）；op=detach 把整个 AI 抠像从图层上拿掉并删缓存。锁定轨拒绝。",
+            "cutora.core.cmds.light:cmd_ai_matte_session",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "op": s("string", "create / clear / detach", enum=["create", "clear", "detach"]),
+                "model": s("string", "op=create 时指定模型 id（可选）"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=[],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "track.session", "AI 跟踪会话",
+            "op=create 给视频片段建跟踪结果缓存会话并建第一个跟踪点（已有则原样返回，可带 model）；op=clear 清空全部点选和跟踪结果（保留点和绑定）；op=detach 把整个 AI 跟踪从片段上拿掉并删缓存。锁定轨拒绝。",
+            "cutora.core.cmds.light:cmd_track_session",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "op": s("string", "create / clear / detach", enum=["create", "clear", "detach"]),
+                "model": s("string", "op=create 时指定模型 id（可选）"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=[],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "track.point", "AI 跟踪点",
+            "op=add 新建跟踪点（最多 8 个）；op=remove 删点及它所有帧上的点选；op=place 在源帧 frame 上放下 / 挪动这个点（x, y 为源帧归一化 0–1）；op=unplace 去掉这一帧上这个点的点选。只改数据，跟踪由界面后台任务做。",
+            "cutora.core.cmds.light:cmd_track_point",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "op": s("string", "add / remove / place / unplace", enum=["add", "remove", "place", "unplace"]),
+                "point_id": s("integer", "跟踪点 id（add 以外必填）"),
+                "frame": s("integer", "源帧号（place / unplace）"),
+                "x": s("number", "源帧归一化 x（place）"),
+                "y": s("number", "源帧归一化 y（place）"),
+                "name": s("string", "op=add 时的名字（可选）"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["op"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "track.set", "设置 AI 跟踪",
+            "合并 patch 到视频片段的跟踪设置：model（跟踪模型 id）、points（按 id 改 name / color / enabled）。不改点选、结果和绑定记录。锁定轨拒绝。",
+            "cutora.core.cmds.light:cmd_track_set",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "patch": s("object", "要改的字段"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["patch"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "track.apply", "应用跟踪（生成关键帧）",
+            "把界面按运动数据算好的关键帧（paths，形同 keyframe.replace）写到目标上：跟随 = target_loc 指定的文字 / 图片 / 另一条视频，稳定 = 被跟踪的片段自己；并把这条绑定记录到片段的 tracking.bindings 以便更新。一次撤销。",
+            "cutora.core.cmds.light:cmd_track_apply",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "target_loc": s("object", "目标定位（target/track_id/clip_index 或 list/overlay_index），稳定模式不需要"),
+                "paths": s("object", "{参数: [关键帧点…]}"),
+                "binding": s("object", "绑定记录（mode / source / points / target / apply / smooth / offset / fill / ref_frame）"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["paths", "binding"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "track.unbind", "删除跟踪绑定",
+            "删掉视频片段 tracking.bindings 里第 index 条绑定记录（已经写到目标上的关键帧保留，需要的话在关键帧面板里删）。锁定轨拒绝。",
+            "cutora.core.cmds.light:cmd_track_unbind",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "index": s("integer", "绑定下标"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["index"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "group.create", "预合成（打组）",
+            "把选中的片段打成一个预合成组：片段留在原轨道上，锁住时点一条选整组、拖一条整组走、改外观整组一起变；可选 loop_fill=以整组时长循环铺满到视频结尾。",
+            "cutora.core.cmds.light:cmd_group_create",
+            params={
+                "clips": s("array", "片段列表：[{track_id, clip_index}] 或 [{uid}]"),
+                "name": s("string", "组名（可选）"),
+                "color": s("string", "组颜色 #RRGGBB（可选，默认轮着给）"),
+                "locked": s("boolean", "锁住组内编辑（默认 true）"),
+                "loop_fill": s("boolean", "以整组时长循环铺满到视频结尾（默认 false）"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["clips"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "group.ungroup", "解除预合成",
+            "解除一个预合成组：组里的片段原样留在各自的轨道上（不再联动），循环铺满时自动复制出来的重复份一起删掉。",
+            "cutora.core.cmds.light:cmd_group_ungroup",
+            params={
+                "group": s("string", "组 id"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["group"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "group.join", "加入预合成组",
+            "把若干片段加入一个已有的预合成组（在别的组里的先搬出来）；组开着循环铺满就顺手重算重复份。",
+            "cutora.core.cmds.light:cmd_group_join",
+            params={
+                "group": s("string", "组 id"),
+                "clips": s("array", "片段列表：[{track_id, clip_index}] 或 [{uid}]"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["group", "clips"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "group.detach", "从预合成组分离",
+            "把若干片段从各自的预合成组里分离出来；一个组一条真身都不剩时它的重复份一起删掉。",
+            "cutora.core.cmds.light:cmd_group_detach",
+            params={
+                "clips": s("array", "片段列表：[{track_id, clip_index}] 或 [{uid}]"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["clips"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "group.set", "设置预合成组",
+            "改一个预合成组的名字 / 颜色 / 锁定 / 循环铺满（patch 里给哪个改哪个）；loop_fill 开关后立即按整组时长重算重复份。",
+            "cutora.core.cmds.light:cmd_group_set",
+            params={
+                "group": s("string", "组 id"),
+                "patch": s("object", "{name, color, locked, loop_fill} 任意子集"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["group", "patch"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "fx.graph", "效果节点图",
+            "op=create 把视频片段 / 图片层上的蓝绿幕、AI 抠像、形状遮罩搬进一张等价的节点图（结果逐位一致，老键清空）；op=delete 删掉节点图回到直通；op=replace 用 graph 整张替换（粘贴、自动排布用）。",
+            "cutora.core.cmds.light:cmd_fx_graph",
+            params={
+                "target": s(
+                    "string", "clip / overlay",
+                    enum=["clip", "overlay"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "image_overlays（文字层没有节点图）"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "op": s("string", "create / delete / replace", enum=["create", "delete", "replace"]),
+                "graph": s("object", "op=replace 时的整张图"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["op"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "fx.node", "效果节点增删改",
+            "op=add 加节点（type、pos、可选 params、after=插到某节点后面并接好线）；op=remove 删节点（reconnect=把上下游接上）；op=set 改 label / color / enabled（旁路）/ pos / params；op=move 批量改位置（positions，含 src / out，一次撤销）；op=swap 前两个同类输入互换。",
+            "cutora.core.cmds.light:cmd_fx_node",
+            params={
+                "target": s(
+                    "string", "clip / overlay",
+                    enum=["clip", "overlay"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "image_overlays（文字层没有节点图）"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "op": s("string", "add / remove / set / move / swap", enum=["add", "remove", "set", "move", "swap"]),
+                "type": s("string", "节点类型：keyer / ai_matte / mask / matte_ops / matte_apply / blur / color"),
+                "id": s("string", "节点 id"),
+                "pos": s("array", "[x, y]"),
+                "params": s("object", "初始参数（add）"),
+                "after": s("string", "add 时插到这个节点后面"),
+                "reconnect": s("boolean", "remove 时是否把上下游接上（默认是）"),
+                "patch": s("object", "set 的改动"),
+                "positions": s("object", "move：{id: [x, y]}"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["op"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "fx.link", "效果节点连线",
+            "op=connect 把 from 节点的输出接到 to 节点的 port 输入（类型不配——遮罩不能接到画面端口——或会成环时拒绝；画面接到遮罩端口时取它的透明度；目标端口原来的线被替换）；op=disconnect 拔掉 to 节点 port 上的线。",
+            "cutora.core.cmds.light:cmd_fx_link",
+            params={
+                "target": s(
+                    "string", "clip / overlay",
+                    enum=["clip", "overlay"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "image_overlays（文字层没有节点图）"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "op": s("string", "connect / disconnect", enum=["connect", "disconnect"]),
+                "from": s("string", "上游节点 id（src / 节点 id）"),
+                "to": s("string", "下游节点 id（out / 节点 id）"),
+                "port": s("string", "下游端口名（in / mask / matte / a / b）"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["op"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "keyframe.replace", "改写关键帧",
+            "把一个对象上若干参数的点表整段换掉（关键帧面板 / 曲线编辑器拖完松手时调用一次，"
+            "一个手势一次撤销）。paths 形如 {\"x\": [{\"t\":0,\"v\":0,\"ease\":\"bezier\","
+            "\"bez\":[0.33,0,0.67,1]}, …], \"y\": null}；null 或空数组 = 关掉该参数的关键帧。"
+            "bez 的 x 在 0–1，y 在 -2–3（超出 0–1 即过冲）。锁定轨拒绝。",
+            "cutora.core.cmds.light:cmd_keyframe_replace",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id，仅 target=clip"),
+                "clip_index": s("integer", "片段下标，仅 target=clip"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标，仅 target=overlay"),
+                "element_index": s("integer", "覆层里 elements 的下标（可选）"),
+                "node_id": s("string", "效果节点图里的节点 id（可选；给了就改那个节点）"),
+                "paths": s("object", "{参数路径: 点数组或 null}"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["paths"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "keyframe.delete", "删除关键帧",
+            "删掉 path 在局部时间 t 的那个点。该路径空了就摘掉路径。"
+            "锁定轨拒绝。无窗口时给 project。失败常见原因：找不到对象或该处没有点。",
+            "cutora.core.cmds.light:cmd_keyframe_delete",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标"),
+                "path": s("string", "参数路径"),
+                "t": s("number", "相对对象起点的秒"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["path", "t"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "keyframe.move", "移动关键帧",
+            "把 path 上 t_from 的点改到 t_to（相对对象起点）。锁定轨拒绝。"
+            "无窗口时给 project。失败常见原因：找不到原时间的点。",
+            "cutora.core.cmds.light:cmd_keyframe_move",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标"),
+                "path": s("string", "参数路径"),
+                "t_from": s("number", "原来的局部秒"),
+                "t_to": s("number", "新的局部秒"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["path", "t_from", "t_to"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "keyframe.set_interp", "设置关键帧缓动",
+            "改 path 上 t 那个点的 ease（及可选 bez）。第一版没有曲线手柄，"
+            "只改这六种缓动。锁定轨拒绝。失败常见原因：该处没有关键帧。",
+            "cutora.core.cmds.light:cmd_keyframe_set_interp",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标"),
+                "path": s("string", "参数路径"),
+                "t": s("number", "相对对象起点的秒"),
+                "ease": s(
+                    "string", "缓动",
+                    enum=["linear", "ease_in", "ease_out", "ease_in_out", "hold", "bezier"],
+                ),
+                "bez": arr("number", "cubic-bezier 四元组"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["path", "t", "ease"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "keyframe.enable", "启用或关闭参数关键帧",
+            "enabled=true 时用当前值在 t 打第一个点；false 时删掉该路径全部点。"
+            "对应属性面板秒表开关。锁定轨拒绝。失败常见原因：找不到对象。",
+            "cutora.core.cmds.light:cmd_keyframe_enable",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标"),
+                "path": s("string", "参数路径"),
+                "enabled": s("boolean", "true 打开 / false 关闭"),
+                "t": s("number", "打开时打点的局部秒"),
+                "v": s("number", "打开时的数字值"),
+                "color": s("string", "打开时的颜色"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["path", "enabled"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "keyframe.copy", "复制关键帧",
+            "把 path 在 t 的点放进关键帧剪贴板，随后 keyframe.paste 用。"
+            "不改工程。失败常见原因：该处没有点。",
+            "cutora.core.cmds.light:cmd_keyframe_copy",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标"),
+                "path": s("string", "参数路径"),
+                "t": s("number", "相对对象起点的秒"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["path", "t"],
+            undoable=False,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "keyframe.paste", "粘贴关键帧",
+            "把剪贴板里的点贴到 path 的局部时间 t。没有剪贴板时失败。"
+            "锁定轨拒绝。失败常见原因：还没复制过、找不到对象。",
+            "cutora.core.cmds.light:cmd_keyframe_paste",
+            params={
+                "target": s(
+                    "string", "clip / overlay / style",
+                    enum=["clip", "overlay", "style"],
+                ),
+                "track_id": s("string", "轨道 id"),
+                "clip_index": s("integer", "片段下标"),
+                "list": s("string", "text_overlays 或 image_overlays"),
+                "overlay_index": s("integer", "覆层下标"),
+                "path": s("string", "参数路径，省略则用剪贴板的 path"),
+                "t": s("number", "贴到这个局部秒"),
+                "media_id": s("integer", "媒体下标"),
+                "media": s("string", "视频路径"),
+                "project": s("string", "工程文件"),
+            },
+            required=["t"],
+            undoable=True,
+            headless=True,
+            requires_project=True,
+        ),
+        spec(
+            "audio.spatial.set", "设置空间立体声",
+            "预设和宽度写到全局音效设置，并写进当前任务的 audio_fx，不是 clip 字段。"
+            "湿声写到主音频 clip 的 spatial_amount。失败常见原因：未导入视频、音效模块未加载。",
+            H + ":cmd_audio_spatial_set",
+            params={
+                "preset": s("string", "空间预设名，如 stage / cathedral"),
+                "wet": s("number", "湿声 0~1"),
+                "width": s("number", "宽度 0~1"),
+                "all": s("boolean", "true 时应用到全部视频"),
+            },
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "audio.sfx.apply_current", "给当前条铺音效",
+            "按当前音效设置给当前选中视频铺 SFX clip，不弹窗。"
+            "失败常见原因：未选中视频、音效模块未加载。",
+            H + ":cmd_audio_sfx_current",
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "audio.sfx.apply_all", "给全部铺音效",
+            "按当前音效设置给工程里每一条视频铺 SFX clip，不弹窗。"
+            "失败常见原因：工程为空、音效模块未加载。",
+            H + ":cmd_audio_sfx_all",
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "audio.loudness.set", "设置导出响度",
+            "把导出总线的响度标准化写成 关 / -14 LUFS / -16 LUFS / 自定义，真峰值上限 -1 dBTP。"
+            "默认关，golden 不变。失败常见原因：mode 无法识别。",
+            "cutora.core.cmds.light:cmd_audio_loudness_set",
+            params={
+                "mode": s("string", "off / lufs14 / lufs16 / custom"),
+                "target_lufs": s("number", "自定义目标 LUFS；lufs14/lufs16 可省略"),
+            },
+            required=["mode"],
+            undoable=True,
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "audio.volume_master", "音量总控",
+            "按 scope=selected|all 把原声、配乐、音效的线性音量写成对应 clip 的 gain_db，原声同时写 src_volume。"
+            "命令体不弹对话框。失败常见原因：scope=selected 但没有选中项。",
+            H + ":cmd_audio_volume_master",
+            params={
+                "src": s("number", "原生音量线性值"),
+                "bgm": s("number", "配乐音量线性值"),
+                "sfx": s("number", "音效音量线性值"),
+                "scope": s("string", "selected 或 all"),
+            },
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "audio.denoise", "音频降噪预设",
+            "把降噪预设和强度写到原声 clip 的 audio_proc。关闭写成空字典，不改媒体文件路径。"
+            "scope=clip 时只改 track_id 与 clip_index 指定的那一条。失败常见原因：没有时间线。",
+            H + ":cmd_audio_denoise",
+            params={
+                "preset": s("string", "off / denoise / podcast / youtube / hall"),
+                "strength": s("string", "weak / mid / strong"),
+                "scope": s("string", "current / all / clip"),
+                "track_id": s("string", "scope=clip 时的轨道 id"),
+                "clip_index": s("integer", "scope=clip 时的片段下标"),
+            },
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "audio.detect_silence", "检测静音",
+            "用口播词间停顿（没有词时再用语音活动或 ffmpeg）写出 analysis.silences。"
+            "不点这个命令就不写这个键，老工程不变。失败常见原因：当前没有时间线。",
+            H + ":cmd_audio_detect_silence",
+            params={"scope": s("string", "current 或 all")},
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "audio.remove_silences", "删除长停顿",
+            "把 analysis.silences 里长于 min_dur 的区间做波纹删除，链接的视频和原声一起缩短。"
+            "默认 0.8 秒，避免吃掉换气。没有检测结果时不删。失败常见原因：没有原声轨。",
+            H + ":cmd_audio_remove_silences",
+            params={
+                "min_dur": s("number", "最短删除秒数，默认 0.8"),
+                "scope": s("string", "current 或 all"),
+                "start": s("number", "只删这一段的起点"),
+                "end": s("number", "只删这一段的终点"),
+            },
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "audio.duck_set", "人声闪避",
+            "把人声压配乐写到任务的 audio_duck。缺这个键或 enabled 为假时，导出滤镜与今天相同。"
+            "深度用 -6 / -12 / -18，恢复用 80 / 250 / 600 毫秒。失败常见原因：没有当前任务。",
+            H + ":cmd_audio_duck_set",
+            params={
+                "enabled": s("boolean", "true 才插入角色侧链"),
+                "depth_db": s("number", "-6 / -12 / -18"),
+                "release_ms": s("number", "80 / 250 / 600"),
+                "scope": s("string", "current 或 all"),
+            },
+            required=["enabled"],
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "audio.auto_fades", "说话边缘淡化",
+            "给原声 clip 补上 30 毫秒头尾淡化，只写 fade_in_dur 和 fade_out_dur。默认不自动跑。"
+            "已经有淡化的不覆盖。失败常见原因：没有原声 clip。",
+            H + ":cmd_audio_auto_fades",
+            params={
+                "dur": s("number", "淡化秒数，默认 0.03"),
+                "scope": s("string", "current 或 all"),
+            },
+            undoable=True,
+            requires_project=True,
+            portable=True,
+        ),
+        spec(
+            "audio.isolate", "只留说话或伴奏",
+            "把当前原声送进人声分离队列。mode=vocals 只留说话，novocals 只留伴奏。"
+            "右键只处理点中的那一条；批量勾选则每条任务的原声各排一个进程。"
+            "导出进行中直接拒绝。没有本地权重时失败并说明原因，不改媒体路径。",
+            H + ":cmd_audio_isolate",
+            params={
+                "mode": s("string", "vocals 或 novocals"),
+                "scope": s("string", "current 或 all"),
+                "track_id": s("string", "右键点中的音轨"),
+                "clip_index": s("integer", "右键点中的 clip 下标"),
+            },
+            undoable=False,
+            requires_project=True,
+        ),
+        spec(
+            "export.settings", "导出设置",
+            "读取当前导出相关设置（并行开关、进程数、视频模式、导出预设），不开始导出。"
+            "给机器人在 export.run 之前确认参数。",
+            "cutora.core.cmds.light:cmd_export_settings",
+            headless=True,
+        ),
+        spec(
+            "export.profile.list", "列出导出预设",
+            "列出内置与用户导出预设（id、名称、容器、视频编码、画质档），不改任何文件。"
+            "失败常见原因：用户预设 JSON 损坏时该项被跳过，内置仍在。",
+            "cutora.core.cmds.light:cmd_export_profile_list",
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "export.profile.save", "保存导出预设",
+            "把一个用户导出预设写入 USER_DATA/presets/export_profiles.json。内置 id 拒绝覆盖，请换新 id。"
+            "失败常见原因：id 非法、试图覆盖内置。",
+            "cutora.core.cmds.light:cmd_export_profile_save",
+            params={
+                "id": s("string", "预设 id"),
+                "name": s("string", "显示名"),
+                "container": s("string", "mp4 / mov / m4a"),
+                "vcodec": s("string", "h264 / hevc / prores / none"),
+                "quality": s("string", "compressed / high / archive / source"),
+                "audio_codec": s("string", "aac / pcm_s16le"),
+            },
+            required=["id"],
+            headless=True,
+            portable=True,
+        ),
+        spec(
+            "export.profile.delete", "删除导出预设",
+            "删除一个用户导出预设。内置预设不能删。正在使用的会被打回社交竖版。"
+            "失败常见原因：id 是内置、或不存在。",
+            "cutora.core.cmds.light:cmd_export_profile_delete",
+            params={"id": s("string", "预设 id")},
+            required=["id"],
+            headless=True,
+        ),
+        spec(
+            "export.run", "导出当前条",
+            "把当前选中视频渲染成 out 指定的文件。profile 选内置或用户导出预设，真正改编码器。"
+            "耗时，标记为异步作业；T13a 仍在主线程启动既有 worker。"
+            "失败常见原因：未选中视频、out 不可写、未知 profile。",
+            H + ":cmd_export_run",
+            params={
+                "out": s("string", "输出路径"),
+                "out_dir": s("string", "若未给 out，则写到此目录"),
+                "honor_io": s("boolean", "true 时只导出 I/O 区间；默认 false，避免误裁"),
+                "profile": s("string", "导出预设 id；省略则用当前设置"),
+                "allow_offline": s("boolean", "true 才允许带着离线素材导出；默认 false，命令层硬拦"),
+            },
+            requires_project=True,
+            async_job=True,
+            dangerous=True,
+            portable=True,
+        ),
+        spec(
+            "export.batch", "批量导出",
+            "按工程队列或当前列表批量导出到 out_dir。对应界面「批量导出」。"
+            "失败常见原因：没有视频、输出目录不可写。",
+            H + ":cmd_export_batch",
+            params={
+                "project_paths": arr("string", "工程文件；省略则导出当前工程全部条目"),
+                "out_dir": s("string", "输出目录"),
+                "allow_offline": s("boolean", "true 才允许带着离线素材导出；默认 false"),
+            },
+            async_job=True,
+            dangerous=True,
+            portable=True,
+        ),
+        spec(
+            "export.status", "导出状态",
+            "返回当前是否正在导出、批导出进度、最近错误。不改变导出任务。"
+            "给机器人轮询 export.run / export.batch。",
+            H + ":cmd_export_status",
+        ),
+        spec(
+            "batch.queue.add", "加入工程队列",
+            "把一组工程文件写入 USER_DATA 的工程队列 JSON，供 batch.queue_run 使用。"
+            "不开始导出。失败常见原因：projects 为空或路径不存在。",
+            "cutora.core.cmds.batch_ops:cmd_batch_queue_add",
+            params={
+                "projects": arr("string", "工程文件路径"),
+                "auto_subtitle": s("boolean", "导出前是否先打轴"),
+            },
+            required=["projects"],
+            headless=True,
+        ),
+        spec(
+            "batch.bgm_assign", "批量配乐",
+            "从音频文件夹给当前工程（或给定 ids）配背景音乐，对齐界面「全部配乐」。"
+            "命令体不弹文件夹框。失败常见原因：文件夹里没有音频。",
+            H + ":cmd_batch_bgm_assign",
+            params={
+                "dir": s("string", "音频文件夹"),
+                "ids": arr("integer", "只给这些媒体配乐；省略则全部"),
+            },
+            required=["dir"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "batch.copy_subtitle_style", "拷贝字幕样式",
+            "把 src_id 的字幕样式套到 target_ids，对齐资产库右键「拷贝字幕样式」。"
+            "命令体不弹确认框。失败常见原因：src_id 越界、targets 为空。",
+            H + ":cmd_batch_copy_style",
+            params={
+                "src_id": s("integer", "源媒体下标"),
+                "target_ids": arr("integer", "目标媒体下标"),
+            },
+            required=["src_id", "target_ids"],
+            undoable=True,
+            requires_project=True,
+        ),
+        spec(
+            "batch.share_tracks", "共享轨道",
+            "把 src_id 上指定类型的可共享轨道复制到 target_ids，对齐「从选中视频共享轨道」。"
+            "命令体不弹对话框。失败常见原因：源上没有可共享轨道。",
+            H + ":cmd_batch_share_tracks",
+            params={
+                "src_id": s("integer", "源媒体下标"),
+                "target_ids": arr("integer", "目标媒体下标"),
+                "track_types": arr("string", "只共享这些类型；省略则按源上已开启共享的轨道"),
+                "track_ids": arr("string", "只共享这些轨道 id（比 track_types 精确；给了就不看 track_types）"),
+                "keep_duration_track_ids": arr(
+                    "string", "这些轨道保持源视频里的时长，不拉伸到目标视频时长"),
+                "auto_fit_duration": s(
+                    "boolean", "其余轨道是否拉伸匹配目标视频时长（默认 true）"),
+            },
+            required=["src_id", "target_ids"],
+            undoable=True,
+            requires_project=True,
+        ),
+    ]

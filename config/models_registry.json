@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "updated_at": "2026-10-14",
+  "policy": {
+    "offline_only": true,
+    "usage_scope": "internal_non_commercial",
+    "hardlinked_storage": true
+  },
+  "models": [
+    {
+      "id": "ltx-2.5-22b",
+      "name": "LTX-2.5 22B 视频生成 (NVFP4 蒸馏版 + 同步音轨)",
+      "category": "video_gen",
+      "tier": 3,
+      "min_vram_gb": 14.5,
+      "cpu_supported": false,
+      "license": "LTX-2 Community License",
+      "status": "ready",
+      "path": "runtime/models/ltx25",
+      "runner": "D:\\0_LLM\\bench\\ltx25\\ltx25_run.py",
+      "files": [
+        "diffusion_models/ltx-2.5-22b-distilled-transformer-nvfp4.safetensors",
+        "vae/ltx-2.5-video-vae-bf16.safetensors",
+        "vae/ltx-2.5-audio-vae-bf16.safetensors",
+        "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+        "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"
+      ]
+    },
+    {
+      "id": "ltx-2.5-ic-loras",
+      "name": "LTX-2.5 IC-LoRA 视频修复与特效家族 (7合1)",
+      "category": "video_vfx",
+      "tier": 3,
+      "min_vram_gb": 14.5,
+      "cpu_supported": false,
+      "license": "LTX-2 Community License",
+      "status": "ready",
+      "path": "runtime/models/ltx25/loras",
+      "capabilities": [
+        "restore",
+        "deblur",
+        "clean_plate",
+        "colorization",
+        "in_outpainting",
+        "sdr_to_hdr",
+        "refine_details"
+      ]
+    },
+    {
+      "id": "portrait-restore-v6h",
+      "name": "Simone 标准人像修复管线 (MediaPipe + Relight v6h + Fill + 时域降噪)",
+      "category": "video_vfx",
+      "tier": 1,
+      "min_vram_gb": 0.0,
+      "cpu_supported": true,
+      "license": "Apache-2.0 / Self-Authored",
+      "status": "ready",
+      "path": "runtime/models/vision",
+      "notes": "支持 32GB+CPU 全流程运行；有 GPU (>=3GB) 时 DPT-Hybrid 自动启用显卡加速"
+    },
+    {
+      "id": "autograde-lut",
+      "name": "Autograde 智能自动调色与 3D LUT 生成器",
+      "category": "video_color",
+      "tier": 1,
+      "min_vram_gb": 0.0,
+      "cpu_supported": true,
+      "license": "Self-Authored",
+      "status": "ready",
+      "runner": "D:\\0_LLM\\tools\\autograde\\autograde.py"
+    },
+    {
+      "id": "nomos2-4x",
+      "name": "Nomos2 4x 真实感视频逐帧放大",
+      "category": "video_upscale",
+      "tier": 2,
+      "min_vram_gb": 2.5,
+      "cpu_supported": true,
+      "license": "CC-BY-4.0",
+      "status": "ready",
+      "path": "runtime/models/vision/upscale/4xNomos2_realplksr_dysample.pth",
+      "runner": "D:\\0_LLM\\bench\\ltx25\\nomos2_upscale.py"
+    },
+    {
+      "id": "flux2-klein-4b",
+      "name": "FLUX.2 [klein] 4B 极速图片生成与编辑",
+      "category": "image_gen",
+      "tier": 3,
+      "min_vram_gb": 12.5,
+      "cpu_supported": false,
+      "license": "Apache-2.0",
+      "status": "ready",
+      "path": "runtime/models/flux2",
+      "runner": "D:\\0_LLM\\bench\\flux2\\flux2_run.py"
+    },
+    {
+      "id": "rmbg-2.0",
+      "name": "RMBG-2.0 发丝级抠图去背景",
+      "category": "image_matte",
+      "tier": 2,
+      "min_vram_gb": 1.5,
+      "cpu_supported": true,
+      "license": "CC-BY-NC-4.0 (Internal Non-Commercial)",
+      "status": "ready",
+      "path": "runtime/models/vision/rmbg2/model.safetensors",
+      "runner": "D:\\0_LLM\\tools\\rmbg\\rmbg.py"
+    },
+    {
+      "id": "asr-faster-whisper",
+      "name": "Faster-Whisper (Small / Large-v3-Turbo) + Wav2Vec2 词级强制对齐",
+      "category": "audio_asr",
+      "tier": 2,
+      "min_vram_gb": 1.5,
+      "cpu_supported": true,
+      "license": "MIT / Apache-2.0 / CC-BY-NC-4.0 (IT/MMS Internal)",
+      "status": "ready",
+      "path": "runtime/models/asr"
+    },
+    {
+      "id": "sam-2.1",
+      "name": "Meta SAM 2.1 视频交互抠像与话筒分割 (Base-Plus / Large)",
+      "category": "video_matte",
+      "tier": 2,
+      "min_vram_gb": 2.0,
+      "cpu_supported": true,
+      "license": "Apache-2.0",
+      "status": "ready",
+      "path": "runtime/models/vision"
+    },
+    {
+      "id": "tapnext-pp",
+      "name": "Google DeepMind TAPNext++ 视频任意点运动跟踪",
+      "category": "video_track",
+      "tier": 2,
+      "min_vram_gb": 3.0,
+      "cpu_supported": true,
+      "license": "Apache-2.0",
+      "status": "ready",
+      "path": "runtime/models/vision/track_tapnextpp_512"
+    },
+    {
+      "id": "audio-suite-6pack",
+      "name": "本地音频 AI 六件套 (Demucs / Resemble Enhance / Chatterbox / XTTS-v2 / MusicGen / Stable Audio)",
+      "category": "audio_ai",
+      "tier": 2,
+      "min_vram_gb": 2.5,
+      "cpu_supported": true,
+      "license": "MIT / CC-BY-NC-4.0 / CPML / Stability Community (Internal Non-Commercial)",
+      "status": "ready",
+      "path": "runtime/models/audio"
+    },
+    {
+      "id": "pending-ltx23-relight",
+      "name": "【记账待装】LTX-2.3 22B 主模型 + Gemma 3 + Relight 光照球 IC-LoRA",
+      "category": "video_vfx",
+      "tier": 3,
+      "min_vram_gb": 15.0,
+      "cpu_supported": false,
+      "license": "LTX-2 Community License",
+      "status": "pending_fiber_download",
+      "install_script": "runtime/models/_pending_fiber/wait_ltx23.ps1",
+      "fallback_active": "portrait-restore-v6h",
+      "notes": "等待家里光纤网络安装完成后一键执行 wait_ltx23.ps1 自动补齐并激活；当前由确定性 relight.py + fill.py 无缝承接"
+    },
+    {
+      "id": "pending-marigold-normals",
+      "name": "【记账待装】Marigold Normals v1-1 高精度表面法线估计",
+      "category": "video_vfx",
+      "tier": 2,
+      "min_vram_gb": 4.0,
+      "cpu_supported": true,
+      "license": "Apache-2.0",
+      "status": "pending_fiber_download",
+      "install_script": "runtime/models/_pending_fiber/dl_marigold.ps1",
+      "fallback_active": "dpt-hybrid-midas",
+      "notes": "等待家里光纤网络安装完成后一键执行 dl_marigold.ps1 自动补齐并激活；当前由 Intel DPT-Hybrid 深度推算法线承接"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "fr_grad",
+  "type": "frame",
+  "name": "渐变边",
+  "license": "CUTORA-original",
+  "tags": [
+    "frame",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "frame.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#E0BE68",
+      "label": "主色"
+    },
+    "color.secondary": {
+      "type": "color",
+      "default": "#262019",
+      "label": "辅色"
+    }
+  }
+}

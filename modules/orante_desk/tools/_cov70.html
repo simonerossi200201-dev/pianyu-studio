@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>spec70 coverage cards</title>
+<link rel="stylesheet" href="/ui/css/app.css">
+<style>
+  html,body{height:auto;overflow:auto;background:var(--ground);color:var(--ink)}
+  #stage{margin:12px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:12px}
+</style>
+<script src="/ui/vendor/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app">
+  <article class="g-card" id="g-block-expand">
+    <div class="g-bd" style="display:block">
+      <div class="cov-tbl-hd">
+        <b>{{ t('gemini.cov.cameras') }}</b>
+        <span class="cov-hd-sp"></span>
+        <button type="button" class="btn ghost sm" id="btn-cam-toggle" @click="toggleCovOpen('cameras')">{{ covOpen.cameras ? t('gemini.cov.collapse') : t('gemini.cov.expand_btn') }}</button>
+        <button type="button" class="btn ghost sm" id="btn-cam-add" @click="addCam(); openCovList('cameras')">{{ t('gemini.cov.add') }}</button>
+      </div>
+      <div class="cov-list" data-kind="cameras">
+        <template v-if="!covOpen.cameras">
+          <div class="cov-sum" v-for="(row, i) in coverage.cameras" :key="'cs'+i">{{ covCamSummary(row) }}</div>
+        </template>
+        <template v-else>
+          <div class="cov-row" v-for="(row, i) in coverage.cameras" :key="'c'+i">
+            <div class="cov-row-top">
+              <input class="cov-id" v-model="row.id" :title="t('gemini.cov.id.title')" @input="onBlockInput('expand')" @blur="onBlockBlur('expand')">
+              <input class="cov-name" v-model="row.name" :title="t('gemini.cov.name.title')" @input="onBlockInput('expand')" @blur="onBlockBlur('expand')">
+              <div class="cov-meta-group">
+              <label class="cov-meta" :title="t('gemini.cov.class.title')">
+                <span>{{ t('gemini.cov.class') }}</span>
+                <select v-model="row.class" @change="onBlockInput('expand')">
+                  <option value="A">{{ covClassOpt('A') }}</option>
+                  <option value="B">{{ covClassOpt('B') }}</option>
+                  <option value="C">{{ covClassOpt('C') }}</option>
+                  <option value="D">{{ covClassOpt('D') }}</option>
+                </select>
+              </label>
+              <label class="cov-meta cov-chk" :title="t('gemini.cov.frontal.title')">
+                <input type="checkbox" v-model="row.frontal" @change="onBlockInput('expand')">
+                <span>{{ t('gemini.cov.frontal') }}</span>
+              </label>
+              <label class="cov-meta" :title="t('gemini.cov.rank.title')">
+                <span>{{ t('gemini.cov.rank') }}</span>
+                <input class="cov-rank" type="number" min="1" max="4" v-model.number="row.rank" @input="onBlockInput('expand')" @blur="onBlockBlur('expand')">
+              </label>
+              </div>
+              <span class="cov-ops">
+                <button type="button" class="x" :title="t('gemini.cov.up')" @click="moveRow(coverage.cameras, i, -1)">↑</button>
+                <button type="button" class="x" :title="t('gemini.cov.down')" @click="moveRow(coverage.cameras, i, 1)">↓</button>
+                <button type="button" class="x" :title="t('gemini.cov.del')" @click="delRow(coverage.cameras, i)">✕</button>
+              </span>
+            </div>
+            <textarea class="cov-text" v-model="row.text" :title="t('gemini.cov.text.title')" @input="onCovTextInput($event)" @blur="onBlockBlur('expand')"></textarea>
+          </div>
+        </template>
+      </div>
+      <div class="cov-tbl-hd">
+        <b>{{ t('gemini.cov.actions') }}</b>
+        <span class="cov-hd-sp"></span>
+        <button type="button" class="btn ghost sm" id="btn-act-toggle" @click="toggleCovOpen('actions')">{{ covOpen.actions ? t('gemini.cov.collapse') : t('gemini.cov.expand_btn') }}</button>
+        <button type="button" class="btn ghost sm" id="btn-act-add" @click="addAct(); openCovList('actions')">{{ t('gemini.cov.add') }}</button>
+      </div>
+      <div class="cov-list" data-kind="actions">
+        <template v-if="!covOpen.actions">
+          <div class="cov-sum" v-for="(row, i) in coverage.actions" :key="'as'+i">{{ covActSummary(row) }}</div>
+        </template>
+        <template v-else>
+          <div class="cov-row" v-for="(row, i) in coverage.actions" :key="'a'+i">
+            <div class="cov-row-top">
+              <input class="cov-id" v-model="row.id" :title="t('gemini.cov.id.title')" @input="onBlockInput('expand')" @blur="onBlockBlur('expand')">
+              <input class="cov-name" v-model="row.name" :title="t('gemini.cov.name.title')" @input="onBlockInput('expand')" @blur="onBlockBlur('expand')">
+              <div class="cov-meta-group">
+              <label class="cov-meta" :title="t('gemini.cov.phase.title')">
+                <span>{{ t('gemini.cov.phase') }}</span>
+                <select v-model="row.phase" @change="onBlockInput('expand')">
+                  <option value="start">{{ t('gemini.cov.phase.start') }}</option>
+                  <option value="develop">{{ t('gemini.cov.phase.develop') }}</option>
+                  <option value="hold">{{ t('gemini.cov.phase.hold') }}</option>
+                  <option value="resolve">{{ t('gemini.cov.phase.resolve') }}</option>
+                </select>
+              </label>
+              <label class="cov-meta" :title="t('gemini.cov.rank.title')">
+                <span>{{ t('gemini.cov.rank') }}</span>
+                <input class="cov-rank" type="number" min="1" max="4" v-model.number="row.rank" @input="onBlockInput('expand')" @blur="onBlockBlur('expand')">
+              </label>
+              </div>
+              <span class="cov-ops">
+                <button type="button" class="x" :title="t('gemini.cov.up')" @click="moveRow(coverage.actions, i, -1)">↑</button>
+                <button type="button" class="x" :title="t('gemini.cov.down')" @click="moveRow(coverage.actions, i, 1)">↓</button>
+                <button type="button" class="x" :title="t('gemini.cov.del')" @click="delRow(coverage.actions, i)">✕</button>
+              </span>
+            </div>
+            <textarea class="cov-text" v-model="row.text" :title="t('gemini.cov.text.title')" @input="onCovTextInput($event)" @blur="onBlockBlur('expand')"></textarea>
+          </div>
+        </template>
+      </div>
+    </div>
+  </article>
+</div>
+<script>
+window.__cov70 = { inputCalls: 0, blurCalls: 0, ready: false };
+(async function () {
+  const src = await fetch('/ui/js/panels/gemini.js').then(r => r.text());
+  const i = src.indexOf('window.CoverageEditorLogic');
+  const j = src.indexOf('window.Panel_gemini');
+  if (i < 0 || j < 0) throw new Error('no CoverageEditorLogic');
+  eval(src.slice(i, j));
+  const zh = await fetch('/orante/i18n/zh.json').then(r => r.json());
+  window.t = function (k) { return zh[k] !== undefined ? zh[k] : k; };
+  const L = window.CoverageEditorLogic;
+  const { createApp, reactive, nextTick } = Vue;
+  const coverage = reactive({
+    cameras: [
+      { id: '04', name: '观众视角', class: 'B', frontal: false, rank: 3,
+        text: '摄影机放在观众席中后排，微微仰视舞台，人物在画面中占三分之一，背景能看到讲台和听众席。' },
+      { id: '07', name: '舞台侧', class: 'B', frontal: false, rank: 3,
+        text: '摄影机走到舞台的左侧边缘，从人物的正侧方拍腰部以上的中景。' },
+    ],
+    actions: [
+      { id: '03', name: '右手抬起', phase: 'develop', rank: 3,
+        text: '人物的右手从身侧抬到腰腹高度、掌心朝上微微张开的一瞬间。' },
+      { id: '01', name: '自然站立', phase: 'start', rank: 3,
+        text: '人物的姿态是放松的自然站立，双手自然垂在身侧。' },
+    ],
+  });
+  function nextId(rows) {
+    const used = new Set((rows || []).map(r => String(r.id || '')));
+    let n = (rows || []).length + 1;
+    let id = String(n).padStart(2, '0');
+    while (used.has(id)) { n += 1; id = String(n).padStart(2, '0'); }
+    return id;
+  }
+  const app = createApp({
+    setup() {
+      const covOpen = reactive({
+        cameras: L.readOpen('cameras'),
+        actions: L.readOpen('actions'),
+      });
+      function persist(kind) { L.writeOpen(kind, !!covOpen[kind]); }
+      function autosizeKind(kind) {
+        const root = document.querySelector('.cov-list[data-kind="' + kind + '"]');
+        if (!root) return;
+        root.querySelectorAll('textarea.cov-text').forEach(el => L.autosize(el));
+      }
+      function toggleCovOpen(kind) {
+        covOpen[kind] = !covOpen[kind];
+        persist(kind);
+        if (covOpen[kind]) nextTick(() => autosizeKind(kind));
+      }
+      function openCovList(kind) {
+        covOpen[kind] = true;
+        persist(kind);
+        nextTick(() => autosizeKind(kind));
+      }
+      function onBlockInput(name) {
+        if (name === 'expand') window.__cov70.inputCalls += 1;
+      }
+      function onBlockBlur(name) {
+        if (name === 'expand') window.__cov70.blurCalls += 1;
+      }
+      function onCovTextInput(ev) {
+        onBlockInput('expand');
+        L.autosize(ev && ev.target);
+      }
+      function addCam() {
+        coverage.cameras.push({ id: nextId(coverage.cameras), name: '', class: 'A', frontal: false, rank: 3, text: '' });
+        onBlockInput('expand');
+      }
+      function addAct() {
+        coverage.actions.push({ id: nextId(coverage.actions), name: '', phase: 'hold', rank: 3, text: '' });
+        onBlockInput('expand');
+      }
+      function delRow(arr, i) { arr.splice(i, 1); onBlockInput('expand'); }
+      function moveRow(arr, i, dir) {
+        const k = i + dir;
+        if (k < 0 || k >= arr.length) return;
+        const tmp = arr[i];
+        arr.splice(i, 1);
+        arr.splice(k, 0, tmp);
+        onBlockInput('expand');
+      }
+      return {
+        t: window.t, coverage, covOpen, toggleCovOpen, openCovList,
+        covCamSummary: row => L.summaryCam(row, window.t),
+        covActSummary: row => L.summaryAct(row, window.t),
+        covClassOpt: cls => L.classOpt(cls, window.t),
+        onBlockInput, onBlockBlur, onCovTextInput, addCam, addAct, delRow, moveRow,
+      };
+    },
+  });
+  const vm = app.mount('#app');
+  window.__cov70.vm = vm;
+  window.__cov70.coverage = coverage;
+  window.__cov70.ready = true;
+})().catch(e => { document.body.dataset.err = String(e); throw e; });
+</script>
+</body>
+</html>

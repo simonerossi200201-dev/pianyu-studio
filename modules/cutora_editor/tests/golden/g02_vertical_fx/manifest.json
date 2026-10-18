@@ -1,0 +1,12 @@
+{
+  "case": "g02_vertical_fx",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "g01 plus word highlight, bounce box, glow, keyword, text overlay, shape, fade_in"
+}

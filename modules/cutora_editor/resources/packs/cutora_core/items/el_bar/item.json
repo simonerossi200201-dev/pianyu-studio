@@ -1,0 +1,13 @@
+{
+  "id": "el_bar",
+  "type": "element",
+  "name": "下三分之一条",
+  "license": "CUTORA-original",
+  "tags": ["lower-third", "bar"],
+  "aspect": ["9:16", "16:9"],
+  "file": "bar.svg",
+  "params": {
+    "color.primary": {"type": "color", "default": "#F2C14E", "label": "主色"},
+    "text.title": {"type": "text", "default": "标题", "label": "标题"}
+  }
+}

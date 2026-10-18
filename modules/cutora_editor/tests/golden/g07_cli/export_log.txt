@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "counts": {
+    "total": 1,
+    "produced": 1,
+    "failed": 0,
+    "workers": 1
+  },
+  "artifacts": [
+    "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g07\\字幕成品\\video_sub.mp4"
+  ],
+  "next_hint": null,
+  "human_needed": false,
+  "error": null,
+  "failed_indices": [],
+  "op": "batch_export",
+  "started_at": "2026-09-08T11:12:01+08:00",
+  "finished_at": "2026-09-08T11:12:12+08:00",
+  "result_path": "D:\\0_Dev\\CUTORA\\tests\\golden\\g07_cli\\_state\\01_batch_export.json"
+}

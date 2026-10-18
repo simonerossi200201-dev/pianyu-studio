@@ -1,0 +1,11 @@
+id = "cutora"
+name = "CUTORA 片语 Studio"
+root = 'D:\0_Dev\CUTORA'
+description = "视频剪辑、自动字幕、批量导出（PySide6 桌面软件）。自带 MCP 服务器（需在 设置→代理接口 启用）和批量 CLI。"
+rules_file = "docs/plan/queue/_RULES_FOR_EVERY_TASK.md"
+test_cmd = 'runtime\venv\Scripts\python.exe -m pytest tests -q'
+default_brain = "agy"
+private = false
+plugin = "cutora_queue"
+mcp = ['D:\0_Dev\CUTORA\cutora_mcp.bat']
+notes = "golden 基线绝对不许重录；任务书在 docs/plan/queue/；队列插件用 RUN_AGY_QUEUE.bat"

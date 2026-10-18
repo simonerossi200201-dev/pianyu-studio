@@ -1,0 +1,23 @@
+# ---- 不进版本库的东西 ----
+
+# rclone 官方二进制，78 MB，从来不改，没必要进库。
+# 它仍然留在 app\ 目录里照常使用，只是 git 不管它。
+app/rclone.exe
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 打包产物（脚本本身要进库，zip 不进）
+打包输出/*.zip
+打包输出/*.txt
+
+# 调试和手工测试用的临时目录
+_edge_dbg_profile/
+_manual_demo/
+
+# 工具自己在被改名的文件夹里生成的工程文件 / 日志
+.renamer_project.json
+上传日志_*.txt
+下载日志_*.txt
+新建文件夹日志.txt

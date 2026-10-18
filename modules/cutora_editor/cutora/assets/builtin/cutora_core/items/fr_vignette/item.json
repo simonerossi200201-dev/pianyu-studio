@@ -1,0 +1,22 @@
+{
+  "id": "fr_vignette",
+  "type": "frame",
+  "name": "圆窗",
+  "license": "CUTORA-original",
+  "tags": [
+    "frame",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "frame.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#7D9B6A",
+      "label": "主色"
+    }
+  }
+}

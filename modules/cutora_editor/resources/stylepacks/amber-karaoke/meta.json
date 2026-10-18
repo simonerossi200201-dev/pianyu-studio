@@ -1,0 +1,16 @@
+{
+  "name": "琥珀卡拉OK",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "卡拉OK"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Find its place",
+  "description_zh": "琥珀逐词高亮"
+}

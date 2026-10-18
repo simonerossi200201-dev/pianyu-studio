@@ -1,0 +1,12 @@
+{
+  "id": "fr_line",
+  "type": "frame",
+  "name": "极简线框",
+  "license": "CUTORA-original",
+  "tags": ["frame", "line"],
+  "aspect": ["9:16", "16:9"],
+  "file": "frame.svg",
+  "params": {
+    "color.primary": {"type": "color", "default": "#FFFFFF", "label": "边框色"}
+  }
+}

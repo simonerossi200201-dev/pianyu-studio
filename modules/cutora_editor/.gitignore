@@ -1,0 +1,58 @@
+runtime/
+__pycache__/
+*.pyc
+*.pyo
+user_data/
+tests/golden/_media/
+# Golden USER_DATA fixture is version-controlled (must not fall under user_data/).
+!tests/golden/_fixture_user_data/
+!tests/golden/_fixture_user_data/**
+tests/golden/**/expected.mp4
+tests/golden/**/expected_*.mp4
+*.autosave.json
+*.autosave.json.tmp
+build/dist/
+build/wheels/
+build/*.log
+build/*.wav.ps1
+.env*
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+vendor/whisperX/build/
+*.log
+*._cutora_anim.mov
+.DS_Store
+Thumbs.db
+# T04f-1d3 scan dumped 65 MB of build/mcp-sdk-venv. Do not commit.
+docs/plan/reports/T04f-1d3_security_scan.txt
+
+# UI golden 比对失败时的落图残渣，不是基线，不许入库（2026-09-21：
+# 队列 autocommit 曾把几天积下来的这些图扫进一个挂 Q36 名字的提交）
+tests/ui_golden/*/mismatch.png
+
+# 2026-10-05 清理 git status（1158 项里绝大多数是这些）：
+# build/ 是工作目录：Grok 的工作副本、MCP 的 venv、espeak、诊断输出（约 9 GB），永不入库
+build/
+# 队列运行时的日志和状态标记
+docs/plan/queue/_log/
+docs/plan/queue/_blocked/
+docs/plan/queue/_done/
+docs/plan/queue/_to_delete/
+# 测试 / 基准每跑一次就重新生成的截图、数据（已入库的那些照旧跟踪；真要入库新的用 git add -f）
+# 报告 .md 不忽略：任务报告要入库
+docs/plan/reports/**/*.png
+docs/plan/reports/**/*.jpg
+docs/plan/reports/**/*.gif
+docs/plan/reports/**/*.mp4
+docs/plan/reports/**/*.mov
+docs/plan/reports/**/*.wav
+docs/plan/reports/**/*.jsonl
+docs/plan/reports/**/*.json
+docs/plan/reports/**/*.txt
+docs/plan/reports/**/*.xml
+docs/plan/reports/**/*.py
+
+# 模型权重不进 GitHub。runtime/ 已整体忽略，本机 runtime/models 只在打包时复制进安装包。
+# whisperX 自带的 VAD 权重留在磁盘上，打包会随 vendor 目录带走，不进仓库。
+vendor/whisperX/whisperx/assets/pytorch_model.bin

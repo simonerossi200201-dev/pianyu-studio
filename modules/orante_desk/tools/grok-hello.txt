@@ -1,0 +1,2 @@
+Grok 已连通 2026-09-06 03:09:19
+Orante 2.0 是一套 Python 3.11 后端加原生 Vue 3 前端（不打包、不用 npm）的桌面流水线：FastAPI 只做 HTTP 转发，业务在 scheduler / engines / services 里算，前端只展示和收集输入。任务真相分两处——SQLite 管账号、任务列表、设置和 Job，每条任务自己的 manifest.json 管段状态与配图轨——调度器只认 Engine 抽象，按账号排队、不同账号并行，日志经 SSE 推给界面。工作区按日期/版本文件夹落盘成片，老代码原样放在 legacy 里由 services 包一层，路径一律从 orante.paths 取，界面文字走 i18n。

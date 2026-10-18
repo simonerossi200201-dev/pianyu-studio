@@ -1,0 +1,3 @@
+rem 这一行是注释，Grok 不读它。下面第一行非 rem 的内容 = 给 grok CLI 用的家目录（GROK_HOME）。
+rem 留空 / 删掉这个文件 = 用默认账号（C:\Users\Timco\.grok）。
+%USERPROFILE%\.grok-lucy

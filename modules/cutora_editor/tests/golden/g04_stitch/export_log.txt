@@ -1,0 +1,3 @@
+render 01.mp4 -> D:\0_Dev\CUTORA\tests\golden\g04_stitch\expected_00.mp4 (2.2s) err=[]
+render 02.mp4 -> D:\0_Dev\CUTORA\tests\golden\g04_stitch\expected_01.mp4 (2.2s) err=[]
+render 03.mp4 -> D:\0_Dev\CUTORA\tests\golden\g04_stitch\expected_02.mp4 (2.0s) err=[]

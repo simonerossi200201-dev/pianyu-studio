@@ -1,0 +1,13 @@
+runtime/
+secrets/
+logs/
+workspace/
+__pycache__/
+*.pyc
+.venv/
+data/
+
+tests/voice/*.wav
+tests/voice/*.webm
+secrets/
+__pycache__/

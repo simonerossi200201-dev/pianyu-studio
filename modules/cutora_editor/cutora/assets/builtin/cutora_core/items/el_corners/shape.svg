@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <path d="M48 48 H168 V88 H88 V168 H48 Z" fill="{{color.primary}}"/>
+  <path d="M464 48 H344 V88 H424 V168 H464 Z" fill="{{color.primary}}"/>
+  <path d="M48 464 H168 V424 H88 V344 H48 Z" fill="{{color.primary}}"/>
+  <path d="M464 464 H344 V424 H424 V344 H464 Z" fill="{{color.primary}}"/>
+</svg>

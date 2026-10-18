@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "counts": {
+    "groups": 3,
+    "clips": 6,
+    "encoded": 3,
+    "missing_groups": 0
+  },
+  "artifacts": [
+    "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g04_stitch\\_stitched\\拼接报告.txt",
+    "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g04_stitch\\_stitched\\01.mp4",
+    "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g04_stitch\\_stitched\\02.mp4",
+    "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g04_stitch\\_stitched\\03.mp4",
+    "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g04_stitch\\_stitched\\stitched.asproj.json"
+  ],
+  "next_hint": "下一步可 split_project 或 auto_subtitle，工程文件在 artifacts 里",
+  "human_needed": false,
+  "error": null,
+  "project": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g04_stitch\\_stitched\\stitched.asproj.json",
+  "out_dir": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g04_stitch\\_stitched",
+  "op": "stitch",
+  "started_at": "2026-09-08T11:09:40+08:00",
+  "finished_at": "2026-09-08T11:09:53+08:00",
+  "result_path": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g04_stitch\\_stitched\\_state\\01_stitch.json"
+}

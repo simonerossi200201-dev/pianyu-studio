@@ -1,0 +1,8 @@
+{
+  "ok": false,
+  "notes": [
+    "item 0 parallel==serial 2fea55c62e0936aae04b21791a8f787fba1d5c818d7bc6b44c28bab40eba0b61",
+    "item 1 parallel==serial 6daf5fca4ef5a3b726c05190ecfed983d09c7d0f9bf327c74dd787d477167fce",
+    "mismatch item 2 par=68ff9e0de4a47adec8ce44693f6303227d5dc6fe071b4cdfcd522524d634d3bb ser=8cfb622c5d5eb9d4cc533c821b030dd9d3dfac9f4c1d4a218bc9ba0db8e79444"
+  ]
+}

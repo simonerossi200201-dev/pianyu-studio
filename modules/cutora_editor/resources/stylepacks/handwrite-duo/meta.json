@@ -1,0 +1,16 @@
+{
+  "name": "叙述+手写",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "手写"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Find its place",
+  "description_zh": "叙述体 + Caveat 手写强调"
+}

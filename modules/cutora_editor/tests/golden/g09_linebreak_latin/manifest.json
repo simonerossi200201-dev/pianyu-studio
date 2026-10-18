@@ -1,0 +1,12 @@
+{
+  "case": "g09_linebreak_latin",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "EN+IT linebreak; seg3 pins known-bad last-line overflow (T04e will change this). Keyword highlight from g01 style is also in frame."
+}

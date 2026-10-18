@@ -1,0 +1,27 @@
+{
+  "id": "lt_grad",
+  "type": "lower_third",
+  "name": "渐变条",
+  "license": "CUTORA-original",
+  "tags": [
+    "lower_third",
+    "core"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "file": "bar.svg",
+  "params": {
+    "color.primary": {
+      "type": "color",
+      "default": "#B3A695",
+      "label": "主色"
+    },
+    "color.secondary": {
+      "type": "color",
+      "default": "#C8913A",
+      "label": "辅色"
+    }
+  }
+}

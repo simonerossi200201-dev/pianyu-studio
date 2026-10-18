@@ -1,0 +1,15 @@
+{
+  "case": "g17_cli_fx",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "T11g-1b fx-path mirror of g07_cli. v1 style kept; style.fx filled from color/stroke/font/bg plus mapped anim_* / fade_*.",
+  "cli_artifact": "D:\\0_Dev\\CUTORA\\tests\\golden\\_media\\g07\\字幕成品\\video_sub.mp4",
+  "mirror_of": "g07_cli",
+  "path": "fx"
+}

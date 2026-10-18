@@ -1,0 +1,82 @@
+# ============================================================================
+# 片语工作室 (Cutora LTX Studio v3.0) — Git 忽略规则 (.gitignore)
+# 严格拦截：敏感凭据、用户数据、便携运行环境、百GB大模型权重与打包产物
+# ============================================================================
+
+# 1. 敏感凭据与环境配置 (严禁入库)
+.env
+.env.*
+!.env.example
+*token*.json
+*client_secret*.json
+*credentials*.json
+rclone.conf
+*.orpreset
+*.pem
+*.key
+
+# 2. 运行时环境与大模型权重 (通过 .ltxpack 模块化分发，不入 Git 源码库)
+runtime/python/
+runtime/venv/
+runtime/comfyui/
+runtime/models/
+runtime/bin/*.exe
+runtime/bin/*.dll
+runtime/ffmpeg/
+runtime/mimalloc/
+packs/*.ltxpack
+packs/*.zip
+dist_packages/
+_backups_*/
+modules/cutora_editor/docs/plan/reports/
+modules/cutora_editor/vendor/whisperX/build/
+modules/orante_desk/specs/reports/
+modules/cutora_editor/resources/fonts/
+modules/cutora_editor/resources/fonts_pending/
+
+# 3. 深度学习权重、二进制可执行文件与大体积媒体文件后缀拦截
+*.exe
+*.dll
+*.whl
+*.safetensors
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.bin
+*.gguf
+*.mp4
+*.mov
+*.mkv
+*.wav
+*.flac
+*.zip
+*.7z
+*.tar.gz
+*.ltxpack
+*.ltxpart
+
+
+
+# 4. 本地运行时数据库、浏览器会话与日志
+data/
+logs/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+.renamer_project.json
+
+# 5. Python / IDE 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

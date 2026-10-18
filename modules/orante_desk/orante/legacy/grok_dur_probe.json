@@ -1,0 +1,952 @@
+[
+ {
+  "时间": "2026-09-08 02:42:27",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:42:29",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:43:00",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:43:28",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:43:29",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:43:30",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:43:57",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:43:59",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:44:33",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:44:55",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:45:01",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:45:04",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:45:23",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:45:25",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:46:05",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:46:27",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:46:32",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:46:34",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:46:54",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:46:57",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:47:29",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:47:57",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:47:59",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:48:07",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:48:34",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:48:37",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:48:57",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:49:25",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:49:28",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:49:33",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:50:01",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:50:03",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:50:33",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:51:01",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:51:03",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:51:04",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:51:31",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:51:34",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:52:01",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:52:28",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:52:30",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:52:30",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:52:58",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:53:00",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:53:25",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:53:53",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:53:55",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:53:56",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:54:24",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ },
+ {
+  "时间": "2026-09-08 02:54:27",
+  "想要": "15s",
+  "读到": null,
+  "探针": [
+   {
+    "label": "6s",
+    "found": false
+   },
+   {
+    "label": "10s",
+    "found": false
+   },
+   {
+    "label": "15s",
+    "found": false
+   }
+  ]
+ }
+]

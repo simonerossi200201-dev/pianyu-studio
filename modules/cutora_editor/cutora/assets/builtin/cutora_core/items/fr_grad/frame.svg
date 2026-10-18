@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <linearGradient id="g_fr_grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="{{color.primary}}"/>
+      <stop offset="1" stop-color="{{color.secondary}}"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="1032" height="1872" fill="none" stroke="url(#g_fr_grad)" stroke-width="14"/>
+</svg>

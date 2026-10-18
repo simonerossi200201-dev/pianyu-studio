@@ -1,0 +1,12 @@
+{
+  "case": "g03_horizontal_it",
+  "project": "project.asproj.json",
+  "gpu": false,
+  "workers": 1,
+  "mode": "quality",
+  "expected": [
+    "expected.mp4"
+  ],
+  "asr_frozen": true,
+  "notes": "30s horizontal IT, spatial stage + venue_ambience sfx clip frozen"
+}
