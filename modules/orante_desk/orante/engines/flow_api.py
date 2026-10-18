@@ -1620,7 +1620,7 @@ class FlowEngine(Engine):
         want = bool(silent)
         if getattr(self, "_ui_silent_state", None) is want:
             return
-        page.get_by_role("button", name="Tile grid settings").first.click(timeout=UI_CLICK_TIMEOUT)
+        page.locator('button[aria-label="Settings"], button[aria-label="Tile grid settings"]').first.click(timeout=UI_CLICK_TIMEOUT)
         sw = page.get_by_role("switch", name="Return silent videos toggle").first
         sw.wait_for(state="visible", timeout=UI_STEP_TIMEOUT)
         self._ui_pace(0.2, 0.5)
