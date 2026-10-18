@@ -1660,15 +1660,6 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                 _paint_as_backdrop(tr, "fill", lambda tr=tr: paint_one(painter, tr, w, h))
             except Exception:
                 logger.exception("整幅背景视频绘制失败")
-    if not participating:
-        for tr in overlay:
-            paint_one(painter, tr, w, h)
-        return
-
-    contain = layout_contains_sources(sp.get("layout"))
-    full = backdrop_is_full(sp) and not ext
-    bd = backdrop_spec(sp) if (contain or full) else None
-    per_cell = bool(contain and not ext and not full and bd.get("mode") == "each")
 
     # 检查是否存在跨视频带（例如主视频与副分屏视频之间夹了调整图层/文字轨）的分层分屏渲染
     later_cids: set[str] = set()
@@ -1687,25 +1678,82 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
     except Exception:
         later_cids = set()
 
+    # 构建格子 -> 轨道映射：
+    # 1. 绝不让超出当前布局格子数（或未分配格子）的普通视频轨道全屏盖在分屏最上方（否则会遮挡整个分屏！）
+    # 2. 若布局有空闲格子（如从 2 格切到 4/5/6/9 格），优先由溢出/未分配轨道补位；若仍有多余空格，则用副屏轨道循环补满，杜绝黑洞。
+    all_cell_ids = [str(c.get("id")) for c in (sp.get("cells") or []) if c.get("id")]
+    valid_cell_set = set(all_cell_ids)
+    cell_renders: list[tuple[str, object]] = []
+    assigned_cids: set[str] = set()
+    overflow_tracks: list = []
+    fullscreen_overlays: list = []
+    for tr in participating:
+        cid = str(getattr(tr, "split_cell") or "")
+        if cid in valid_cell_set and cid not in assigned_cids:
+            cell_renders.append((cid, tr))
+            assigned_cids.add(cid)
+        else:
+            overflow_tracks.append(tr)
+    for tr in overlay:
+        if getattr(tr, "_force_fullscreen_overlay", False):
+            fullscreen_overlays.append(tr)
+        else:
+            overflow_tracks.append(tr)
+
+    if not cell_renders and overflow_tracks and all_cell_ids:
+        for cid in all_cell_ids:
+            if cid in later_cids or not overflow_tracks:
+                continue
+            tr_fill = overflow_tracks.pop(0)
+            cell_renders.append((cid, tr_fill))
+            assigned_cids.add(cid)
+
+    if not cell_renders:
+        for tr in overlay:
+            paint_one(painter, tr, w, h)
+        return
+
+    sec_pool = [tr for cid, tr in cell_renders if cid != "A"] or [tr for _cid, tr in cell_renders]
+    sec_cycle_idx = 0
+    for cid in all_cell_ids:
+        if cid in assigned_cids or cid in later_cids:
+            continue
+        if overflow_tracks:
+            tr_fill = overflow_tracks.pop(0)
+            cell_renders.append((cid, tr_fill))
+            assigned_cids.add(cid)
+        elif not later_cids and sec_pool:
+            tr_fill = sec_pool[sec_cycle_idx % len(sec_pool)]
+            sec_cycle_idx += 1
+            cell_renders.append((cid, tr_fill))
+            assigned_cids.add(cid)
+
+    active_tracks = [tr for _cid, tr in cell_renders]
+    contain = layout_contains_sources(sp.get("layout"))
+    full = backdrop_is_full(sp) and not ext
+    bd = backdrop_spec(sp) if (contain or full) else None
+    per_cell = bool(contain and not ext and not full and bd.get("mode") == "each")
+
     if is_record_only:
         # Q180 解码线程快路：只按相同顺序调用 paint_one 取帧登记，不做离屏图填充、镜头模糊、遮罩合成和边框绘制
-        if bottom and full and participating:
-            src_tr = _full_source_track(sp, bd, participating)
+        if bottom and full and active_tracks:
+            src_tr = _full_source_track(sp, bd, active_tracks)
             try:
                 _paint_as_backdrop(src_tr, "fill", lambda: paint_one(painter, src_tr, w, h))
             except Exception:
                 pass
-        elif bottom and contain and participating and not per_cell and not ext:
+        elif bottom and contain and active_tracks and not per_cell and not ext:
             try:
-                _paint_as_backdrop(participating[0], "fill", lambda: paint_one(painter, participating[0], w, h))
+                _paint_as_backdrop(active_tracks[0], "fill", lambda: paint_one(painter, active_tracks[0], w, h))
             except Exception:
                 pass
-        still_overlay = []
-        for tr in participating:
-            cid = str(getattr(tr, "split_cell"))
+        seen_rec: set[int] = set()
+        for cid, tr in cell_renders:
+            if id(tr) in seen_rec:
+                continue
+            seen_rec.add(id(tr))
             cell = cell_by_id(sp, cid)
             if cell is None:
-                still_overlay.append(tr)
                 continue
             _x, _y, cw, ch = _content_box(cell, w, h)
             if per_cell:
@@ -1717,16 +1765,15 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                 _call_with_fit(tr, "fit", lambda tr=tr, cw=cw, ch=ch: paint_one(painter, tr, cw, ch))
             else:
                 paint_one(painter, tr, cw, ch)
-        overlay.extend(still_overlay)
-        for tr in overlay:
+        for tr in fullscreen_overlays:
             paint_one(painter, tr, w, h)
         return
 
     from PySide6.QtCore import QPoint
     cache = get_cache(sp, w, h, _normed=True)
     off, cells = _thread_scratch(cache)
-    want_plate = bool((bottom and full and participating) or (bottom and contain and participating and not per_cell and not ext))
-    direct_band = bool(later_cids and len(participating) == 1 and not want_plate)
+    want_plate = bool((bottom and full and active_tracks) or (bottom and contain and active_tracks and not per_cell and not ext))
+    direct_band = bool(later_cids and len(cell_renders) == 1 and not want_plate)
     op = None
     if not direct_band:
         off.fill(0)
@@ -1741,16 +1788,16 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
             op.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
             op.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         plate_img = None
-        if bottom and full and participating:
+        if bottom and full and active_tracks:
             # Q155 单个视频撑满：整幅垫「一格」那条视频的模糊，任何布局都行
             from PySide6.QtGui import QImage
-            src_tr = _full_source_track(sp, bd, participating)
+            src_tr = _full_source_track(sp, bd, active_tracks)
             try:
                 plate_img = _blur_plate(src_tr, w, h, paint_one, bd)
             except Exception:
                 logger.exception("单个视频撑满的整幅背景绘制失败")
                 plate_img = None
-        elif bottom and contain and participating and not per_cell and not ext:
+        elif bottom and contain and active_tracks and not per_cell and not ext:
             # 整幅底单独画一张，格子都拼完了再垫到后面（DestinationOver）。
             from PySide6.QtGui import QImage
             plate_img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
@@ -1758,20 +1805,16 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
             pp = QPainter(plate_img)
             try:
                 pp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-                _paint_contain_plate(pp, participating[0], w, h, paint_one, bd)
+                _paint_contain_plate(pp, active_tracks[0], w, h, paint_one, bd)
             except Exception:
                 logger.exception("左右完整分屏的模糊背景绘制失败")
                 plate_img = None
             finally:
                 pp.end()
-        still_overlay = []
-        part_cids = {str(getattr(t, "split_cell")) for t in participating if getattr(t, "split_cell", None)}
-        for tr in participating:
-            cid = str(getattr(tr, "split_cell"))
+        part_cids = {cid for cid, _tr in cell_renders}
+        for cid, tr in cell_renders:
             geom = cells.get(cid)
             if geom is None or cell_by_id(sp, cid) is None:
-                logger.warning("轨道 %s 格子 %s 不存在，改全屏叠最上", getattr(tr, "id", ""), cid)
-                still_overlay.append(tr)
                 continue
             layer = geom["layer"]
             use_lazy = bool(lazy_clear and not per_cell)
@@ -1840,7 +1883,6 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
             else:
                 _blit_masked(op, layer, geom["origin"], geom["mask"], geom["scratch"],
                              spans=geom.get("spans"))
-        overlay.extend(still_overlay)
         if op is not None:
             if plate_img is not None:
                 op.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOver)
@@ -1858,8 +1900,9 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
             quiet.__exit__(None, None, None)
     if op is not None:
         painter.drawImage(0, 0, off)
-    for tr in overlay:
+    for tr in fullscreen_overlays:
         paint_one(painter, tr, w, h)
+
 
 
 def border_style(split) -> str:

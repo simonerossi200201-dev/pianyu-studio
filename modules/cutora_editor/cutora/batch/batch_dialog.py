@@ -495,7 +495,13 @@ def build_batch_dialog(parent):
     _busy_report(0.72, "视频设置")
     # —— 视频（Q143：只在「视频」分页显示）——
     from cutora.batch.split_assign import (
-        BORDER_LABELS, SPLIT_CHOICES, SPLIT_DEFAULT_LAYOUT, layout_cells, layout_label,
+        BORDER_LABELS,
+        SPLIT_CHOICES,
+        SPLIT_DEFAULT_LAYOUT,
+        SPLIT_RANDOM_BY_COUNT,
+        assign_random_split_for_task,
+        layout_cells,
+        layout_label,
     )
     vprop_host, vprop_lay = _group("视频")
     vprop_form = _form()
@@ -507,9 +513,20 @@ def build_batch_dialog(parent):
     vprop_form.addRow(ck_vmute)
     ck_split = QCheckBox("同时开分屏")
     ck_split.setToolTip(
-        "原视频和插入的视频各占一格。默认上下分屏；\n"
-        "开完可以在右边预览里直接拖分界线，或者到「中央监视器」里逐条微调。")
+        "原视频和插入的视频各占一格。\n"
+        "勾选下方「按视频数随机分配不同样式」即可根据每条视频对应的轨道数量自动随机分配不重复的分屏形式，避免雷同！")
     vprop_form.addRow(ck_split)
+    ck_split_random = QCheckBox("🎲 按每条视频对应数量随机分配不同分屏样式（防雷同）")
+    ck_split_random.setChecked(True)
+    ck_split_random.setToolTip(
+        "开启后，软件会根据每条任务实际对应的视频数量（如 1主+2副、1主+3副、1主+4副），\n"
+        "从 20+ 种对应格子数的分屏样式库中不重复地随机分配，并随机打乱副屏顺序，最大程度避免视频形式雷同！")
+    vprop_form.addRow(ck_split_random)
+    btn_reroll_split = QPushButton("🎲 立即按视频数随机重排所选视频的分屏样式")
+    btn_reroll_split.setObjectName("btnSecondary")
+    btn_reroll_split.setToolTip(
+        "无需重新导入视频，直接对当前勾选的视频（若未勾选则对全部多轨视频）按各自视频轨道数量随机分配不重复的分屏样式！")
+    vprop_form.addRow(btn_reroll_split)
     cb_split = QComboBox()
     from cutora.batch.split_assign import LAYOUT_HINTS
     for lay in SPLIT_CHOICES:
@@ -517,7 +534,7 @@ def build_batch_dialog(parent):
         if lay in LAYOUT_HINTS:
             cb_split.setItemData(cb_split.count() - 1, LAYOUT_HINTS[lay],
                                  Qt.ItemDataRole.ToolTipRole)
-    cb_split.setCurrentIndex(max(0, cb_split.findData(SPLIT_DEFAULT_LAYOUT)))
+    cb_split.setCurrentIndex(max(0, cb_split.findData(SPLIT_RANDOM_BY_COUNT)))
     vprop_form.addRow("分屏布局", _fixed(cb_split, COMBO_W))
     # Q151：左右完整的模糊背景（抖音那种两条并排、空处垫虚化）
     from cutora.render.split_layout import NEW_BACKDROP
@@ -572,10 +589,14 @@ def build_batch_dialog(parent):
 
     def _sync_split_enabled(_on=None):
         on = ck_split.isChecked()
+        is_rand = bool(ck_split_random.isChecked())
+        ck_split_random.setEnabled(on)
         from cutora.render.split_layout import CONTAIN_LAYOUTS
-        contain = on and (cb_split.currentData() in CONTAIN_LAYOUTS)
+        contain = on and (cb_split.currentData() in CONTAIN_LAYOUTS or is_rand)
         blur_on = contain or (on and cb_backdrop.currentData() == "full")
-        for w, en in ([(w, on) for w in split_rows] + [(cb_backdrop, on)]
+        for w, en in ([(cb_split, on), (cb_cell_main, on and not is_rand), (cb_cell_ins, on and not is_rand),
+                       (cb_border, on), (sp_border_w, on), (sp_feather, on)]
+                      + [(cb_backdrop, on)]
                       + [(sp_backdrop_blur, blur_on)]):
             w.setEnabled(en)
             holder = w.parentWidget()          # _fixed() 包的那一层
@@ -584,9 +605,12 @@ def build_batch_dialog(parent):
                 lab.setEnabled(en)
 
     _prefs = _load_split_prefs()
-    _i = cb_split.findData(_prefs.get("layout"))
-    if _i >= 0:
-        cb_split.setCurrentIndex(_i)
+    _saved_lay = _prefs.get("layout")
+    if _saved_lay:
+        _i = cb_split.findData(_saved_lay)
+        if _i >= 0:
+            cb_split.setCurrentIndex(_i)
+            ck_split_random.setChecked(_saved_lay == SPLIT_RANDOM_BY_COUNT)
     _bm = _prefs.get("backdrop_mode")
     _i = cb_backdrop.findData("full" if _bm == "first" else _bm)     # 老偏好 first = 整幅垫原视频
     if _i >= 0:
@@ -602,9 +626,81 @@ def build_batch_dialog(parent):
                            "backdrop_mode": cb_backdrop.currentData(),
                            "backdrop_blur": int(sp_backdrop_blur.value())})
 
-    cb_split.currentIndexChanged.connect(_refill_cells)
-    cb_split.currentIndexChanged.connect(_sync_split_enabled)
-    cb_split.currentIndexChanged.connect(_remember_split)
+    def _on_split_combo_changed(_idx=0):
+        cur_lay = cb_split.currentData()
+        ck_split_random.blockSignals(True)
+        ck_split_random.setChecked(cur_lay == SPLIT_RANDOM_BY_COUNT)
+        ck_split_random.blockSignals(False)
+        _refill_cells()
+        _sync_split_enabled()
+        _remember_split()
+
+    def _on_split_random_toggled(checked: bool):
+        cb_split.blockSignals(True)
+        if checked:
+            idx_r = cb_split.findData(SPLIT_RANDOM_BY_COUNT)
+            if idx_r >= 0:
+                cb_split.setCurrentIndex(idx_r)
+        elif cb_split.currentData() == SPLIT_RANDOM_BY_COUNT:
+            idx_d = cb_split.findData(SPLIT_DEFAULT_LAYOUT)
+            if idx_d >= 0:
+                cb_split.setCurrentIndex(idx_d)
+        cb_split.blockSignals(False)
+        _refill_cells()
+        _sync_split_enabled()
+        _remember_split()
+
+    def _reroll_selected_splits():
+        target_tasks = picker.selected_tasks() or list(getattr(parent, "tasks", None) or [])
+        if not target_tasks:
+            QMessageBox.information(dlg, "没有视频任务", "当前工程里没有可设置分屏的视频。")
+            return
+        from cutora.render.split_layout import _collect_video_tracks_for_split
+        used_hist: list[str] = []
+        changed = 0
+        bd_cfg = {"mode": cb_backdrop.currentData() or "each",
+                  "blur": float(sp_backdrop_blur.value()),
+                  "style": "lens"}
+        b_cfg = None
+        if (cb_border.currentData() or "none") != "none":
+            b_cfg = {"style": cb_border.currentData(), "width_px": int(sp_border_w.value())}
+        f_val = float(sp_feather.value()) if sp_feather.value() > 0 else None
+        dlg.log("==== 🎲 按每条视频轨道数量随机分配不同分屏样式 ====")
+        for t_item in target_tasks:
+            v_trs = _collect_video_tracks_for_split(t_item)
+            if len(v_trs) < 2:
+                continue
+            res = assign_random_split_for_task(
+                t_item, v_trs,
+                used_history=used_hist,
+                border=b_cfg,
+                feather_px=f_val,
+                backdrop=bd_cfg,
+                shuffle_cells=True,
+            )
+            changed += 1
+            vname = os.path.basename(t_item.get("video") or "?")
+            dlg.log("  %s（%d条视频轨）→ %s" % (vname, res["n_videos"], res["style_label"]))
+        if changed == 0:
+            QMessageBox.information(
+                dlg, "未发现多轨视频",
+                "所选视频目前只有 1 条主视频轨，请先通过「连线导入」或「插入到所选视频」加载副屏视频后再分配分屏。")
+            return
+        if hasattr(parent, "refresh_ui") and getattr(parent, "curr_idx", -1) >= 0:
+            parent.refresh_ui()
+        if hasattr(parent, "timeline"):
+            parent.timeline.update()
+        if hasattr(parent, "video_canvas"):
+            parent.video_canvas.update()
+        _paint_background()
+        canvas.update()
+        QMessageBox.information(
+            dlg, "随机分屏分配完成",
+            "已按每条视频实际对应的轨道数量，为 %d 条视频随机分配了各不相同的分屏样式！" % changed)
+
+    cb_split.currentIndexChanged.connect(_on_split_combo_changed)
+    ck_split_random.toggled.connect(_on_split_random_toggled)
+    btn_reroll_split.clicked.connect(_reroll_selected_splits)
     cb_backdrop.currentIndexChanged.connect(_remember_split)
     cb_backdrop.currentIndexChanged.connect(_sync_split_enabled)
     sp_backdrop_blur.valueChanged.connect(_remember_split)
@@ -615,8 +711,10 @@ def build_batch_dialog(parent):
     def split_params():
         if not ck_split.isChecked():
             return None
+        is_rand = bool(ck_split_random.isChecked()) or (cb_split.currentData() == SPLIT_RANDOM_BY_COUNT)
         return {
-            "layout": cb_split.currentData() or SPLIT_DEFAULT_LAYOUT,
+            "layout": SPLIT_RANDOM_BY_COUNT if is_rand else (cb_split.currentData() or SPLIT_DEFAULT_LAYOUT),
+            "random_by_count": is_rand,
             "main_cell": cb_cell_main.currentData(),
             "insert_cell": cb_cell_ins.currentData(),
             "border": {"style": cb_border.currentData() or "none",
@@ -630,6 +728,8 @@ def build_batch_dialog(parent):
     vprop_host.setVisible(False)
     dlg.vprop_host = vprop_host
     dlg.ck_split = ck_split
+    dlg.ck_split_random = ck_split_random
+    dlg.btn_reroll_split = btn_reroll_split
     dlg.cb_split = cb_split
     dlg.cb_cell_main = cb_cell_main
     dlg.cb_cell_ins = cb_cell_ins

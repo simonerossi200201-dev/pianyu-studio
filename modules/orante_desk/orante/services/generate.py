@@ -1338,6 +1338,8 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
         return added
 
     def try_auto_refill(p: str) -> bool:
+        if not config.get("expand.auto_refill", True):
+            return False
         im = m.image(p)
         if not im:
             return False

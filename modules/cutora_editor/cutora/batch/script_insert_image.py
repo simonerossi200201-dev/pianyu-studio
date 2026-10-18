@@ -939,6 +939,7 @@ def insert_into_tasks(
 
     placed = 0
     per_task = []
+    used_split_history: list[str] = []
     for task in tasks:
         name = os.path.basename(task.get("video") or "?")
         dur = task_duration(task, host)
@@ -984,17 +985,36 @@ def insert_into_tasks(
                 loop=bool(video_loop), mute=bool(video_mute), blend=blend,
                 replace=replace)
             if split:
-                from cutora.batch.split_assign import assign_split, layout_cells
+                from cutora.batch.split_assign import (
+                    SPLIT_RANDOM_BY_COUNT,
+                    assign_random_split_for_task,
+                    assign_split,
+                    layout_cells,
+                )
                 from cutora.batch.link_import import main_video_track
                 lay = split.get("layout") or "top_bottom"
-                cells = layout_cells(lay)
-                main_cell = split.get("main_cell") or cells[0]
-                ins_cell = split.get("insert_cell") or (cells[1] if len(cells) > 1 else cells[0])
-                order = [c for c in (main_cell, ins_cell) if c in cells]
-                assign_split(
-                    task, lay, [main_video_track(tl), placed_track][:len(order)],
-                    border=split.get("border"), feather_px=split.get("feather"),
-                    cells=order, backdrop=split.get("backdrop"))
+                if lay == SPLIT_RANDOM_BY_COUNT or split.get("random_by_count"):
+                    res_sp = assign_random_split_for_task(
+                        task, None,
+                        used_history=used_split_history,
+                        border=split.get("border"),
+                        feather_px=split.get("feather"),
+                        backdrop=split.get("backdrop"),
+                        shuffle_cells=True,
+                    )
+                    if log:
+                        log("    🎲 随机分屏（%d条视频轨）→ %s" % (
+                            res_sp.get("n_videos", 2), res_sp.get("style_label", lay)))
+                else:
+                    cells = layout_cells(lay)
+                    main_cell = split.get("main_cell") or cells[0]
+                    ins_cell = split.get("insert_cell") or (cells[1] if len(cells) > 1 else cells[0])
+                    order = [c for c in (main_cell, ins_cell) if c in cells]
+                    assign_split(
+                        task, lay, [main_video_track(tl), placed_track][:len(order)],
+                        border=split.get("border"), feather_px=split.get("feather"),
+                        cells=order, backdrop=split.get("backdrop"),
+                        used_history=used_split_history)
         elif animated:
             fps = 30.0
             if tl is not None:

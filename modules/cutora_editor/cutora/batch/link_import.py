@@ -181,9 +181,11 @@ def _place_group(tl, paths, *, host_dur, loop, match_duration, mute, name="", co
 
 def pick_split_layout(layout, n_groups: int, auto_three: bool = True) -> str:
     """根据连入的外部视频组数自动匹配一对多分屏（主视频占最大画面，外部视频依次排布，无数量上限）。"""
-    from cutora.batch.split_assign import SPLIT_DEFAULT_LAYOUT
+    from cutora.batch.split_assign import SPLIT_DEFAULT_LAYOUT, SPLIT_RANDOM_BY_COUNT
     from cutora.render.split_layout import parse_1_to_n
     lay = layout or SPLIT_DEFAULT_LAYOUT
+    if lay == SPLIT_RANDOM_BY_COUNT:
+        return SPLIT_RANDOM_BY_COUNT
     n = int(n_groups)
     if not auto_three or n < 1:
         return lay
@@ -215,6 +217,7 @@ def apply_plan(plan, tasks, *, host=None, loop=False, match_duration=True,
 
     ``split_layout`` 给了就顺便开分屏：原视频那条轨进第一格，新建的轨道依次进后面的格子
     （``split_cells`` 可指定格子顺序）。一条媒体正好两组、布局还是默认上下 → 自动「上 1 下 2」。
+    若 ``split_layout == "random_by_count"``，则按每条视频实际轨道数不重复地随机分配分屏样式。
     格子不够的轨道不分格子，计在 ``split_skipped``。``split_b`` 是老参数 = 上下。
 
     返回 {"tasks":n, "tracks":n, "clips":n, "groups":n, "split_skipped":n}。
@@ -225,6 +228,7 @@ def apply_plan(plan, tasks, *, host=None, loop=False, match_duration=True,
         split_layout = "top_bottom"
     split_b = bool(split_layout)
     n_tasks = n_tracks = n_clips = n_groups = n_split_skipped = 0
+    used_split_history: list[str] = []
     for row in plan or []:
         task = tasks[row["task_index"]]
         tl = _timeline_of(task, host)
@@ -253,21 +257,24 @@ def apply_plan(plan, tasks, *, host=None, loop=False, match_duration=True,
         if groups:
             n_tasks += 1
         if split_b and new_tracks:
-            from cutora.batch.split_assign import assign_split, layout_label
+            from cutora.batch.split_assign import SPLIT_RANDOM_BY_COUNT, assign_split, layout_label
             lay = pick_split_layout(split_layout, len(new_tracks), auto_three)
             cells = None
-            if split_cells and lay == split_layout:
+            if split_cells and lay == split_layout and lay != SPLIT_RANDOM_BY_COUNT:
                 from cutora.batch.split_assign import layout_cells
                 allc = layout_cells(lay)
                 cells = [c for c in split_cells if c in allc] + [c for c in allc if c not in split_cells]
             res = assign_split(task, lay, [main_tr] + new_tracks,
                                border=split_border, feather_px=split_feather,
-                               cells=cells, backdrop=split_backdrop)
+                               cells=cells, backdrop=split_backdrop,
+                               used_history=used_split_history)
             n_split_skipped += int(res["skipped"])
             if log:
+                style_desc = res.get("style_label") or layout_label(res["layout"])
                 log("  %s  分屏（%s）：%s" % (
                     os.path.basename(task.get("video") or "?"),
-                    layout_label(res["layout"]),
+                    style_desc,
                     "、".join("%s 屏" % c for c in res["assigned"])))
     return {"tasks": n_tasks, "tracks": n_tracks, "clips": n_clips, "groups": n_groups,
             "split_skipped": n_split_skipped}
+

@@ -620,6 +620,10 @@ class PreviewEngine:
                     with folder_task_scope(task):
                         paint_parent_matted(d2, _w, _h, _own, _mattes, _one, _blend, task)
                     return
+                if not _own:
+                    if getattr(d2, "_split_drew", None) is None:
+                        d2._split_drew = False
+                    return
                 if len(_own or []) != 1:
                     _limg = getattr(d2, "_split_layer_img", None)
                     if _limg is not None:

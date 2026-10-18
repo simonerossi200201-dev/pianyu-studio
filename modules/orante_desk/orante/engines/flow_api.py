@@ -61,6 +61,7 @@ MODEL_FAMILY = {
     "Veo 3.1 - Lite": ("lite", ""),
     "Veo 3.1 - Fast": ("fast", ""),
     "Veo 3.1 - Quality": ("", ""),
+    "Omni 1.1 Flash": ("omni", ""),
 }
 # 生图模型 key（0907 抓包核对）：GEM_PIX_2 = Nano Banana Pro（默认）、NARWHAL = Nano Banana 2。
 # 两个在 Flow 里 UI 都写 0 crediti。Nano Banana 2 Lite 的 id 等 C 节抓包后再加白名单。
@@ -269,6 +270,7 @@ def request_audio_flag(post_data: str) -> int | None:
 def _model_label(s: str) -> str:
     """模型名比对用：去掉下拉箭头的图标字、前面的 🍌 之类符号、多余空白。"""
     s = _norm_prompt((s or "").replace("arrow_drop_down", ""))
+    s = re.sub(r"^(?:volume_up|videocam|image|check)\b\s*", "", s, flags=re.I)
     return re.sub(r"^[^\w\[]+", "", s).strip()
 
 
@@ -1695,8 +1697,10 @@ class FlowEngine(Engine):
         self._ui_pace(0.2, 0.5)
         # 图片模型的选项前面带个 🍌，按"去掉前面的符号后完全相等"来认，
         # 免得「Nano Banana 2」认成「Nano Banana 2 Lite」
-        pat = re.compile(r"^\W*" + re.escape(_model_label(model_name)) + r"\s*$", re.I)
-        opt = page.get_by_role("option", name=pat)
+        pat = re.compile(r"^(?:volume_up\s+|image\s+|videocam\s+|\W*)*" + re.escape(_model_label(model_name)) + r"\s*$", re.I)
+        opt = page.get_by_role("menuitem", name=pat)
+        if opt.count() == 0:
+            opt = page.get_by_role("option", name=pat)
         if opt.count() == 0:
             opt = page.get_by_text(pat)
         opt.first.click(timeout=UI_CLICK_TIMEOUT)

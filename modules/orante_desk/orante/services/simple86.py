@@ -7,8 +7,8 @@ from pathlib import Path
 from ..errors import OranteError
 
 SILENT_DEFAULT = (
-    "画面中的人物全程不说话、没有对白，嘴唇保持闭合；可以有自然的表情、眨眼和细微的动作。\n"
-    "No dialogue. The person does not speak; lips stay closed. Natural expressions and subtle movements only."
+    "画面中的人物全程安静聆听、绝不说话、没有任何对白；除嘴部保持安静不说话（不做任何说话口型）外，人物的眼神、眨眼、点头、呼吸与手部姿态均真实自然生动，绝不僵硬定格。\n"
+    "Strictly no speaking and no dialogue; the person's mouth stays calm and silent without talking or mouthing words, while their gaze, blinking, gentle nodding, breathing, and relaxed hand movements are completely natural and lifelike."
 )
 
 

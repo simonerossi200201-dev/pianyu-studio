@@ -2462,7 +2462,7 @@ class DailyWorkflowConductor:
         return True
 
     def launch_cutora_room(self, room: str = "stitch", project_path: str = "") -> bool:
-        """打开《CUTORA》并直接加载指定工程或进入目标房间（若已在运行则优先通过 API 或窗口激活）。"""
+        """打开《CUTORA》并直接加载指定工程或进入目标房间（单实例限制：若已在运行则绝不重复启动进程）。"""
         cutora_dir = STUDIO_ROOT / "modules" / "cutora_editor"
         if not cutora_dir.is_dir():
             return False
@@ -2474,12 +2474,27 @@ class DailyWorkflowConductor:
             if cand_proj.is_file():
                 proj_str = str(cand_proj)
 
+        # 单实例内核互斥锁检查：若 CUTORA 已在运行，绝不再启动第二个进程
+        if os.name == "nt":
+            try:
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                h = kernel32.OpenMutexW(0x00100000, False, "Local\\CUTORA_SingleInstance_Mutex_v1")
+                if h:
+                    kernel32.CloseHandle(h)
+                    if proj_str and Path(proj_str).is_file():
+                        self.call_cutora_api("project.open", {"path": str(Path(proj_str).resolve())})
+                    self.call_cutora_api("ui.focus", {"panel": "preview"})
+                    return False
+            except Exception:
+                pass
+
         # 若本地 API 已开启，直接通过 HTTP API 打开工程并聚焦窗口
         if proj_str and Path(proj_str).is_file():
             api_res = self.call_cutora_api("project.open", {"path": str(Path(proj_str).resolve())})
             if api_res.get("ok"):
                 self.call_cutora_api("ui.focus", {"panel": "preview"})
-                return True
+                return False
 
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"

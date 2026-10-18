@@ -2876,8 +2876,28 @@ class PropertyPanel(QWidget):
         on = bool(sp.get("enabled")) if task is not None else False
         self.trk_split_enable.setChecked(on)
         layout = str(sp.get("layout") or "top_bottom")
+        btn_layout_key = layout
+        if btn_layout_key not in self.trk_split_layout_btns:
+            if btn_layout_key.startswith("center_h_tilt"):
+                btn_layout_key = "center_h_tilt"
+            elif btn_layout_key.startswith("center_h"):
+                btn_layout_key = "center_h"
+            elif btn_layout_key.startswith("l_left"):
+                btn_layout_key = "l_left2_bottom3"
+            elif btn_layout_key.startswith("hex_center") or btn_layout_key.startswith("poly_center"):
+                btn_layout_key = "hex_center_4"
+            elif btn_layout_key.startswith("shutter"):
+                btn_layout_key = "shutter_4"
+            elif btn_layout_key.startswith("shape_heart"):
+                btn_layout_key = "shape_heart_3"
+            elif btn_layout_key.startswith("shape_dove"):
+                btn_layout_key = "shape_dove_3"
+            elif btn_layout_key.startswith("shape_clover"):
+                btn_layout_key = "shape_clover_3"
+            elif btn_layout_key.startswith("shape_olive"):
+                btn_layout_key = "shape_olive_3"
         for key, btn in self.trk_split_layout_btns.items():
-            btn.setChecked(key == layout)
+            btn.setChecked(key == btn_layout_key)
         if hasattr(self, "trk_custom_split_box"):
             is_custom = (layout == "custom") or str(sp.get("custom_kind") or "") != ""
             self.trk_custom_split_box.setVisible(True)

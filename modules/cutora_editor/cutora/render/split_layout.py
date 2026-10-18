@@ -399,6 +399,18 @@ def _div(did, axis, pos, **extra):
     return d
 
 
+def _shape_extent_factor(shape: str | None, sides: int = 6) -> float:
+    """异形气泡（心形、和平鸽、橄榄叶、蝴蝶、五角星等）的极径峰值可达 1.25~1.28 * r，
+    为 cell['circle'] 乘以扩展系数，保证内容框完全覆盖异形边角，绝不出现裁切黑边。
+    """
+    sh = str(shape or "circle")
+    if sh == "circle":
+        return 1.0
+    if sh in ("polygon", "pentagon", "hexagon", "octagon", "diamond") and int(sides or 6) >= 24:
+        return 1.05
+    return 1.30
+
+
 def _circle_preset_geometry(
     mode: str,
     n: int,
@@ -416,6 +428,7 @@ def _circle_preset_geometry(
     if sh not in SPLIT_SHAPES:
         sh = "circle"
     n_sides = int(sides) if sides is not None else SHAPE_DEFAULT_SIDES.get(sh, 6)
+    ext_f = _shape_extent_factor(sh, n_sides)
     sec_ids = [cell_id_for_index(1 + i) for i in range(n)]
     cells = [_cell("A", 0.0, 0.0, 1.0, 1.0)]
     dividers = []
@@ -426,7 +439,8 @@ def _circle_preset_geometry(
             cy = 0.5 if n == 1 else (span_y0 + (span_y1 - span_y0) * i / float(n - 1))
             cx = 0.78 - (0.04 if (n >= 3 and i % 2 == 1) else 0.0)
             r = max(0.06, min(0.34, base_r))
-            cells.append(_cell(cid, max(0.0, cx - r), max(0.0, cy - r), min(1.0, 2 * r), min(1.0, 2 * r), circle=[cx, cy, r]))
+            cr = min(0.48, r * ext_f)
+            cells.append(_cell(cid, max(0.0, cx - cr), max(0.0, cy - cr), min(1.0, 2 * cr), min(1.0, 2 * cr), circle=[cx, cy, cr]))
             dividers.append(_div(
                 "d%d" % (i + 1), "circle", cy,
                 cx=cx, cy=cy, r=r, shape=sh, sides=n_sides,
@@ -452,7 +466,8 @@ def _circle_preset_geometry(
                 cy = 0.55 + 0.28 * math.sin(ang)
                 scale = 0.9
             r = max(0.06, min(0.34, base_r * scale))
-            cells.append(_cell(cid, max(0.0, cx - r), max(0.0, cy - r), min(1.0, 2 * r), min(1.0, 2 * r), circle=[cx, cy, r]))
+            cr = min(0.48, r * ext_f)
+            cells.append(_cell(cid, max(0.0, cx - cr), max(0.0, cy - cr), min(1.0, 2 * cr), min(1.0, 2 * cr), circle=[cx, cy, cr]))
             dividers.append(_div(
                 "d%d" % (i + 1), "circle", cy,
                 cx=cx, cy=cy, r=r, shape=sh, sides=n_sides,
@@ -466,7 +481,8 @@ def _circle_preset_geometry(
         cx = 0.5 if n == 1 else (span_x0 + (span_x1 - span_x0) * i / float(n - 1))
         cy = 0.76 - (0.035 if (n >= 3 and i % 2 == 1) else 0.0)
         r = max(0.06, min(0.34, base_r))
-        cells.append(_cell(cid, max(0.0, cx - r), max(0.0, cy - r), min(1.0, 2 * r), min(1.0, 2 * r), circle=[cx, cy, r]))
+        cr = min(0.48, r * ext_f)
+        cells.append(_cell(cid, max(0.0, cx - cr), max(0.0, cy - cr), min(1.0, 2 * cr), min(1.0, 2 * cr), circle=[cx, cy, cr]))
         dividers.append(_div(
             "d%d" % (i + 1), "circle", cy,
             cx=cx, cy=cy, r=r, shape=sh, sides=n_sides,
@@ -634,24 +650,28 @@ def _blade_sector_rect(cx: float, cy: float, r: float, idx: int, count: int, twi
     a0 = -math.pi + 2.0 * math.pi * idx / float(m) + rot_rad
     a1 = -math.pi + 2.0 * math.pi * (idx + 1) / float(m) + rot_rad
     xs, ys = [], []
-    for s in range(9):
-        ang = a0 + (a1 - a0) * (s / 8.0)
-        xs.append(max(0.0, min(1.0, cx + r * 0.75 * math.cos(ang))))
-        ys.append(max(0.0, min(1.0, cy + r * 0.75 * math.sin(ang))))
-        for dist in (0.45, 0.85):
-            ang_out = ang + tau * (dist / 0.85)
-            xs.append(max(0.0, min(1.0, cx + dist * math.cos(ang_out))))
-            ys.append(max(0.0, min(1.0, cy + dist * math.sin(ang_out))))
-    x0, x1 = max(0.0, min(xs) - 0.04), min(1.0, max(xs) + 0.04)
-    y0, y1 = max(0.0, min(ys) - 0.04), min(1.0, max(ys) + 0.04)
-    if x1 - x0 < 0.30:
+    # 在 9:16 竖屏或 16:9 横屏下，采样从内圈孔径边缘 (s=0) 到画布四角 (s=1.2) 的完整螺旋扇区包络
+    for s_step in range(13):
+        s_frac = s_step / 10.0  # 0.0 .. 1.2
+        ang_shift = tau * s_frac
+        for a_step in range(13):
+            ang = a0 + (a1 - a0) * (a_step / 12.0) + ang_shift
+            ca, sa_v = math.cos(ang), math.sin(ang)
+            for rx_scale, ry_scale in ((1.0, 1.0), (1.0, 0.56), (0.56, 1.0)):
+                rad_x = (r * 0.65 + s_frac * 0.75) * rx_scale
+                rad_y = (r * 0.65 + s_frac * 0.75) * ry_scale
+                xs.append(max(0.0, min(1.0, cx + rad_x * ca)))
+                ys.append(max(0.0, min(1.0, cy + rad_y * sa_v)))
+    x0, x1 = max(0.0, min(xs) - 0.06), min(1.0, max(xs) + 0.06)
+    y0, y1 = max(0.0, min(ys) - 0.06), min(1.0, max(ys) + 0.06)
+    if x1 - x0 < 0.32:
         mid_x = 0.5 * (x0 + x1)
-        x0 = max(0.0, min(0.70, mid_x - 0.15))
-        x1 = min(1.0, x0 + 0.30)
-    if y1 - y0 < 0.30:
+        x0 = max(0.0, min(0.68, mid_x - 0.16))
+        x1 = min(1.0, x0 + 0.32)
+    if y1 - y0 < 0.32:
         mid_y = 0.5 * (y0 + y1)
-        y0 = max(0.0, min(0.70, mid_y - 0.15))
-        y1 = min(1.0, y0 + 0.30)
+        y0 = max(0.0, min(0.68, mid_y - 0.16))
+        y1 = min(1.0, y0 + 0.32)
     return [x0, y0, x1 - x0, y1 - y0]
 
 
@@ -677,10 +697,11 @@ def _center_aperture_preset_geometry(
     if sh not in SPLIT_SHAPES:
         sh = "polygon"
     n_sides = max(3, min(64, int(sides or SHAPE_DEFAULT_SIDES.get(sh, 6))))
+    ext_f = max(1.12, _shape_extent_factor(sh, n_sides))
     sec_ids = [cell_id_for_index(1 + i) for i in range(m)]
     all_sec = ",".join(sec_ids)
     sa = math.sqrt(max(0.3, min(3.0, float(aspect or 1.0))))
-    max_r = min(0.48, float(r) * max(sa, 1.0 / sa) * 1.15)
+    max_r = min(0.48, float(r) * max(sa, 1.0 / sa) * ext_f)
     cells = [
         _cell(
             "A",
@@ -688,7 +709,7 @@ def _center_aperture_preset_geometry(
             max(0.0, cy - max_r),
             min(1.0, 2.0 * max_r),
             min(1.0, 2.0 * max_r),
-            circle=[cx, cy, float(r) * 1.12, float(aspect or 1.0), float(rot_deg or 0.0)],
+            circle=[cx, cy, min(0.48, float(r) * ext_f), float(aspect or 1.0), float(rot_deg or 0.0)],
         )
     ]
     for i, cid in enumerate(sec_ids):
@@ -1043,8 +1064,9 @@ def recompute(split) -> dict:
             "center_main": True, "twist_deg": twist_deg, "blade_count": m,
             "neg_cell": all_sec, "pos_cell": "A",
         })
+        ext_f = max(1.12, _shape_extent_factor(sh, sides))
         sa = math.sqrt(aspect)
-        max_r = min(0.48, r * max(sa, 1.0 / sa) * 1.15)
+        max_r = min(0.48, r * max(sa, 1.0 / sa) * ext_f)
         cells = [
             _cell(
                 "A",
@@ -1052,7 +1074,7 @@ def recompute(split) -> dict:
                 max(0.0, cy - max_r),
                 min(1.0, 2.0 * max_r),
                 min(1.0, 2.0 * max_r),
-                circle=[cx, cy, r * 1.12, aspect, rot],
+                circle=[cx, cy, min(0.48, r * ext_f), aspect, rot],
             )
         ]
         for i, cid in enumerate(sec_ids):
@@ -1105,15 +1127,17 @@ def recompute(split) -> dict:
             dv["pos"] = cy
             dv["neg_cell"] = "A"
             dv["pos_cell"] = cid
+            ext_f = _shape_extent_factor(sh, sides)
+            cr = min(0.48, r * ext_f)
             sa = math.sqrt(aspect)
-            max_r = r * max(sa, 1.0 / sa)
+            max_r = min(0.48, cr * max(sa, 1.0 / sa))
             cells.append(_cell(
                 cid,
                 max(0.0, cx - max_r),
                 max(0.0, cy - max_r),
                 min(1.0, 2.0 * max_r),
                 min(1.0, 2.0 * max_r),
-                circle=[cx, cy, r, aspect, rot],
+                circle=[cx, cy, cr, aspect, rot],
             ))
         sp["cells"] = cells
         sp["dividers"] = circle_divs
@@ -1121,7 +1145,7 @@ def recompute(split) -> dict:
 
     # 3. L 形分屏（左侧 NL 个视频 + 底部 NB 个视频 + 右上主视频 A）
     pl_spec = parse_l_layout(layout)
-    if pl_spec is None and "d1" in d and "d2" in d and str(d["d1"].get("l_role") or "") == "main_v":
+    if "d1" in d and "d2" in d and str(d["d1"].get("l_role") or "") == "main_v" and d["d1"].get("l_nl") and d["d1"].get("l_nb"):
         pl_spec = (int(d["d1"].get("l_nl") or 2), int(d["d1"].get("l_nb") or 3))
     if pl_spec is not None and "d1" in d and "d2" in d:
         nl, nb = max(1, int(pl_spec[0])), max(1, int(pl_spec[1]))
@@ -1179,7 +1203,7 @@ def recompute(split) -> dict:
 
     # 4. 横向夹心分屏（主视频 A 居中，上方 NT 条，下方 NB 条，上下分界线可旋转角度）
     pch_spec = parse_center_h_layout(layout)
-    if pch_spec is None and "d1" in d and "d2" in d and str(d["d1"].get("ch_role") or "") == "top_h":
+    if "d1" in d and "d2" in d and str(d["d1"].get("ch_role") or "") == "top_h" and d["d1"].get("ch_nt") and d["d1"].get("ch_nb"):
         pch_spec = (int(d["d1"].get("ch_nt") or 1), int(d["d1"].get("ch_nb") or 1), float(d["d1"].get("rotation_deg") or 0.0))
     if pch_spec is not None and "d1" in d and "d2" in d:
         nt, nb, _def_rot = max(1, int(pch_spec[0])), max(1, int(pch_spec[1])), pch_spec[2]
@@ -1375,10 +1399,10 @@ def apply_layout(split, layout=None) -> dict:
                 d["rotation_deg"] = float(prev.get("rotation_deg") or 0.0)
             except (TypeError, ValueError):
                 pass
-        try:
-            d["feather_px"] = max(0.0, float(prev.get("feather_px") if prev.get("feather_px") is not None else d.get("feather_px", 24.0)))
-        except (TypeError, ValueError):
-            pass
+            try:
+                d["feather_px"] = max(0.0, float(prev.get("feather_px") if prev.get("feather_px") is not None else d.get("feather_px", 24.0)))
+            except (TypeError, ValueError):
+                pass
         if "pos" in prev and same_layout:
             d["pos"] = _clamp_pos(prev.get("pos"), _POS_MIN, _POS_MAX)
         if str(d.get("axis")) == "circle" and str(prev.get("axis")) == "circle" and same_layout:
@@ -1687,8 +1711,8 @@ def apply_custom_creative_split(
         if chosen_mode == "l_left2_bottom3" or n >= 5:
             nl = max(2, n // 2) if chosen_mode == "l_shape" else 2
             nb = max(3, n - nl) if chosen_mode == "l_shape" else 3
-        elif chosen_mode == "l_left1_bottom2" or n == 3:
-            nl, nb = 1, 2
+        elif chosen_mode == "l_left1_bottom2" or n <= 3:
+            nl, nb = 1, max(1, n - 1)
         elif n == 4:
             nl, nb = 2, 2
         else:
@@ -1701,13 +1725,16 @@ def apply_custom_creative_split(
         nb = max(1, n - nt) if n >= 2 else 1
         r_deg = float(rot_deg if rot_deg is not None else (9.0 if "tilt" in chosen_mode else (-7.0 if "wave" in chosen_mode else 0.0)))
         cells, dividers = _center_h_preset_geometry(nt, nb, rot_deg=r_deg)
-        out_layout = "center_h_tilt" if abs(r_deg) > 0.5 else "center_h"
+        if (nt, nb) == (1, 1):
+            out_layout = "center_h_tilt" if abs(r_deg) > 0.5 else "center_h"
+        else:
+            out_layout = ("center_h_tilt_%d_%d" if abs(r_deg) > 0.5 else "center_h_%d_%d") % (nt, nb)
     elif chosen_mode in ("hex_center", "poly_center", "shutter", "shutter_hex", "shutter_iris", "shutter_diamond"):
         is_shutter = chosen_mode.startswith("shutter")
         sh = shape or ("octagon" if chosen_mode == "shutter_iris" else ("diamond" if chosen_mode == "shutter_diamond" else "polygon"))
         sds = int(sides if sides is not None else SHAPE_DEFAULT_SIDES.get(sh, 6))
         tw = float(twist_deg if twist_deg is not None else (38.0 if is_shutter else 0.0))
-        m_sec = max(4, n) if n >= 3 else 4
+        m_sec = max(2, n)
         cells, dividers = _center_aperture_preset_geometry(
             "shutter" if is_shutter else "hex_center",
             shape=sh, sides=sds, twist_deg=tw, n_sec=m_sec,
@@ -1722,10 +1749,15 @@ def apply_custom_creative_split(
         else:
             cmode = chosen_mode
         sds = int(sides if sides is not None else SHAPE_DEFAULT_SIDES.get(sh, 6))
-        cells, dividers = _circle_preset_geometry(cmode, max(2, n), radius_override=circle_r, shape=sh, sides=sds)
+        m_sec = max(1, n)
+        cells, dividers = _circle_preset_geometry(cmode, m_sec, radius_override=circle_r, shape=sh, sides=sds)
         for dv in dividers:
             dv["feather_px"] = float(r_feather)
         b_curve = "straight"
+        if sh != "circle":
+            out_layout = "shape_%s_%d" % (sh, m_sec)
+        else:
+            out_layout = "%s%d" % (cmode, m_sec)
     else:
         is_left = (chosen_mode == "slash_left")
         if n <= 1:
@@ -1740,6 +1772,7 @@ def apply_custom_creative_split(
             dividers[0]["rotation_deg"] = rot_val
             for dv in dividers:
                 dv["feather_px"] = float(r_feather)
+        out_layout = base_lay
 
     border_cfg = _norm_border({
         **(prev_sp.get("border") or {}),
@@ -1763,11 +1796,10 @@ def apply_custom_creative_split(
     new_sp["custom_seed"] = seed
     task["split"] = new_sp
 
-    # 自动把当前时间线上的所有视频轨按顺序放入 A, B, C, D... 格子，并将任何拉伸背景改为镜头模糊
+    # 自动把当前时间线上的所有视频轨按顺序放入 A, B, C, D... 格子，多余轨道置 None，并将任何拉伸背景改为镜头模糊
     cell_ids = [str(c.get("id")) for c in (new_sp.get("cells") or [])]
     for i, tr in enumerate(v_tracks):
-        if i < len(cell_ids):
-            tr.split_cell = cell_ids[i]
+        tr.split_cell = cell_ids[i] if i < len(cell_ids) else None
         for clip in getattr(tr, "clips", []) or []:
             bgf = getattr(clip, "bg_fill", None)
             if isinstance(bgf, dict) and bgf.get("mode") == "stretch":
@@ -1777,6 +1809,30 @@ def apply_custom_creative_split(
     return new_sp
 
 
+def _adapt_preset_layout_for_tracks(layout: str, n_tracks: int) -> str:
+    """当用户在属性面板点击按钮预设（如 center_h_tilt、shape_heart_3、hex_center_4 等）时，
+    若当前时间线有 >= 3 条视频轨道，自动将该系列预设的副屏格子数适配到 n_sec = n_tracks - 1，
+    让每一条副视频轨道都拥有独立格子！
+    """
+    name = str(layout or "")
+    n_sec = max(1, int(n_tracks) - 1)
+    if n_tracks < 2:
+        return name
+    if name in ("center_h", "center_h_tilt"):
+        if n_sec <= 2:
+            return name
+        nt = max(1, n_sec // 2)
+        nb = max(1, n_sec - nt)
+        return ("%s_%d_%d" % (name, nt, nb))
+    if name in ("shape_heart_3", "shape_dove_3", "shape_clover_3", "shape_olive_3"):
+        base_sh = name.rsplit("_", 1)[0]
+        return "%s_%d" % (base_sh, max(1, n_sec))
+    if name in ("hex_center_4", "shutter_4"):
+        base_ap = name.rsplit("_", 1)[0]
+        return "%s_%d" % (base_ap, max(2, n_sec))
+    return name
+
+
 def apply_split_to_task(task, layout=None, enabled=None, border=None, backdrop=None):
     if not isinstance(task, dict):
         from cutora.core.commands import CommandError
@@ -1784,10 +1840,12 @@ def apply_split_to_task(task, layout=None, enabled=None, border=None, backdrop=N
     # 当用户在面板点击「自定义」按钮 (layout == 'custom') 且没传其它局部微调参数时，直接触发智能创意分屏！
     if layout == "custom" and border is None and backdrop is None and enabled in (None, True):
         return apply_custom_creative_split(task, mode="random")
+    v_tracks = _collect_video_tracks_for_split(task)
     sp = normalize_split(task.get("split"))
-    layout_changed = bool(layout and str(layout) != str(sp.get("layout")))
-    if layout:
-        sp = apply_layout(sp, layout)
+    target_layout = _adapt_preset_layout_for_tracks(str(layout), len(v_tracks)) if layout else None
+    layout_changed = bool(target_layout and str(target_layout) != str(sp.get("layout")))
+    if target_layout:
+        sp = apply_layout(sp, target_layout)
         if enabled is None:
             sp["enabled"] = True
         # Q151：新开的左右完整 → 每格各自的镜头模糊背景（老工程里已有的不动）
@@ -1812,17 +1870,17 @@ def apply_split_to_task(task, layout=None, enabled=None, border=None, backdrop=N
         merged.update(dict(border))
         sp["border"] = _norm_border(merged)
     task["split"] = recompute(sp)
-    # 当切换到多格新布局时，自动为尚未进格或旧格不存在的视频轨道分配空闲格子
-    if layout_changed:
-        v_tracks = _collect_video_tracks_for_split(task)
-        cell_ids = [str(c.get("id")) for c in (task["split"].get("cells") or [])]
-        valid_set = set(cell_ids)
-        used = {str(getattr(tr, "split_cell", "") or "") for tr in v_tracks if str(getattr(tr, "split_cell", "") or "") in valid_set}
-        free = [cid for cid in cell_ids if cid not in used]
-        for tr in v_tracks:
-            cur = str(getattr(tr, "split_cell", "") or "")
-            if cur not in valid_set and free:
-                tr.split_cell = free.pop(0)
+    # 当切换或应用布局时，自动为视频轨道分配格子（主视频 -> A，副视频 -> B, C, D...，超出格子数的轨道置 None）
+    if target_layout or layout_changed:
+        cell_ids = [str(c.get("id")) for c in (task["split"].get("cells") or []) if c.get("id")]
+        for i, tr in enumerate(v_tracks):
+            tr.split_cell = cell_ids[i] if i < len(cell_ids) else None
+            for clip in getattr(tr, "clips", []) or []:
+                bgf = getattr(clip, "bg_fill", None)
+                if isinstance(bgf, dict) and bgf.get("mode") == "stretch":
+                    bgf["mode"] = "blur"
+                    bgf["blur_style"] = "lens"
+                    bgf.setdefault("blur", 45.0)
     return task["split"]
 
 

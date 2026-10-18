@@ -435,7 +435,7 @@ def _tl_of(task_data):
     if isinstance(tl, _TL):
         return tl
     if isinstance(tl, dict):
-        from cutora.core.config import DEFAULT_TIMELINE_WIDTH, DEFAULT_TIMELINE_HEIGHT, DEFAULT_TIMELINE_FPS
+        from cutora.model.timeline import DEFAULT_TIMELINE_WIDTH, DEFAULT_TIMELINE_HEIGHT, DEFAULT_TIMELINE_FPS
         obj = _TL(
             tl.get("width", DEFAULT_TIMELINE_WIDTH),
             tl.get("height", DEFAULT_TIMELINE_HEIGHT),

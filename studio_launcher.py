@@ -70,7 +70,30 @@ def _python_exe(gui: bool = False) -> str:
     return sys.executable
 
 
-def launch_orante() -> None:
+_CUTORA_LAUNCH_ACCEPTED = False
+_MODULE_CLICK_ACCEPTED: set[str] = set()
+
+
+def is_cutora_running() -> bool:
+    """检查系统内是否已有正在运行的 CUTORA 实例（基于 Windows 命名互斥体）。"""
+    if os.name != "nt":
+        return False
+    try:
+        kernel32 = ctypes.windll.kernel32
+        h = kernel32.OpenMutexW(0x00100000, False, "Local\\CUTORA_SingleInstance_Mutex_v1")
+        if h:
+            kernel32.CloseHandle(h)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def launch_orante() -> bool:
+    """启动 Orante 2.0（单次点击防误触保护）。"""
+    if "orante" in _MODULE_CLICK_ACCEPTED:
+        return False
+    _MODULE_CLICK_ACCEPTED.add("orante")
     try:
         from core.robota_guide import DailyWorkflowConductor
         DailyWorkflowConductor().launch_orante_room()
@@ -81,13 +104,24 @@ def launch_orante() -> None:
         env["PATH"] = f"{LTX_ROOT / 'runtime' / 'bin'};{env.get('PATH', '')}"
         subprocess.Popen([_python_exe(gui=True), "-m", "orante"], cwd=str(orante_dir), env=env)
     get_spine_db().emit_event("launcher.orante_started", "launcher", "orante", {})
+    return True
 
 
-def launch_cutora(room: str = "") -> None:
+def launch_cutora(room: str = "") -> bool:
+    """启动 CUTORA（仅接受一次点击、且全局限制只能运行一个 CUTORA 实例）。"""
+    global _CUTORA_LAUNCH_ACCEPTED
+    if _CUTORA_LAUNCH_ACCEPTED or "cutora" in _MODULE_CLICK_ACCEPTED or is_cutora_running():
+        _CUTORA_LAUNCH_ACCEPTED = True
+        _MODULE_CLICK_ACCEPTED.add("cutora")
+        return False
+    _CUTORA_LAUNCH_ACCEPTED = True
+    _MODULE_CLICK_ACCEPTED.add("cutora")
     try:
         from core.robota_guide import DailyWorkflowConductor
         DailyWorkflowConductor().launch_cutora_room(room or "stitch")
     except Exception:
+        if is_cutora_running():
+            return False
         cutora_dir = LTX_ROOT / "modules" / "cutora_editor"
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
@@ -98,9 +132,14 @@ def launch_cutora(room: str = "") -> None:
             env["CUTORA_START_ROOM"] = room
         subprocess.Popen(args, cwd=str(cutora_dir), env=env)
     get_spine_db().emit_event("launcher.cutora_started", "launcher", "cutora", {"room": room})
+    return True
 
 
-def launch_table_tool(target_dir: str | None = None) -> None:
+def launch_table_tool(target_dir: str | None = None) -> bool:
+    """启动右键表格工具（单次点击防误触保护）。"""
+    if "table" in _MODULE_CLICK_ACCEPTED:
+        return False
+    _MODULE_CLICK_ACCEPTED.add("table")
     try:
         from core.robota_guide import DailyWorkflowConductor
         DailyWorkflowConductor().launch_table_tool_in_dir(Path(target_dir) if target_dir else None)
@@ -111,12 +150,18 @@ def launch_table_tool(target_dir: str | None = None) -> None:
             cmd.append(target_dir)
         subprocess.Popen(cmd, cwd=str(script.parent))
     get_spine_db().emit_event("launcher.table_tool_started", "launcher", "table_tool", {})
+    return True
 
 
-def launch_studio_gateway() -> None:
+def launch_studio_gateway() -> bool:
+    """启动本地算力网关（单次点击防误触保护）。"""
+    if "gateway" in _MODULE_CLICK_ACCEPTED:
+        return False
+    _MODULE_CLICK_ACCEPTED.add("gateway")
     bat = LTX_ROOT / "启动本地算力网关.bat"
     subprocess.Popen(["cmd.exe", "/c", "start", "", str(bat)], cwd=str(LTX_ROOT))
     get_spine_db().emit_event("launcher.gateway_started", "launcher", "gateway", {"port": 7870})
+    return True
 
 
 def run_gui(screenshot_path: str | None = None) -> None:
@@ -288,24 +333,40 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._text = text
             self._primary = primary
             self._compact = compact
+            self._locked = False
             self._hover_t = 0.0
             self._press_t = 0.0
             self.setCursor(Qt.CursorShape.PointingHandCursor)
 
             f = make_font(11 if compact else 12, QFont.Weight.DemiBold)
             self.setFont(f)
-            fm = self.fontMetrics()
-            pad_x = 18 if compact else 24
-            h = 26 if compact else 30
-            self.setFixedSize(fm.horizontalAdvance(text) + pad_x, h)
+            self._recalc_size()
 
             self._anim = QVariantAnimation(self)
             self._anim.setDuration(160)
             self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
             self._anim.valueChanged.connect(self._on_anim)
 
+        def _recalc_size(self) -> None:
+            fm = self.fontMetrics()
+            pad_x = 18 if self._compact else 24
+            h = 26 if self._compact else 30
+            self.setFixedSize(fm.horizontalAdvance(self._text) + pad_x, h)
+
         def set_text(self, text: str) -> None:
             self._text = text
+            self._recalc_size()
+            self.update()
+
+        def set_locked(self, locked: bool, text: str | None = None) -> None:
+            self._locked = locked
+            if text is not None:
+                self._text = text
+                self._recalc_size()
+            self._anim.stop()
+            self._hover_t = 0.0
+            self._press_t = 0.0
+            self.setCursor(Qt.CursorShape.ArrowCursor if locked else Qt.CursorShape.PointingHandCursor)
             self.update()
 
         def _on_anim(self, val: float) -> None:
@@ -313,24 +374,27 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self.update()
 
         def enterEvent(self, event) -> None:
-            self._anim.stop()
-            self._anim.setStartValue(self._hover_t)
-            self._anim.setEndValue(1.0)
-            self._anim.start()
+            if not self._locked:
+                self._anim.stop()
+                self._anim.setStartValue(self._hover_t)
+                self._anim.setEndValue(1.0)
+                self._anim.start()
             super().enterEvent(event)
 
         def leaveEvent(self, event) -> None:
             self._press_t = 0.0
-            self._anim.stop()
-            self._anim.setStartValue(self._hover_t)
-            self._anim.setEndValue(0.0)
-            self._anim.start()
+            if not self._locked:
+                self._anim.stop()
+                self._anim.setStartValue(self._hover_t)
+                self._anim.setEndValue(0.0)
+                self._anim.start()
             super().leaveEvent(event)
 
         def mousePressEvent(self, event) -> None:
             if event.button() == Qt.MouseButton.LeftButton:
                 self._press_t = 1.0
-                self.update()
+                if not self._locked:
+                    self.update()
             super().mousePressEvent(event)
 
         def mouseReleaseEvent(self, event) -> None:
@@ -345,10 +409,20 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p = QPainter(self)
             p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
-            if self._press_t > 0:
+            if self._press_t > 0 and not self._locked:
                 rect = rect.adjusted(0.5, 1.0, -0.5, 0.5)
 
             radius = 7.5 if self._compact else 8.5
+
+            if self._locked:
+                p.setBrush(QColor(34, 30, 26, 210))
+                p.setPen(QPen(QColor(115, 102, 78, 130), 1.0))
+                p.drawRoundedRect(rect, radius, radius)
+                p.setPen(QColor("#8E8477"))
+                p.setFont(self.font())
+                p.drawText(rect, Qt.AlignmentFlag.AlignCenter, self._text)
+                p.end()
+                return
 
             if self._primary:
                 grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
@@ -400,6 +474,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._title = title
             self._badge_text = badge_text
             self._desc = desc
+            self._locked = False
             self._hover_t = 0.0
             self._primary_callback = actions[-1][2] if actions else None
 
@@ -423,22 +498,43 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 btn_row.addWidget(btn)
                 self._buttons.append(btn)
 
+        def set_locked(
+            self,
+            locked: bool,
+            primary_text: str = "✓ 已启动 · 再次点击无效",
+            lock_all_buttons: bool = True,
+        ) -> None:
+            self._locked = locked
+            self._anim.stop()
+            self._hover_t = 0.0
+            self.setCursor(Qt.CursorShape.ArrowCursor if locked else Qt.CursorShape.PointingHandCursor)
+            self._badge_text = "已接受启动 · 防误触锁定"
+            for idx, btn in enumerate(self._buttons):
+                is_last = idx == len(self._buttons) - 1
+                if is_last:
+                    btn.set_locked(locked, primary_text if locked else None)
+                elif lock_all_buttons:
+                    btn.set_locked(locked)
+            self.update()
+
         def _on_anim(self, val: float) -> None:
             self._hover_t = float(val)
             self.update()
 
         def enterEvent(self, event) -> None:
-            self._anim.stop()
-            self._anim.setStartValue(self._hover_t)
-            self._anim.setEndValue(1.0)
-            self._anim.start()
+            if not self._locked:
+                self._anim.stop()
+                self._anim.setStartValue(self._hover_t)
+                self._anim.setEndValue(1.0)
+                self._anim.start()
             super().enterEvent(event)
 
         def leaveEvent(self, event) -> None:
-            self._anim.stop()
-            self._anim.setStartValue(self._hover_t)
-            self._anim.setEndValue(0.0)
-            self._anim.start()
+            if not self._locked:
+                self._anim.stop()
+                self._anim.setStartValue(self._hover_t)
+                self._anim.setEndValue(0.0)
+                self._anim.start()
             super().leaveEvent(event)
 
         def mouseReleaseEvent(self, event) -> None:
@@ -823,7 +919,9 @@ def run_gui(screenshot_path: str | None = None) -> None:
             cards_layout.setContentsMargins(0, 0, 0, 0)
             cards_layout.setSpacing(10)
 
-            card_orante = PosterModuleCard(
+            self._accepted_clicks: set[str] = set()
+
+            self._card_orante = PosterModuleCard(
                 index_str="01",
                 icon_path=brand_dir / "orante_medallion.png",
                 title="Orante 2.0 制片台",
@@ -835,7 +933,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 parent=self,
             )
 
-            card_cutora = PosterModuleCard(
+            self._card_cutora = PosterModuleCard(
                 index_str="02",
                 icon_path=brand_dir / "cutora_me.png",
                 title="片语 Studio · CUTORA",
@@ -849,7 +947,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 parent=self,
             )
 
-            card_table = PosterModuleCard(
+            self._card_table = PosterModuleCard(
                 index_str="03",
                 icon_path=brand_dir / "table_tool_me.png",
                 title="右键表格工具",
@@ -861,7 +959,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 parent=self,
             )
 
-            card_gateway = PosterModuleCard(
+            self._card_gateway = PosterModuleCard(
                 index_str="04",
                 icon_path=brand_dir / "ltx_gateway_me.png",
                 title="本地算力网关 · 7870",
@@ -874,11 +972,15 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 parent=self,
             )
 
-            cards_layout.addWidget(card_orante)
-            cards_layout.addWidget(card_cutora)
-            cards_layout.addWidget(card_table)
-            cards_layout.addWidget(card_gateway)
+            cards_layout.addWidget(self._card_orante)
+            cards_layout.addWidget(self._card_cutora)
+            cards_layout.addWidget(self._card_table)
+            cards_layout.addWidget(self._card_gateway)
             root.addLayout(cards_layout)
+
+            if is_cutora_running():
+                self._accepted_clicks.add("cutora")
+                self._card_cutora.set_locked(True, "✓ 已在运行 · 再次点击无效")
 
             root.addSpacing(12)
 
@@ -906,7 +1008,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 return
             try:
                 if self._robota_win is not None and self._robota_win.poll() is None:
-                    self._toast.show_toast("Robota 协同操作窗口已在运行中")
+                    self._toast.show_toast("Robota 协同操作窗口已在运行中（二次点击不再重复启动）")
                     return
                 script = LTX_ROOT / "robota_assistant_window.py"
                 env = os.environ.copy()
@@ -921,29 +1023,57 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 self._toast.show_toast(f"启动异常：{e}")
 
         def _on_open_orante(self) -> None:
+            if "orante" in self._accepted_clicks:
+                self._toast.show_toast("Orante 2.0 已接受过启动点击，第二次点击不再被接受（防误触锁定）")
+                return
             from core.pack_manager import is_module_installed
             if not is_module_installed("pack-app-orante"):
                 self._toast.show_toast("当前版本尚未安装 Orante 2.0 制片台扩展包，可一键无缝安装！")
                 self._on_open_pack_manager(highlight_pack_id="pack-app-orante")
                 return
+            self._accepted_clicks.add("orante")
+            self._card_orante.set_locked(True, "✓ 已启动 · 再次点击无效")
             launch_orante()
-            self._toast.show_toast("正在启动 Orante 2.0 制片台…")
+            self._toast.show_toast("已接受点击并启动 Orante 2.0 制片台（后续重复点击已锁定忽略）")
             self.refresh_status(silent=True)
 
         def _on_open_cutora(self, room: str = "") -> None:
-            launch_cutora(room)
+            if "cutora" in self._accepted_clicks:
+                self._toast.show_toast("CUTORA 已接受过启动点击，第二次误点不被接受（防误触锁定）")
+                return
+            if is_cutora_running():
+                self._accepted_clicks.add("cutora")
+                self._card_cutora.set_locked(True, "✓ 已在运行 · 再次点击无效")
+                self._toast.show_toast("CUTORA 已在运行中（全局仅允许同时启动 1 个 CUTORA，重复点击已忽略）")
+                return
+            self._accepted_clicks.add("cutora")
+            self._card_cutora.set_locked(True, "✓ 已启动 · 再次点击无效")
+            ok = launch_cutora(room)
+            if not ok:
+                self._toast.show_toast("CUTORA 已接受过启动或正在运行，重复点击不被接受")
+                return
             label = {"stitch": "片段智能拼接", "ai_studio": "AI 工坊"}.get(room, "片语剪辑台")
-            self._toast.show_toast(f"正在打开 CUTORA · {label}…")
+            self._toast.show_toast(f"已接受点击并打开 CUTORA · {label}（后续重复点击已锁定忽略）")
             self.refresh_status(silent=True)
 
         def _on_open_table(self) -> None:
+            if "table" in self._accepted_clicks:
+                self._toast.show_toast("右键表格工具已接受过启动点击，第二次点击不再被接受（防误触锁定）")
+                return
+            self._accepted_clicks.add("table")
+            self._card_table.set_locked(True, "✓ 已启动 · 再次点击无效")
             launch_table_tool()
-            self._toast.show_toast("正在启动右键表格工具…")
+            self._toast.show_toast("已接受点击并启动右键表格工具（后续重复点击已锁定忽略）")
             self.refresh_status(silent=True)
 
         def _on_open_gateway(self) -> None:
+            if "gateway" in self._accepted_clicks:
+                self._toast.show_toast("算力网关已接受过唤醒点击，第二次点击不再被接受（防误触锁定）")
+                return
+            self._accepted_clicks.add("gateway")
+            self._card_gateway.set_locked(True, "✓ 已唤醒 · 再次点击无效", lock_all_buttons=False)
             launch_studio_gateway()
-            self._toast.show_toast("正在唤醒本地算力网关 (127.0.0.1:7870)…")
+            self._toast.show_toast("已接受点击并唤醒本地算力网关 (127.0.0.1:7870)")
             self.refresh_status(silent=True)
 
         def _on_open_pack_manager(self, highlight_pack_id: str = "") -> None:

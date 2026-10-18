@@ -218,5 +218,6 @@
   },
   "bridge": "第一张上传的图片「01_首帧_start.jpg」是视频的起始画面：{start}。\n第二张上传的图片「02_尾帧_end.jpg」是视频的结束画面：{end}。\n画面从第一张的状态自然连续地过渡到第二张的状态，中间不切镜、不跳剪。",
   "expand": "保持人物形象不变，只更换不同的远近拍摄距离和不同高低的拍摄角度。",
-  "refill": "保持人物形象不变，只更换不同的远近拍摄距离和不同高低的拍摄角度，不要复制原图构图。"
+  "refill": "保持人物形象不变，只更换不同的远近拍摄距离和不同高低的拍摄角度，不要复制原图构图。",
+  "silent": "画面中的人物全程安静聆听、绝不说话、没有任何对白；除嘴部保持安静不说话（不做任何说话口型）外，人物的眼神、眨眼、点头、呼吸与手部姿态均真实自然生动，绝不僵硬定格。\nStrictly no speaking and no dialogue; the person's mouth stays calm and silent without talking or mouthing words, while their gaze, blinking, gentle nodding, breathing, and relaxed hand movements are completely natural and lifelike."
 }

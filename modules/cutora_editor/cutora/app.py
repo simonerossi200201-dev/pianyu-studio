@@ -326,6 +326,10 @@ def main(argv=None):
     if "--render-job" in sys.argv:
         raise SystemExit(run_render_job_entry())
 
+    if not is_render_child():
+        from cutora.core.single_instance import acquire_single_instance_or_exit
+        acquire_single_instance_or_exit()
+
     from cutora.core.runtime import init_torch_runtime
     init_torch_runtime(render_child=is_render_child())
     print("DEBUG: 已强制开启离线模式 (禁止联网检查模型)")

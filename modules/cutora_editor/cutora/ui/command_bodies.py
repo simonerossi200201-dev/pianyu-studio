@@ -1521,10 +1521,15 @@ class CommandBodies:
             self.timeline.update()
         if hasattr(self, "timeline_container"):
             self.timeline_container.track_header.update()
-        if hasattr(self, "video_canvas"):
-            self.video_canvas.update()
         if hasattr(self, "update_preview"):
             self.update_preview()
+        elif hasattr(self, "_present_preview_frame"):
+            try:
+                self._present_preview_frame()
+            except Exception:
+                pass
+        if hasattr(self, "video_canvas"):
+            self.video_canvas.update()
         panel = getattr(self, "prop_panel", None)
         if panel is not None and getattr(panel, "current_type", None) == "track":
             cur = getattr(panel, "_track_obj", None)

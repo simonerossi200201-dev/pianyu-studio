@@ -80,6 +80,10 @@ if __name__ == "__main__":
     if "--doctor" in sys.argv:
         from cutora.core.doctor import run_cli
         raise SystemExit(run_cli())
+    from cutora.core.command_cli import dispatch_late, is_commands_argv
+    if "--check-runtime" not in sys.argv and "--selftest" not in sys.argv and "--self-test" not in sys.argv and not is_commands_argv(sys.argv):
+        from cutora.core.single_instance import acquire_single_instance_or_exit
+        acquire_single_instance_or_exit()
     from cutora.core.runtime import init_torch_runtime  # 此时 sys.modules 里不得有任何 PySide6.*
     init_torch_runtime(render_child=False)
     if "--check-runtime" in sys.argv:
@@ -87,7 +91,6 @@ if __name__ == "__main__":
     if "--selftest" in sys.argv:
         from cutora.core.selftest import run_selftest
         raise SystemExit(run_selftest())
-    from cutora.core.command_cli import dispatch_late, is_commands_argv
     if is_commands_argv(sys.argv):
         raise SystemExit(dispatch_late(sys.argv))
     from cutora.app import main
