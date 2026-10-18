@@ -121,7 +121,7 @@ def is_pack_installed(pack_def: dict[str, Any], root: Path = LTX_ROOT) -> tuple[
                 all_markers_ok = False
                 break
         elif target.is_file():
-            if target.stat().st_size <= 64:
+            if target.stat().st_size == 0:
                 all_markers_ok = False
                 break
 

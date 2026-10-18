@@ -790,13 +790,13 @@ class DailyWorkflowConductor:
                 h_raw,
             ).strip() or h_raw
             m_full = re.findall(r"(20\d{2}-\d{2}-\d{2})", h)
-            if m_full and (ws_root / m_full[-1]).exists():
+            if m_full:
                 return m_full[-1]
             m_mmdd = re.findall(r"(?<!\d)(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?!\d)", h)
             if m_mmdd:
                 mm, dd = int(m_mmdd[-1][0]), int(m_mmdd[-1][1])
                 cand_mmdd = f"{today.year:04d}-{mm:02d}-{dd:02d}"
-                if (ws_root / cand_mmdd).exists():
+                if (ws_root / cand_mmdd).exists() or cand_mmdd == today_str:
                     return cand_mmdd
             m_days = re.findall(r"(?<!\d)(\d{1,2})\s*(?:[号日]|视频|图片|[A-Za-z]批次)", h)
             if m_days:
@@ -1186,7 +1186,7 @@ class DailyWorkflowConductor:
         return False
 
     @classmethod
-    def _extract_links(cls, raw_text: str, collapse_adjacent_dups: bool = True) -> List[str]:
+    def _extract_links(cls, raw_text: str, collapse_adjacent_dups: bool = True, expected_count: int = 0) -> List[str]:
         if not raw_text:
             return []
         raw_list: List[str] = []
@@ -1201,7 +1201,9 @@ class DailyWorkflowConductor:
                 raw_list.append(cand)
         if not collapse_adjacent_dups or len(raw_list) <= 1:
             return raw_list
-        # Google Sheets 智能芯片单格常带有 2 个相同 href 标签，自动折叠相邻重复项
+        if expected_count > 0 and len(raw_list) == expected_count:
+            return raw_list
+        # Google Sheets 智能芯片单格常带有 2 个相同 href 标签（此时总数为 expected_count * 2），仅在未对齐或翻倍时折叠相邻重复项
         out: List[str] = []
         i = 0
         while i < len(raw_list):
@@ -1364,6 +1366,11 @@ class DailyWorkflowConductor:
             return ("http", u)
         return ("", u)
 
+    _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+    _VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
+    _fid_cache_lock = threading.Lock()
+    _fid_local_cache: Dict[str, Path] = {}
+
     def _rclone_copyid_to_target(
         self,
         rclone_exe: Path,
@@ -1381,18 +1388,29 @@ class DailyWorkflowConductor:
         - 自动通过 `_split_real_ext` + `_sniff_media_ext` 识别无后缀或中文伪后缀文件并补齐 `.mp4` / `.jpg` / `.png`！
         """
         dest_dir.mkdir(parents=True, exist_ok=True)
-        img_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-        vid_exts = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
+        img_exts = self._IMAGE_EXTS
+        vid_exts = self._VIDEO_EXTS
         allowed_exts = img_exts if default_ext.lower() in img_exts else vid_exts
 
         stem_candidate = prefix_stem if is_single else f"{prefix_stem}({sub_index})"
         for pat in (f"{stem_candidate}.*", f"{prefix_stem}({sub_index}).*"):
             existing = [
                 p for p in dest_dir.glob(pat)
-                if p.is_file() and not p.name.endswith(".partial") and p.suffix.lower() in allowed_exts
+                if p.is_file() and not p.name.endswith(".partial") and p.suffix.lower() in (img_exts | vid_exts)
             ]
             if existing and existing[0].stat().st_size > 0:
+                with self._fid_cache_lock:
+                    self._fid_local_cache[fid] = existing[0]
                 return existing[0]
+
+        with self._fid_cache_lock:
+            cached_src = self._fid_local_cache.get(fid)
+        if cached_src and cached_src.is_file() and cached_src.stat().st_size > 0:
+            ext = cached_src.suffix.lower() or default_ext
+            final_path = dest_dir / f"{stem_candidate}{ext}"
+            if not final_path.exists():
+                shutil.copy2(str(cached_src), str(final_path))
+            return final_path
 
         tmp_dir = dest_dir / ".robota_dl_tmp" / f"{prefix_stem}_{sub_index}_{fid[:8]}"
         try:
@@ -1436,6 +1454,8 @@ class DailyWorkflowConductor:
                 if final_path.exists():
                     final_path.unlink()
                 shutil.move(str(src_file), str(final_path))
+                with self._fid_cache_lock:
+                    self._fid_local_cache[fid] = final_path
                 return final_path
         except Exception:
             pass
@@ -1915,9 +1935,11 @@ class DailyWorkflowConductor:
             # 2. 清理此前错误命名的临时 ID（如 T_20261016_图片）
             o_db.run("DELETE FROM tasks WHERE id LIKE ?", (f"T_{day_str.replace('-', '')}_%",))
 
-            # 3. 获取默认启用账号
-            acc_row = o_db.one("SELECT id, name, engine FROM accounts WHERE enabled=1 ORDER BY created LIMIT 1")
-            acc_name = acc_row["name"] if acc_row else "A005"
+            # 3. 获取默认启用账号（优先选择 Flow 账号）
+            acc_row = o_db.one(
+                "SELECT id, name, engine FROM accounts WHERE enabled=1 ORDER BY CASE WHEN engine='flow' THEN 0 ELSE 1 END, created LIMIT 1"
+            )
+            acc_name = acc_row["name"] if acc_row else "Flow1"
 
             # 4. 严格按【同一 batch_id 且同一 image_source】查找；若为新批次（如 B 批次），必须以追加方式新建任务，绝不覆盖 A 批次任务！
             existing = o_db.one(
@@ -2111,8 +2133,8 @@ class DailyWorkflowConductor:
             )
             video_type_code = vtype_info["code"]
 
-            image_links = self._extract_links(image_links_text)
-            video_links = self._extract_links(video_links_text)
+            image_links = self._extract_links(image_links_text, expected_count=task_count)
+            video_links = self._extract_links(video_links_text, expected_count=task_count)
             inferred_count = max(task_count, len(image_links), len(video_links), 1)
             task_codes = self._parse_task_codes(task_spec, inferred_count)
             if len(task_codes) < max(len(image_links), len(video_links)):
