@@ -92,7 +92,14 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "启动本地算力网关.bat",
     "打开表格工具.bat",
     "安装与体检.bat",
+    "README.md",
+    "安装与扩展包使用指南.md",
+    "SECURITY_AUDIT_REPORT.md",
+    "MODEL_LICENSE_COMPLIANCE.md",
+    "requirements.txt",
+    ".env.example",
 ]
+
 
 BASE_APP_ROOTS = CORE_SHELL_AND_CUTORA_ROOTS + [
     "modules/orante_desk/orante",
@@ -304,20 +311,27 @@ def verify_and_build_zip(edition: str = "standard") -> dict[str, Any]:
     security_violations: list[str] = []
     junctions = count_reparse_points()
 
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as zf:
+    STORED_EXTS = {
+        ".safetensors", ".pth", ".bin", ".onnx", ".pt", ".ckpt", ".npz",
+        ".dll", ".pyd", ".exe", ".lib", ".so", ".png", ".jpg", ".ico", ".ttf", ".otf", ".whl",
+    }
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=3, allowZip64=True) as zf:
         # 在打包归档中自动创建空的 packs/ 目录说明，方便用户直接拖入 .ltxpack
         zf.writestr(
             "packs/README_如何安装扩展包.txt",
-            "将按需下载的 .ltxpack 扩展包放入本目录 (packs/)，打开《片语工作室》点击【🧩 扩展包管理】即可一键无缝安装！\n",
+            "将按需下载的 .ltxpack 扩展包放入本目录 (packs/)，打开《片语工作室》点击【🧩 扩展包】即可一键无缝安装！\n",
         )
         for item in include_roots:
             target = LTX_ROOT / item
+            is_runtime_tree = item.startswith("runtime/")
             if target.is_file():
                 rel = str(target.relative_to(LTX_ROOT))
                 if is_path_allowed(rel):
-                    if target.suffix == ".py":
+                    if target.suffix == ".py" and not is_runtime_tree:
                         py_compile.compile(str(target), doraise=True)
-                    zf.write(target, rel)
+                    comp = zipfile.ZIP_STORED if target.suffix.lower() in STORED_EXTS else zipfile.ZIP_DEFLATED
+                    zf.write(target, rel, compress_type=comp)
                     files_added += 1
             elif target.is_dir():
                 for dirpath, dirnames, filenames in os.walk(target):
@@ -327,9 +341,10 @@ def verify_and_build_zip(edition: str = "standard") -> dict[str, Any]:
                         rel = str(p.relative_to(LTX_ROOT))
                         if not is_path_allowed(rel):
                             continue
-                        if p.suffix in (".pyc", ".pyo", ".mp4", ".mov", ".zip", ".ltxpack"):
+                        sfx = p.suffix.lower()
+                        if sfx in (".pyc", ".pyo", ".mp4", ".mov", ".zip", ".ltxpack", ".ltxpart"):
                             continue
-                        if p.suffix in (".py", ".toml", ".json", ".md", ".bat") and "secrets_vault.py" not in rel:
+                        if not is_runtime_tree and sfx in (".py", ".toml", ".json", ".md", ".bat") and "secrets_vault.py" not in rel:
                             try:
                                 txt = p.read_text(encoding="utf-8", errors="ignore")
                                 for pat in FORBIDDEN_CONTENT_PATTERNS:
@@ -339,10 +354,10 @@ def verify_and_build_zip(edition: str = "standard") -> dict[str, Any]:
                                     security_violations.append(f"{rel}: contains OAuth refresh token")
                             except Exception:
                                 pass
-                        # 对超大模型文件使用 ZIP_STORED 加速打包
-                        comp = zipfile.ZIP_STORED if p.suffix in (".safetensors", ".pth", ".bin", ".onnx", ".pt") else zipfile.ZIP_DEFLATED
+                        comp = zipfile.ZIP_STORED if sfx in STORED_EXTS else zipfile.ZIP_DEFLATED
                         zf.write(p, rel, compress_type=comp)
                         files_added += 1
+
 
     h = hashlib.sha256(zip_path.read_bytes()).hexdigest() if zip_path.stat().st_size < 2 * (1024 ** 3) else "skipped_for_large_archive"
     return {
