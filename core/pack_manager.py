@@ -149,8 +149,8 @@ def is_module_installed(pack_id: str, root: Path = LTX_ROOT) -> bool:
 
 
 def find_inbox_archive(pack_id: str, inbox_dir: Path = PACKS_INBOX_DIR) -> Path | None:
-    """扫描 D:\\0_LTX\\packs 或 dist_packages 目录中是否存在对应的待安装压缩包。"""
-    search_dirs = [inbox_dir, LTX_ROOT / "dist_packages"]
+    """扫描 D:\\0_LTX\\packs、根目录或 dist_packages 目录中是否存在对应的待安装压缩包。"""
+    search_dirs = [inbox_dir, LTX_ROOT, LTX_ROOT / "dist_packages"]
     for d in search_dirs:
         if not d.is_dir():
             continue

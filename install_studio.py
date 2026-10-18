@@ -91,11 +91,16 @@ def main() -> None:
         print(f"  · {m['badge']}  {m['name']}")
 
     from core.pack_manager import evaluate_all_packs, scan_and_auto_install_inbox
-    auto_installed = scan_and_auto_install_inbox()
+    print("\n[2.5/5] 正在扫描 packs/ 与根目录下的待安装 .ltxpack 扩展包...")
+    def _prog(pct: int, msg: str) -> None:
+        print(f"  -> [{pct:3d}%] {msg}")
+    auto_installed = scan_and_auto_install_inbox(progress_cb=_prog)
     if auto_installed:
-        print(f"\n[扩展包自动安装] 已从 packs/ 目录自动安装 {len(auto_installed)} 个扩展包:")
+        print(f"[扩展包自动安装完成] 共成功拼装 {len(auto_installed)} 个扩展包:")
         for r in auto_installed:
-            print(f"  · ✅ {r.get('pack_id')}: {r.get('files_installed')} 个文件 ({r.get('installed_size_gb')} GB)")
+            print(f"  · ✅ {r.get('pack_id')}: {r.get('files_installed')} 个文件 ({r.get('installed_size_gb')} GB, 耗时 {r.get('elapsed_s')}s)")
+    else:
+        print("  · 当前没有新的待装 .ltxpack 扩展包（或已全部安装就绪）。")
     packs_info = evaluate_all_packs(profile)
     print(f"\n[模块化乐高扩展包状态] 当前模式: {packs_info['summary']['edition_mode']}:")
     for pk in packs_info["packs"]:

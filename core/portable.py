@@ -15,30 +15,34 @@ from . import LTX_ROOT
 
 
 def rewrite_pyvenv_cfg(root: Path | str | None = None) -> Path:
-    """将 runtime/venv/pyvenv.cfg 与 runtime/comfyui/venv/pyvenv.cfg 的 home 指向当前目录下的 runtime/python。"""
+    """将 runtime/venv/pyvenv.cfg 与 runtime/comfyui/venv/pyvenv.cfg 的 home 指向当前目录下的便携 Python。"""
     base = Path(root).resolve() if root else LTX_ROOT
     py_home = base / "runtime" / "python"
-    if not (py_home / "python.exe").is_file():
-        return py_home
+    comfy_py_home = base / "runtime" / "comfyui" / "python312"
 
-    for rel_cfg in (
-        Path("runtime") / "venv" / "pyvenv.cfg",
-        Path("runtime") / "comfyui" / "venv" / "pyvenv.cfg",
-    ):
-        cfg_path = base / rel_cfg
-        if not cfg_path.is_file():
+    targets = [
+        (base / "runtime" / "venv" / "pyvenv.cfg", py_home),
+        (
+            base / "runtime" / "comfyui" / "venv" / "pyvenv.cfg",
+            comfy_py_home if (comfy_py_home / "python.exe").is_file() else py_home,
+        ),
+    ]
+
+    for cfg_path, target_home in targets:
+        if not cfg_path.is_file() or not (target_home / "python.exe").is_file():
             continue
         lines = cfg_path.read_text(encoding="utf-8", errors="ignore").splitlines()
         out: list[str] = []
         found = False
         for line in lines:
             if line.strip().lower().startswith("home") and "=" in line:
-                out.append(f"home = {py_home}")
+                out.append(f"home = {target_home}")
                 found = True
             else:
                 out.append(line)
         if not found:
-            out.insert(0, f"home = {py_home}")
+            out.insert(0, f"home = {target_home}")
         cfg_path.write_text("\n".join(out) + "\n", encoding="utf-8")
     return py_home
+
 

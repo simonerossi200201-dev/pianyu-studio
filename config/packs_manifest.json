@@ -18,14 +18,23 @@
       "modules/cutora_editor",
       "modules/studio_gateway",
       "runtime/bin",
-      "runtime/mimalloc"
+      "runtime/ffmpeg",
+      "runtime/mimalloc",
+      "runtime/python",
+      "runtime/venv"
     ],
     "included_model_paths": [
+      "runtime/models/model_paths.json",
+      "runtime/models/mediapipe",
+      "runtime/models/vision/mediapipe",
       "runtime/models/asr_large-v3-turbo",
       "runtime/models/asr_small",
       "runtime/models/align_wav2vec2",
       "runtime/models/matte_sam21_base_plus",
       "runtime/models/matte_sam21_large",
+      "runtime/models/vision/matte_sam21_base_plus",
+      "runtime/models/vision/matte_sam21_large",
+      "runtime/models/rmbg2",
       "runtime/models/vision/rmbg2",
       "runtime/models/vision/dpt_hybrid",
       "runtime/models/dpt_hybrid",
@@ -115,7 +124,9 @@
         "runtime/models/ltx25/diffusion_models",
         "runtime/models/ltx25/text_encoders",
         "runtime/models/ltx25/vae",
-        "runtime/models/ltx25/latent_upscale_models"
+        "runtime/models/ltx25/latent_upscale_models",
+        "runtime/models/ltx25/ltx25.sha256",
+        "runtime/models/ltx25/ltx25_gated.sha256"
       ],
       "required_markers": [
         "runtime/models/ltx25/diffusion_models/ltx-2.5-22b-distilled-transformer-nvfp4.safetensors",
@@ -200,9 +211,11 @@
       "model_ids": ["tapnext-pp", "nomos2-4x"],
       "paths": [
         "runtime/models/asr",
+        "runtime/models/upscale",
         "runtime/models/track_tapnextpp_256",
         "runtime/models/track_tapnextpp_512",
         "runtime/models/vision/upscale",
+        "runtime/models/vision/track_tapnextpp_256",
         "runtime/models/vision/track_tapnextpp_512",
         "runtime/models/align_de",
         "runtime/models/align_es",

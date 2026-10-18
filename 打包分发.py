@@ -198,6 +198,18 @@ def build_pack_plan() -> dict[str, Any]:
     }
 
 
+CLOUD_DRIVE_PACK_FILENAMES = {
+    "pack-app-orante": "02_【可选软件模块_15MB】Orante2.0制片台_pack-app-orante.ltxpack",
+    "pack-app-robota": "03_【可选软件模块_7MB】Robota协同操作代理_pack-app-robota.ltxpack",
+    "pack-engine-comfyui": "04_【可选推理引擎_4.5GB】ComfyUI本地引擎与CUDA环境_pack-engine-comfyui.ltxpack",
+    "pack-ltx25-video": "05_【可选视频生成模型_39.2GB】LTX-2.5_22B_本地视频生成大模型_pack-ltx25-video.ltxpack",
+    "pack-ltx25-vfx-loras": "06_【可选视频特效模型_7.6GB】LTX-2.5_IC-LoRA_7合1视频精修特效_pack-ltx25-vfx-loras.ltxpack",
+    "pack-flux2-image": "07_【可选生图改图模型_7.9GB】FLUX.2_klein_4B_极速生图与改图_pack-flux2-image.ltxpack",
+    "pack-audio-tts-bgm": "08_【可选语音配乐模型_25.6GB】AI语音克隆与配乐生成_pack-audio-tts-bgm.ltxpack",
+    "pack-pro-vision-multilang": "09_【可选超分追踪多语种_24.7GB】4x超分_TAPNext追踪_多国语对齐_pack-pro-vision-multilang.ltxpack",
+}
+
+
 def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
     """将指定的软件模块、ComfyUI 推理引擎或 AI 模型扩展包单独封装为 `.ltxpack` 文件，附带 `pack_receipt.json` 元数据。"""
     manifest = load_manifest()
@@ -206,13 +218,16 @@ def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
         raise ValueError(f"未在 packs_manifest.json 中找到扩展包 ID: {pack_id}")
 
     DIST_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = DIST_DIR / f"{pack_id}.ltxpack"
+    fname = CLOUD_DRIVE_PACK_FILENAMES.get(pack_id, f"{pack_id}.ltxpack")
+    out_path = DIST_DIR / fname
     files_added = 0
     total_bytes = 0
+    t0 = time.time()
 
     is_app_pack = pack_def.get("category") == "app_module"
     comp_mode = zipfile.ZIP_DEFLATED if is_app_pack else zipfile.ZIP_STORED
 
+    print(f"[打包开始] 正在生成扩展包: {fname} ...", flush=True)
     with zipfile.ZipFile(out_path, "w", compression=comp_mode, allowZip64=True) as zf:
         if pack_id == "pack-engine-comfyui" and not (LTX_ROOT / "runtime" / "comfyui" / "main.py").is_file():
             # 自动从开发机 D:\0_LLM\ComfyUI 抽取纯净引擎底座 (不含 models/output/input/temp) 封装进 runtime/comfyui/
@@ -235,9 +250,33 @@ def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
                     arc_rel = "runtime/comfyui/" + str(p.relative_to(ext_comfy)).replace("\\", "/")
                     if not is_path_allowed(arc_rel):
                         continue
-                    zf.write(p, arc_rel)
+                    if arc_rel == "runtime/comfyui/venv/pyvenv.cfg":
+                        # 自动重写 pyvenv.cfg 使其指向内置的 python312
+                        cfg_txt = (
+                            "home = D:\\0_LTX\\runtime\\comfyui\\python312\n"
+                            "implementation = CPython\n"
+                            "version_info = 3.12.7\n"
+                            "include-system-site-packages = false\n"
+                        )
+                        zf.writestr(arc_rel, cfg_txt)
+                    else:
+                        zf.write(p, arc_rel)
                     files_added += 1
                     total_bytes += p.stat().st_size
+
+            # 同时内置便携式 Python 3.12.7 基底，确保 ComfyUI 虚拟环境在任何电脑上开箱即用
+            uv_py312 = Path(r"C:\Users\Timco\AppData\Roaming\uv\python\cpython-3.12.7-windows-x86_64-none")
+            if uv_py312.is_dir():
+                for dirpath, dirnames, filenames in os.walk(uv_py312):
+                    dirnames[:] = [d for d in dirnames if "__pycache__" not in d]
+                    for fn in filenames:
+                        p = Path(dirpath) / fn
+                        if p.suffix in (".pyc", ".pyo", ".pdb"):
+                            continue
+                        arc_rel = "runtime/comfyui/python312/" + str(p.relative_to(uv_py312)).replace("\\", "/")
+                        zf.write(p, arc_rel)
+                        files_added += 1
+                        total_bytes += p.stat().st_size
         else:
             for rel_root in pack_def.get("paths", []):
                 target = LTX_ROOT / rel_root
@@ -276,13 +315,17 @@ def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
         }
         zf.writestr("pack_receipt.json", json.dumps(receipt, ensure_ascii=False, indent=2))
 
+    elapsed = round(time.time() - t0, 1)
+    sz_gb = round(out_path.stat().st_size / (1024 ** 3), 3)
+    print(f"[打包完成] {fname} -> {sz_gb} GB ({files_added} 个文件, 耗时 {elapsed}s)", flush=True)
     return {
         "ok": True,
         "edition": "pack",
         "pack_id": pack_id,
         "pack_path": str(out_path),
-        "pack_size_gb": round(out_path.stat().st_size / (1024 ** 3), 3),
+        "pack_size_gb": sz_gb,
         "files_added": files_added,
+        "elapsed_s": elapsed,
     }
 
 
@@ -290,37 +333,43 @@ def verify_and_build_zip(edition: str = "standard") -> dict[str, Any]:
     DIST_DIR.mkdir(parents=True, exist_ok=True)
     date_tag = time.strftime("%Y.%m.%d")
     tag_map = {
-        "cutora-only": "极简CUTORA专享版_统一工作室外壳_Orante与Robota按需装",
-        "standard": "标准代码底座版_32GB_CPU",
-        "full-portable": "完整便携解释器版",
-        "base-25gb": "标准核心版_25GB_内置字幕抠像立体声",
+        "cutora-only": f"片语工作室_极简CUTORA专享代码包_{date_tag}.zip",
+        "standard": f"10_【日常代码热更新包_563MB】片语工作室_四翼全代码热更新包_{date_tag}.zip",
+        "full-portable": f"片语工作室_完整便携解释器版_{date_tag}.zip",
+        "base-25gb": f"01_【必下底座_17.5GB】片语工作室_标准核心版_含CUTORA_表格工具_运行环境_25G核心字幕抠像立体声模型_{date_tag}.zip",
     }
-    tag_name = tag_map.get(edition, edition)
-    zip_path = DIST_DIR / f"片语工作室_{tag_name}_{date_tag}.zip"
+    zip_name = tag_map.get(edition, f"片语工作室_{edition}_{date_tag}.zip")
+    zip_path = DIST_DIR / zip_name
 
-    include_roots = list(CORE_SHELL_AND_CUTORA_ROOTS if edition == "cutora-only" else BASE_APP_ROOTS)
+    # 注意：base-25gb 底座默认包含统一工作室外壳 + CUTORA + 右键表格工具 + 完整运行环境 + 25GB 基础模型；
+    # Orante 与 Robota 作为 02 / 03 号独立扩展包按需选择（如果用户下载了 02/03 放入 packs/ 会自动一键拼装）
+    include_roots = list(CORE_SHELL_AND_CUTORA_ROOTS if edition in ("cutora-only", "base-25gb") else BASE_APP_ROOTS)
     if edition in ("full-portable", "base-25gb"):
         include_roots.append("runtime/python")
+        include_roots.append("runtime/ffmpeg")
     if edition == "base-25gb":
         include_roots.append("runtime/venv")
         manifest = load_manifest()
-        include_roots.extend(manifest.get("base_edition", {}).get("included_model_paths", []))
-
+        for mp in manifest.get("base_edition", {}).get("included_model_paths", []):
+            if mp not in include_roots:
+                include_roots.append(mp)
 
     files_added = 0
     security_violations: list[str] = []
     junctions = count_reparse_points()
+    t0 = time.time()
 
     STORED_EXTS = {
         ".safetensors", ".pth", ".bin", ".onnx", ".pt", ".ckpt", ".npz",
         ".dll", ".pyd", ".exe", ".lib", ".so", ".png", ".jpg", ".ico", ".ttf", ".otf", ".whl",
     }
 
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=3, allowZip64=True) as zf:
-        # 在打包归档中自动创建空的 packs/ 目录说明，方便用户直接拖入 .ltxpack
+    print(f"[打包开始] 正在生成主程序包: {zip_name} ...", flush=True)
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as zf:
         zf.writestr(
             "packs/README_如何安装扩展包.txt",
-            "将按需下载的 .ltxpack 扩展包放入本目录 (packs/)，打开《片语工作室》点击【🧩 扩展包】即可一键无缝安装！\n",
+            "将从网盘按需下载的 .ltxpack 扩展包（如 02_Orante、03_Robota、04_ComfyUI、05_LTX2.5视频模型等）直接放入本目录 (packs/)，\n"
+            "然后双击根目录的《安装与体检.bat》或打开《片语工作室》点击右上角【📦 模块与模型扩展中心】，即可一键无缝拼装！\n",
         )
         for item in include_roots:
             target = LTX_ROOT / item
@@ -330,7 +379,7 @@ def verify_and_build_zip(edition: str = "standard") -> dict[str, Any]:
                 if is_path_allowed(rel):
                     if target.suffix == ".py" and not is_runtime_tree:
                         py_compile.compile(str(target), doraise=True)
-                    comp = zipfile.ZIP_STORED if target.suffix.lower() in STORED_EXTS else zipfile.ZIP_DEFLATED
+                    comp = zipfile.ZIP_STORED if (is_runtime_tree or target.suffix.lower() in STORED_EXTS) else zipfile.ZIP_DEFLATED
                     zf.write(target, rel, compress_type=comp)
                     files_added += 1
             elif target.is_dir():
@@ -354,18 +403,22 @@ def verify_and_build_zip(edition: str = "standard") -> dict[str, Any]:
                                     security_violations.append(f"{rel}: contains OAuth refresh token")
                             except Exception:
                                 pass
-                        comp = zipfile.ZIP_STORED if sfx in STORED_EXTS else zipfile.ZIP_DEFLATED
+                        comp = zipfile.ZIP_STORED if (is_runtime_tree or sfx in STORED_EXTS) else zipfile.ZIP_DEFLATED
                         zf.write(p, rel, compress_type=comp)
                         files_added += 1
 
-
-    h = hashlib.sha256(zip_path.read_bytes()).hexdigest() if zip_path.stat().st_size < 2 * (1024 ** 3) else "skipped_for_large_archive"
+    elapsed = round(time.time() - t0, 1)
+    sz_gb = round(zip_path.stat().st_size / (1024 ** 3), 3)
+    print(f"[打包完成] {zip_name} -> {sz_gb} GB ({files_added} 个文件, 耗时 {elapsed}s)", flush=True)
+    h = hashlib.sha256(zip_path.read_bytes()).hexdigest() if zip_path.stat().st_size < 1 * (1024 ** 3) else "skipped_for_large_archive"
     return {
         "ok": len(security_violations) == 0 and len(junctions) == 0,
         "edition": edition,
         "zip_path": str(zip_path),
+        "zip_size_gb": sz_gb,
         "zip_size_mb": round(zip_path.stat().st_size / (1024 * 1024), 2),
         "files_added": files_added,
+        "elapsed_s": elapsed,
         "reparse_points_remaining": len(junctions),
         "desktop_icon_bundled": (LTX_ROOT / "resources" / "brand" / "app.ico").is_file(),
         "minimax_h3_included": False,
@@ -374,15 +427,80 @@ def verify_and_build_zip(edition: str = "standard") -> dict[str, Any]:
     }
 
 
+def write_cloud_drive_readme() -> Path:
+    """在 dist_packages/ 下生成网盘顶层必看说明文件。"""
+    DIST_DIR.mkdir(parents=True, exist_ok=True)
+    readme_path = DIST_DIR / "00_【必看】片语工作室_网盘按需下载与一键拼装说明.txt"
+    content = """================================================================================
+          片语工作室 (Cutora LTX Studio v3.0) — 网盘按需下载与一键安装指南
+================================================================================
+
+欢迎使用《片语工作室》！本网盘目录采用「统一软件外壳 + 乐高模块化按需拼装」设计。
+所有人均通过同一个《片语工作室》总控台进入，您可以根据自己的电脑配置与实际工作需求，
+自由挑选下载以下模块：
+
+--------------------------------------------------------------------------------
+一、我该下载哪几个文件？（对号入座）
+--------------------------------------------------------------------------------
+
+1. 【所有人必下（仅需下载这 1 个底座包即可直接用 CUTORA + 右键表格工具）】：
+   👉 01_【必下底座_17.5GB】片语工作室_标准核心版_含CUTORA_表格工具_运行环境_25G核心字幕抠像立体声模型_*.zip
+   · 内含：片语工作室统一主界面、CUTORA 智能剪辑台、右键表格工具、便携 Python 环境、FFmpeg 硬件加速套件，
+     以及日常必备的四大核心 AI 模型（Whisper 自动字幕、智能拼接、SAM2.1/RMBG2 视频图像抠像、Demucs/Resemble 立体声与降噪、人像提亮修复）。
+   · 硬件要求：普通办公本 / i7 + 32GB 内存（无独立显卡也可流畅运行，导出速度 >= 400 fps）。
+
+2. 【按需选下：独立软件模块包（体积很小，想用哪个软件就多下哪个）】：
+   👉 02_【可选软件模块_15MB】Orante2.0制片台_pack-app-orante.ltxpack
+      （需要用 Orante 2.0 批量排片、调用云端 Grok/Flow 生片、审片的同事下载）
+   👉 03_【可选软件模块_7MB】Robota协同操作代理_pack-app-robota.ltxpack
+      （需要用 Robota 自动建夹、网盘拉取、自动重命名与缺片闭环巡检的同事下载）
+
+3. 【按需选下：高阶音频与超分追踪模型包（中等配置电脑 / 有进阶剪辑需求的同事下载）】：
+   👉 08_【可选语音配乐模型_25.6GB】AI语音克隆与配乐生成_pack-audio-tts-bgm.ltxpack
+      （需要零样本 AI 情绪配音克隆 Chatterbox/XTTS、AI 生成背景音乐 Stable Audio/MusicGen 时下载）
+   👉 09_【可选超分追踪多语种_24.7GB】4x超分_TAPNext追踪_多国语对齐_pack-pro-vision-multilang.ltxpack
+      （需要 4x 画质超分放大、TAPNext++ 运动跟踪、德/西/法/葡多国语字幕对齐时下载）
+
+4. 【按需选下：本地重型 AI 视频/生图大模型包（仅限配备 RTX 12GB~16GB+ 独立显卡的主力工作站下载）】：
+   👉 04_【可选推理引擎_4.5GB】ComfyUI本地引擎与CUDA环境_pack-engine-comfyui.ltxpack  (本地生视频/生图必装底座)
+   👉 05_【可选视频生成模型_39.2GB】LTX-2.5_22B_本地视频生成大模型_pack-ltx25-video.ltxpack
+   👉 06_【可选视频特效模型_7.6GB】LTX-2.5_IC-LoRA_7合1视频精修特效_pack-ltx25-vfx-loras.ltxpack
+   👉 07_【可选生图改图模型_7.9GB】FLUX.2_klein_4B_极速生图与改图_pack-flux2-image.ltxpack
+
+5. 【仅限老用户日常更新代码（563MB）】：
+   👉 10_【日常代码热更新包_563MB】片语工作室_四翼全代码热更新包_*.zip
+      （已装好底座和模型的同事，后续软件升级只需下载此小包解压覆盖即可，原有百G模型100%保留！）
+
+--------------------------------------------------------------------------------
+二、下载后怎么安装？（三步傻瓜式操作）
+--------------------------------------------------------------------------------
+
+第一步：解压【01_必下底座】
+   将 `01_【必下底座...】.zip` 解压到电脑空间充足的磁盘根目录（如 `D:\\PianyuStudio\\` 或 `D:\\0_LTX\\`）。
+
+第二步：放入您挑选的 `.ltxpack` 扩展包（如果有下载的话）
+   把您从网盘挑着下载的 `.ltxpack` 文件（不用手动改后缀解压！），直接复制粘贴到解压目录里面的 **`packs`** 文件夹下。
+
+第三步：双击一键安装与启动
+   1. 双击运行解压目录里的 **`安装与体检.bat`**：
+      它会自动配置好 Python 环境、自动把 `packs` 文件夹里的所有扩展包无缝组装进工作室、并在桌面生成《片语工作室》快捷方式！
+   2. 以后每天使用，直接双击桌面的 **《片语工作室》** 图标即可！
+   3. 如果以后后悔了、想追加新功能，随时从网盘补下对应的 `.ltxpack` 文件，打开《片语工作室》点击右上角
+      【📦 模块与模型扩展中心】->【📂 从本地导入 .ltxpack 扩展包...】，选中文件即可一键热挂载！
+================================================================================
+"""
+    readme_path.write_text(content, encoding="utf-8")
+    return readme_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="片语工作室安全脱敏与模块化插件包打包工具")
     parser.add_argument(
         "--edition",
         default="standard",
-        choices=["cutora-only", "standard", "full-portable", "base-25gb", "pack", "plan"],
-        help="打包版本档位: cutora-only(统一工作室外壳+CUTORA+右键表格工具) / standard(四翼完整代码底座) / full-portable(含Python解释器) / base-25gb(25GB标准核心版) / pack(单独打包指定.ltxpack扩展包) / plan(查看完整拆分精算表)",
+        choices=["cutora-only", "standard", "full-portable", "base-25gb", "pack", "cloud-drive-all", "plan"],
+        help="打包版本档位",
     )
-
     parser.add_argument("--pack-id", default="", help="当 --edition pack 时指定扩展包 ID (如 pack-ltx25-video)")
     parser.add_argument("--verify-only", action="store_true", help="仅执行安全与合规校验")
     args = parser.parse_args()
@@ -398,6 +516,17 @@ def main() -> None:
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return
 
+    if args.edition == "cloud-drive-all":
+        write_cloud_drive_readme()
+        results = []
+        results.append(verify_and_build_zip("base-25gb"))
+        manifest = load_manifest()
+        for p in manifest.get("packs", []):
+            results.append(build_single_ltxpack(p["id"]))
+        results.append(verify_and_build_zip("standard"))
+        print(json.dumps({"ok": True, "cloud_drive_suite": results}, ensure_ascii=False, indent=2))
+        return
+
     res = verify_and_build_zip(edition=args.edition)
     print(json.dumps(res, ensure_ascii=False, indent=2))
     if not res["ok"]:
@@ -406,3 +535,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
