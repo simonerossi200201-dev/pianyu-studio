@@ -1741,5 +1741,11 @@
   "regen.acc.studio_q.high": "高质 768p",
   "regen.acc.studio_q.best": "精品 768p",
   "set.opt.engine.studio.quality.high": "高质 768p",
-  "set.opt.engine.studio.quality.best": "精品 768p（8 步，很慢）"
+  "set.opt.engine.studio.quality.best": "精品 768p（8 步，很慢）",
+  "node.imgstudio": "🎨 制图工坊",
+  "node.imgstudio.sub": "批量生图 · 抠图 · 精修",
+  "node.tip.imgstudio_ok": "批量生图、多尺寸排版、单图局部重绘与抠图扩图工坊",
+  "imgstudio.title": "🎨 制图工坊 · Image Studio",
+  "imgstudio.mode.grid": "⚡ 批量矩阵视图 (Grid)",
+  "imgstudio.mode.canvas": "🖌️ 单图精修画布 (Canvas)"
 }

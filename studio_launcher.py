@@ -141,7 +141,7 @@ def orante_instance_count() -> int:
     return len(alive)
 
 
-def launch_orante() -> bool:
+def launch_orante(start_node: str = "") -> bool:
     """启动 Orante 2.0。不限制多开数量；仅在两次启动间隔小于 5 秒时忽略（防误触只对 CUTORA 做单实例锁定）。"""
     if orante_cooldown_left() > 0.0:
         return False
@@ -150,10 +150,12 @@ def launch_orante() -> bool:
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env["PATH"] = f"{LTX_ROOT / 'runtime' / 'bin'};{LTX_ROOT / 'runtime' / 'ffmpeg'};{env.get('PATH', '')}"
+    if start_node:
+        env["ORANTE_START_NODE"] = start_node
     proc = subprocess.Popen([_python_exe(gui=True), "-m", "orante"], cwd=str(orante_dir), env=env)
     _MODULE_PROCS["orante"] = proc
     _ORANTE_PROCS.append(proc)
-    get_spine_db().emit_event("launcher.orante_started", "launcher", "orante", {})
+    get_spine_db().emit_event("launcher.orante_started", "launcher", "orante", {"start_node": start_node})
     return True
 
 
@@ -989,10 +991,11 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 index_str="01",
                 icon_path=brand_dir / "orante_medallion.png",
                 title="Orante 2.0 制片台",
-                badge_text="排片 · 生片 · 审片",
-                desc="Grok / Flow / LTX-2.5 批量视频生成、分镜排片、首尾帧接力与缺片回流补生",
+                badge_text="排片 · 制图 · 生片 · 审片",
+                desc="内置 AI 制图工坊(批量生图/署名排版/局部重绘/扩图/抠图) + Grok/Flow/LTX-2.5 生片",
                 actions=[
-                    ("启动制片台  ▸", True, self._on_open_orante),
+                    ("🎨 制图工坊", False, lambda: self._on_open_orante("imgstudio")),
+                    ("启动制片台  ▸", True, lambda: self._on_open_orante("")),
                 ],
                 parent=self,
             )
@@ -1113,7 +1116,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             except Exception as e:
                 self._toast.show_toast(f"启动异常：{e}")
 
-        def _on_open_orante(self) -> None:
+        def _on_open_orante(self, start_node: str = "") -> None:
             self._sync_module_locks()
             left = orante_cooldown_left()
             if left > 0.0:
@@ -1124,13 +1127,14 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 self._toast.show_toast("当前版本尚未安装 Orante 2.0 制片台扩展包，可一键无缝安装！")
                 self._on_open_pack_manager(highlight_pack_id="pack-app-orante")
                 return
-            if not launch_orante():
+            if not launch_orante(start_node):
                 return
             self._accepted_clicks.add("orante")
             self._card_orante.set_locked(True, "✓ 已启动 · 5 秒后可再开")
             QTimer.singleShot(int(ORANTE_RELAUNCH_COOLDOWN_SEC * 1000) + 100, self._sync_module_locks)
             n = orante_instance_count()
-            self._toast.show_toast(f"已启动 Orante 2.0 制片台（当前 {n} 个窗口，5 秒后可继续多开）")
+            mode_label = " · 🎨 制图工坊" if start_node == "imgstudio" else ""
+            self._toast.show_toast(f"已启动 Orante 2.0 制片台{mode_label}（当前 {n} 个窗口，5 秒后可继续多开）")
             self.refresh_status(silent=True)
 
         def _on_open_cutora(self, room: str = "") -> None:

@@ -5,6 +5,7 @@ window.NodeBar = {
   setup() {
     const nodes = [
       { id: 'tasks', k: 'node.tasks', sub: 'node.tasks.sub' },
+      { id: 'imgstudio', k: 'node.imgstudio', sub: 'node.imgstudio.sub' },
       { id: 'gemini', k: 'node.gemini', sub: 'node.gemini.sub' },
       { id: 'track', k: 'node.track', sub: 'node.track.sub' },
       { id: 'generate', k: 'node.generate', sub: 'node.generate.sub' },

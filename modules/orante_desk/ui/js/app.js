@@ -5,10 +5,10 @@
       SetupWizard: window.SetupWizard,
       TaskPick: window.TaskPick,
       SuiteBar: window.SuiteBar,
-      Panel_tasks, Panel_gemini, Panel_track, Panel_generate, Panel_review },
+      Panel_tasks, Panel_imgstudio: window.Panel_imgstudio, Panel_gemini, Panel_track, Panel_generate, Panel_review },
     setup() {
       const { computed, ref, onMounted, onUnmounted } = Vue;
-      const panels = { tasks: 'Panel_tasks', gemini: 'Panel_gemini', track: 'Panel_track', generate: 'Panel_generate', review: 'Panel_review' };
+      const panels = { tasks: 'Panel_tasks', imgstudio: 'Panel_imgstudio', gemini: 'Panel_gemini', track: 'Panel_track', generate: 'Panel_generate', review: 'Panel_review' };
       const currentPanel = computed(() => panels[ui.node] || 'Panel_tasks');
       const panelKey = computed(() => (ui.node || 'tasks') + '-' + (store.suiteTick || 0));
       const capTid = computed({
@@ -167,6 +167,7 @@
         const lit = (can, busyKind) => busyKinds.has(busyKind) ? 'busy' : (can ? 'done' : 'idle');
         return {
           tasks: lit(ts.length > 0, 'prepare'),
+          imgstudio: (store.imgStudioBusy ? 'busy' : 'done'),
           gemini: (busyKinds.has('describe') || (store.descQueue && store.descQueue.on))
             ? 'busy' : lit(ts.some(x => at(x, 'prepared')), 'describe'),
           track: lit(ts.some(x => at(x, 'prepared')), 'arrange'),
@@ -197,12 +198,13 @@ const lampTips = computed(() => {
         const cur = (tid && ts.find(x => x.id === tid)) || ts[0] || null;
         if (!cur) {
           const empty = t('node.tip.no_task');
-          return { tasks: empty, gemini: empty, track: empty, generate: empty, review: empty };
+          return { tasks: empty, imgstudio: t('node.tip.imgstudio_ok'), gemini: empty, track: empty, generate: empty, review: empty };
         }
         const miss = Number((cur.counts && cur.counts.desc_missing) || 0);
         const ready = !!(cur.counts && cur.counts.images_ready);
         const tip = {};
         tip.tasks = at(cur, 'prepared') ? t('node.tip.prepared') : t('node.tip.need_prepare');
+        tip.imgstudio = t('node.tip.imgstudio_ok');
         if (!at(cur, 'prepared')) tip.gemini = t('node.tip.need_prepare');
         else if ((!(String(cur.copy||'').trim()) || Number((cur.counts&&cur.counts.subjects)||0)===1)) tip.gemini = t('node.tip.gemini_skip');
         else if (miss > 0) tip.gemini = t('node.tip.need_desc', { n: String(miss) });
@@ -250,6 +252,9 @@ const lampTips = computed(() => {
   try {
     const ok = await bootstrap();
     if (ok) {
+      if (store.start_node && ['tasks','imgstudio','gemini','track','generate','review'].includes(store.start_node)) {
+        ui.node = store.start_node;
+      }
       connectEvents();
       try {
         const st = await API.get('/api/setup/state', { silent: true });

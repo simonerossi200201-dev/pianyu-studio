@@ -798,6 +798,152 @@ def build_app() -> FastAPI:
         rec = JOBS.enqueue("rmbg", body, model_id="rmbg-2.0")
         return _public_job(rec)
 
+    # ---------------- 3b. Image Studio (AI 视觉制图与批量精修工坊) REST 接口 ----------------
+    @app.post("/v1/images/studio/batch_gen")
+    async def image_studio_batch_gen_endpoint(req: Request) -> JSONResponse:
+        from core import image_studio
+        body = await req.json() if req.headers.get("content-length") else {}
+        proj_dir = body.get("project_dir") or str(image_studio.DEFAULT_WORKSPACE_ROOT)
+        try:
+            res = image_studio.generate_items(
+                proj_dir=proj_dir,
+                prompts_text=str(body.get("prompts_text") or body.get("prompt") or ""),
+                items_spec=body.get("items_spec"),
+                aspects=body.get("aspects") or [body.get("aspect", "9:16")],
+                count_per_prompt=int(body.get("count_per_prompt") or 1),
+                engine=str(body.get("engine") or "flux2"),
+                default_typography=body.get("typography"),
+                run_now=bool(body.get("run_now", True)),
+                steps=int(body.get("steps") or 4),
+                mock=bool(body.get("mock", False)),
+            )
+            if body.get("send_to_orante_task"):
+                res["orante_export"] = image_studio.export_to_orante_task(
+                    proj_dir=proj_dir,
+                    task_id_or_dir=str(body["send_to_orante_task"]),
+                    use_composed=bool(body.get("use_composed", False)),
+                )
+            return JSONResponse(res)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    @app.post("/v1/images/studio/inpaint")
+    async def image_studio_inpaint_endpoint(req: Request) -> JSONResponse:
+        from core import image_studio
+        body = await req.json() if req.headers.get("content-length") else {}
+        proj_dir = body.get("project_dir") or str(image_studio.DEFAULT_WORKSPACE_ROOT)
+        try:
+            res = image_studio.inpaint_item(
+                proj_dir=proj_dir,
+                item_id=str(body["item_id"]),
+                mask_b64_or_path=body.get("mask") or body.get("mask_b64") or body.get("mask_path") or "",
+                prompt=str(body.get("prompt") or ""),
+                mode=str(body.get("mode") or "inpaint"),
+                denoise=float(body.get("denoise") or 0.75),
+                use_ai=bool(body.get("use_ai", True)),
+                mock=bool(body.get("mock", False)),
+            )
+            return JSONResponse(res)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    @app.post("/v1/images/studio/outpaint")
+    async def image_studio_outpaint_endpoint(req: Request) -> JSONResponse:
+        from core import image_studio
+        body = await req.json() if req.headers.get("content-length") else {}
+        proj_dir = body.get("project_dir") or str(image_studio.DEFAULT_WORKSPACE_ROOT)
+        try:
+            if body.get("item_ids"):
+                res = image_studio.batch_outpaint(
+                    proj_dir=proj_dir,
+                    item_ids=body.get("item_ids"),
+                    target_aspect=str(body.get("target_aspect") or "9:16"),
+                    align=str(body.get("align") or "center"),
+                    prompt=str(body.get("prompt") or ""),
+                    use_ai=bool(body.get("use_ai", False)),
+                    mock=bool(body.get("mock", False)),
+                )
+            else:
+                res = image_studio.outpaint_item(
+                    proj_dir=proj_dir,
+                    item_id=str(body["item_id"]),
+                    target_aspect=str(body.get("target_aspect") or "9:16"),
+                    target_w=int(body.get("target_w") or 0),
+                    target_h=int(body.get("target_h") or 0),
+                    align=str(body.get("align") or "center"),
+                    prompt=str(body.get("prompt") or ""),
+                    pad_top=int(body.get("pad_top") or 0),
+                    pad_bottom=int(body.get("pad_bottom") or 0),
+                    pad_left=int(body.get("pad_left") or 0),
+                    pad_right=int(body.get("pad_right") or 0),
+                    use_ai=bool(body.get("use_ai", False)),
+                    mock=bool(body.get("mock", False)),
+                )
+            return JSONResponse(res)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    @app.post("/v1/images/studio/matte")
+    async def image_studio_matte_endpoint(req: Request) -> JSONResponse:
+        from core import image_studio
+        body = await req.json() if req.headers.get("content-length") else {}
+        proj_dir = body.get("project_dir") or str(image_studio.DEFAULT_WORKSPACE_ROOT)
+        try:
+            if body.get("preview_only") and body.get("points"):
+                img_p = body.get("image_path") or (image_studio.load_project(proj_dir) and image_studio.ImageStudioManager(proj_dir).get_item(str(body["item_id"])))
+                res = image_studio.segment_points_preview(img_p, points=body["points"], proj_dir=proj_dir)
+            else:
+                res = image_studio.matte_item(
+                    proj_dir=proj_dir,
+                    item_id=str(body["item_id"]),
+                    mode=str(body.get("mode") or "rmbg"),
+                    points=body.get("points"),
+                    bg_mode=str(body.get("bg_mode") or "transparent"),
+                    bg_color=str(body.get("bg_color") or "#000000"),
+                    prefer_fast=bool(body.get("prefer_fast", False)),
+                )
+            return JSONResponse(res)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    @app.post("/v1/images/studio/typography")
+    async def image_studio_typography_endpoint(req: Request) -> JSONResponse:
+        from core import image_studio
+        body = await req.json() if req.headers.get("content-length") else {}
+        proj_dir = body.get("project_dir") or str(image_studio.DEFAULT_WORKSPACE_ROOT)
+        try:
+            overrides = body.get("typography") if isinstance(body.get("typography"), dict) else {
+                k: v for k, v in body.items() if k not in ("project_dir", "item_id")
+            }
+            res = image_studio.render_typography(
+                proj_dir=proj_dir,
+                item_or_id=str(body["item_id"]),
+                overrides=overrides,
+                save_project_file=True,
+            )
+            return JSONResponse(res)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    @app.post("/v1/images/studio/inspect")
+    async def image_studio_inspect_endpoint(req: Request) -> JSONResponse:
+        from core import image_studio
+        body = await req.json() if req.headers.get("content-length") else {}
+        try:
+            if body.get("image_path"):
+                valid_img = _validate_local_file(body["image_path"], "待检测图片")
+                res = image_studio.detect_faces_and_qc(valid_img, expected_aspect=str(body.get("aspect") or ""))
+                res["ok"] = True
+                return JSONResponse(res)
+            proj_dir = body.get("project_dir") or str(image_studio.DEFAULT_WORKSPACE_ROOT)
+            data = image_studio.load_project(proj_dir)
+            if body.get("item_id"):
+                it = image_studio.ImageStudioManager(proj_dir).get_item(str(body["item_id"]))
+                return JSONResponse({"ok": True, "project_dir": str(proj_dir), "item": it})
+            return JSONResponse({"ok": True, "project_dir": str(proj_dir), "project": data})
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
     @app.get("/v1/jobs/{jid}")
     def any_job_status(jid: str) -> JSONResponse:
         if not _JID_RE.fullmatch(jid):

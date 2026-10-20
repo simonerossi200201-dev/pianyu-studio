@@ -46,6 +46,8 @@ TOOLS = [
     studio_pipeline.cutora_auto_project,
     studio_pipeline.cutora_batch_export,
     studio_pipeline.drive_upload_and_verify,
+    studio_pipeline.image_studio_batch,
+    studio_pipeline.image_studio_edit,
     watch.watch_file,
     memory.memory_topics, memory.memory_read, memory.memory_append,
 ]

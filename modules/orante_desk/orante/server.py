@@ -158,6 +158,7 @@ def state(probe: int = 1):
     nt = accounts.network_throttle_state()
     studio = accounts.studio_public(probe=True)
     accs.append(studio)               # 本地模型也是一个「账号」（虚拟的，排在最后）
+    import os
     return ok(version=__version__, accounts=accs,
               studio=studio,
               tasks=tasks.list_all(),
@@ -166,6 +167,7 @@ def state(probe: int = 1):
               legacy_available=setupmod.legacy_available(),
               port=int(instance.PORT or 0),
               primary=bool(instance.PRIMARY),
+              start_node=(os.environ.get("ORANTE_START_NODE") or "").strip(),
               network_throttled=bool(nt.get("on")),
               flow_throttle=nt)
 
@@ -1860,6 +1862,214 @@ async def jobs_submit(req: Request):
     if held:
         extra["account_held_by"] = held
     return ok(job=job.to_dict(), **extra)
+
+
+# ---------------- 🎨 制图工坊 (Image Studio) ----------------
+@app.get("/api/imgstudio/state")
+def imgstudio_state(tid: str = ""):
+    from .services import imgstudio
+    return ok(**imgstudio.get_state(tid or None))
+
+
+@app.post("/api/imgstudio/add-prompts")
+async def imgstudio_add_prompts(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.add_prompts(
+        tid=d.get("tid"),
+        text=d.get("text") or "",
+        aspects=d.get("aspects") or ["9:16"],
+        count_per_prompt=int(d.get("count_per_prompt") or 1),
+        typography=d.get("typography"),
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/import-from-task")
+async def imgstudio_import_from_task(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.import_from_task(tid=d.get("tid") or "", mode=d.get("mode") or "images")
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/import-files")
+async def imgstudio_import_files(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.import_local_files(tid=d.get("tid"), path_or_files=d.get("folder_or_files") or "")
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/generate")
+async def imgstudio_generate(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.run_generate_batch(
+        tid=d.get("tid"),
+        item_ids=d.get("item_ids") or [],
+        engine=d.get("engine") or "flux2",
+        steps=int(d.get("steps") or 4),
+        async_run=bool(d.get("async", True)),
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/review")
+async def imgstudio_review(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.update_review(
+        tid=d.get("tid"),
+        item_ids=d.get("item_ids") or [],
+        review=d.get("review"),
+        rating=d.get("rating"),
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/delete")
+async def imgstudio_delete(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.delete_items(tid=d.get("tid"), item_ids=d.get("item_ids") or [])
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/typography")
+async def imgstudio_typography(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.apply_typography_batch(
+        tid=d.get("tid"),
+        item_ids=d.get("item_ids") or [],
+        typography=d.get("typography") or {},
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/inspect")
+async def imgstudio_inspect(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.run_inspect_batch(tid=d.get("tid"), item_ids=d.get("item_ids") or [])
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/inpaint")
+async def imgstudio_inpaint(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.run_inpaint(
+        tid=d.get("tid"),
+        item_id=d.get("item_id") or "",
+        mask_data_url=d.get("mask_data_url") or "",
+        prompt=d.get("prompt") or "",
+        mode=d.get("mode") or "inpaint",
+        denoise=float(d.get("denoise") if d.get("denoise") is not None else 0.75),
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/outpaint")
+async def imgstudio_outpaint(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.run_outpaint(
+        tid=d.get("tid"),
+        item_ids=d.get("item_ids") or [],
+        target_aspect=d.get("target_aspect") or "9:16",
+        align=d.get("align") or "center",
+        prompt=d.get("prompt") or "",
+        pad_top=int(d.get("pad_top") or 0),
+        pad_bottom=int(d.get("pad_bottom") or 0),
+        pad_left=int(d.get("pad_left") or 0),
+        pad_right=int(d.get("pad_right") or 0),
+        use_ai=bool(d.get("use_ai", True)),
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/matte")
+async def imgstudio_matte(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.run_matte_batch(
+        tid=d.get("tid"),
+        item_ids=d.get("item_ids") or [],
+        mode=d.get("mode") or "rmbg",
+        points=d.get("points") or [],
+        bg_mode=d.get("bg_mode") or "transparent",
+        bg_color=d.get("bg_color") or "#18181b",
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/segment-preview")
+async def imgstudio_segment_preview(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.preview_point_segment(
+        tid=d.get("tid"),
+        item_id=d.get("item_id") or "",
+        points=d.get("points") or [],
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/upscale")
+async def imgstudio_upscale(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.run_upscale_batch(
+        tid=d.get("tid"),
+        item_ids=d.get("item_ids") or [],
+        scale=int(d.get("scale") or 2),
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/revert")
+async def imgstudio_revert(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.revert_item_version(
+        tid=d.get("tid"),
+        item_id=d.get("item_id") or "",
+        ver=int(d.get("ver") or 1),
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/send-to-task")
+async def imgstudio_send_to_task(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.send_to_task(
+        tid=d.get("tid"),
+        item_ids=d.get("item_ids") or [],
+        use_composed=bool(d.get("use_composed", False)),
+        mode=d.get("mode") or "append",
+    )
+    return ok(**res)
+
+
+@app.post("/api/imgstudio/open-folder")
+async def imgstudio_open_folder(req: Request):
+    from .services import imgstudio
+    d = await body(req) or {}
+    res = imgstudio.open_project_folder(tid=d.get("tid"))
+    return ok(**res)
+
+
+@app.get("/media/imgstudio/{kind}/{item_id}")
+def media_imgstudio(kind: str, item_id: str, request: Request, tid: str = "", ver: int | None = None):
+    from .services import imgstudio
+    path = imgstudio.resolve_media_file(kind=kind, item_id=item_id, tid=tid or None, ver=ver)
+    ctype = mimetypes.guess_type(str(path))[0] or "image/png"
+    cache = ("private, max-age=31536000, immutable"
+             if request.query_params.get("v") else "no-store")
+    return FileResponse(path, media_type=ctype, headers={"Cache-Control": cache})
 
 
 # ---------------- 媒体（支持 Range） ----------------

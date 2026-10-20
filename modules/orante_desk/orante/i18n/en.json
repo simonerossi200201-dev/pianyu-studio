@@ -530,5 +530,11 @@
   "regen.acc.studio_q.high": "high 768p",
   "regen.acc.studio_q.best": "best 768p",
   "set.opt.engine.studio.quality.high": "High 768p",
-  "set.opt.engine.studio.quality.best": "Best 768p (8 steps, slow)"
+  "set.opt.engine.studio.quality.best": "Best 768p (8 steps, slow)",
+  "node.imgstudio": "🎨 Image Studio",
+  "node.imgstudio.sub": "Batch Gen · Matte · Inpaint",
+  "node.tip.imgstudio_ok": "Batch image matrix, typography, AI inpaint, outpaint & matting studio",
+  "imgstudio.title": "🎨 Image Studio",
+  "imgstudio.mode.grid": "⚡ Batch Matrix (Grid)",
+  "imgstudio.mode.canvas": "🖌️ Precision Canvas"
 }

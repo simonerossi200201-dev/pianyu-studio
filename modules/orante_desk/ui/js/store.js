@@ -185,6 +185,7 @@ window.refreshState = async (opts) => {
     legacy_available: !!s.legacy_available,
     port: Number(s.port || 0),
     primary: s.primary !== false,
+    start_node: String(s.start_node || ''),
     network_throttled: !!s.network_throttled });
   if (s.studio) store.studio = s.studio;   // 规格 98：本地模型状态（不在 accounts 里）
   if (s.flow_throttle && s.flow_throttle.on) {

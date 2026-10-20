@@ -103,6 +103,23 @@ def main() -> None:
     p_mem.add_argument("rule", help="Workflow rule or habit to remember")
     p_mem.add_argument("--category", choices=["sop", "habit"], default="sop")
 
+    p_img = sub.add_parser("image-studio", help="Run AI Image Studio batch generation or single-image precision edit")
+    p_img.add_argument("action", choices=["batch", "inpaint", "erase", "outpaint", "matte", "typography", "upscale", "revert", "export-orante"])
+    p_img.add_argument("--project-dir", default="", help="Image Studio project directory")
+    p_img.add_argument("--prompts", default="", help="Prompts text or TSV file path for batch generation")
+    p_img.add_argument("--aspects", default="9:16", help="Comma-separated aspect ratios (e.g. 9:16,1:1)")
+    p_img.add_argument("--item-id", default="img_0001", help="Target item ID for single-image edit")
+    p_img.add_argument("--prompt", default="", help="Edit prompt for inpaint/outpaint")
+    p_img.add_argument("--mask", default="", help="Mask file path or base64 for inpaint/erase")
+    p_img.add_argument("--title", default="", help="Title text for typography")
+    p_img.add_argument("--subtitle", default="", help="Subtitle text for typography")
+    p_img.add_argument("--preset", default="cinema_gold", help="Typography preset name")
+    p_img.add_argument("--sticker", default="", help="Sticker PNG path")
+    p_img.add_argument("--depth-text", action="store_true", help="Enable foreground-layered depth text")
+    p_img.add_argument("--orante-task", default="", help="Target Orante task ID or directory for handoff")
+    p_img.add_argument("--version", type=int, default=1, help="History version to revert to")
+    p_img.add_argument("--mock", action="store_true", help="Use fast deterministic synthetic fallback")
+
     args = parser.parse_args()
     conductor = DailyWorkflowConductor()
 
@@ -223,6 +240,40 @@ def main() -> None:
     elif args.cmd == "remember":
         mem = RobotaMemoryEvolutionEngine()
         res = mem.save_explicit_rule(args.rule, category=args.category)
+    elif args.cmd == "image-studio":
+        if args.action == "batch":
+            p_txt = Path(args.prompts).read_text(encoding="utf-8") if (args.prompts and Path(args.prompts).is_file()) else args.prompts
+            res = conductor.image_studio_batch(
+                project_dir=args.project_dir,
+                prompts_text=p_txt,
+                aspects=[a.strip() for a in (args.aspects or "9:16").split(",") if a.strip()],
+                title_preset=args.preset,
+                sticker_path=args.sticker,
+                send_to_orante_task=args.orante_task,
+                mock=bool(args.mock),
+            )
+        elif args.action == "export-orante":
+            from core import image_studio
+            res = image_studio.export_to_orante_task(
+                proj_dir=args.project_dir or image_studio.DEFAULT_WORKSPACE_ROOT,
+                task_id_or_dir=args.orante_task,
+            )
+        else:
+            res = conductor.image_studio_edit(
+                project_dir=args.project_dir,
+                item_id=args.item_id,
+                action=args.action,
+                prompt=args.prompt,
+                mask=args.mask,
+                target_aspect=args.aspects.split(",")[0].strip(),
+                title=args.title,
+                subtitle=args.subtitle,
+                preset=args.preset,
+                sticker_path=args.sticker,
+                depth_text=bool(args.depth_text),
+                version=args.version,
+                mock=bool(args.mock),
+            )
     else:
         res = {"ok": False, "error": f"Unknown command: {args.cmd}"}
 
