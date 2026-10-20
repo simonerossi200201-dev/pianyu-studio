@@ -1,4 +1,4 @@
-# Robota global settings (片语工作室 D:\0_LTX 统一版 — 默认零 Token 本地优先)
+# Robota global settings
 
 [console]
 port = 9600
@@ -7,25 +7,30 @@ port = 9600
 port = 9611
 
 [local]
-# 默认本地模型统一使用本机 Google Gemma 4 (不耗费任何云端 Token，物理离线运行)
-model = "gemma4:12b"
+# Agent work (accuracy first)
+model = "muse-glimmer"
+# Chat / tutor (speed first, fits fully in 16 GB VRAM)
 fast_model = "gemma4:12b"
-ollama = "http://127.0.0.1:11434"
+ollama = "http://localhost:11434"
 num_ctx = 32768
 
 [router]
-# 默认优先使用本地 L0 确定性规则 + L1 本地模型 (0 云端 Token 消耗)
-default_brain = "local"
+# Default brain in "auto" mode: "agy" (Gemini Ultra, cloud, saves GPU) or "local" (Ollama)
+default_brain = "agy"
+# Local agent engine (route local_agent): "smol" = smolagents ToolCallingAgent (default), "antigravity" = old loop
 agent_engine = "smol"
-smol_model = "gemma4:12b"
+smol_model = "gemma4:12b"   # or "gemma4:26b" / "muse-glimmer"
 smol_max_steps = 10
 
 [agy]
+# General chat & tasks: fast, high quality, low quota usage
 model = "gemini-3.8-flash-medium"
+# Coding / complex project changes
 code_model = "claude-opus-5-5-high"
 timeout_min = 120
 
 [tutor]
+# Fill in your target language, e.g. "Italian", "German", "English"
 target_language = ""
 native_language = "Chinese"
 level = "auto"

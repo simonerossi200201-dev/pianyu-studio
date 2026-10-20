@@ -2045,6 +2045,88 @@ window.Panel_gemini = (() => {
         const text = previewText.value || '';
         return { on, total, chars: text.length };
       });
+      const DEFAULT_PROMPT_NODES = [
+        {
+          id: 'D01', name: '竖起大拇指赞同', tag: '赞同手势', color: '#4a90e2',
+          desc: '保持原图单人出镜与原始场景构图不变，严禁出现其他人或新增肢体。画面中的人物作为正在认真观看视频的倾听者，嘴唇全程保持自然闭合，绝不说话、不做说话口型。人物神情专注投入，在倾听过程中自然流露出深表赞同的神态，缓缓竖起一只手的大拇指表示认同与称赞，随后手部自然微动，伴随轻轻点头与柔和眼神变化，呼吸起伏真实自然，整体宛如鲜活生动的真实人物视频。'
+        },
+        {
+          id: 'D02', name: '手捂胸口深表感动', tag: '捂心共鸣', color: '#e26a6a',
+          desc: '保持原图单人出镜与原始场景构图不变，严禁出现其他人或新增肢体。画面中的人物作为正在认真观看视频的倾听者，嘴唇全程保持自然闭合，绝不说话、不做说话口型。人物神情温润专注，内心深受触动，一只手自然轻抚在胸口（捂心口）表达感动与虔诚共鸣，伴随轻微缓慢的点头、柔和眨眼与自然的胸廓呼吸起伏，手部与肩颈姿态生动自然，绝不僵硬定格。'
+        },
+        {
+          id: 'D03', name: '频频点头深表认同', tag: '专注点头', color: '#50b878',
+          desc: '保持原图单人出镜与原始场景构图不变，严禁出现其他人或新增肢体。画面中的人物作为正在认真观看视频的倾听者，嘴唇全程保持自然闭合，绝不说话、不做说话口型。人物目光温和专注地注视前方，随着所听内容自然地频频点头表示深深认同，嘴角带着温润笑意，双肩与手臂有轻微自然的放松微动与呼吸感，整体动态真实流畅，与静态照片明显区分。'
+        },
+        {
+          id: 'D04', name: '微笑倾听双手微动', tag: '松弛倾听', color: '#f5a623',
+          desc: '保持原图单人出镜与原始场景构图不变，严禁出现其他人或新增肢体。画面中的人物作为正在认真观看视频的倾听者，嘴唇全程保持自然闭合，绝不说话、不做说话口型。人物面带温暖平和的微笑，眼神专注，偶尔轻轻点头赞同，身前或腿上的手臂与手掌有轻微自然的姿势调整与放松微动，配合真实呼吸起伏与自然眨眼，神态鲜活自然。'
+        },
+        {
+          id: 'D05', name: '托腮/交握静思共鸣', tag: '静思赞同', color: '#9b6be2',
+          desc: '保持原图单人出镜与原始场景构图不变，严禁出现其他人或新增肢体。画面中的人物作为正在认真观看视频的倾听者，嘴唇全程保持自然闭合，绝不说话、不做说话口型。人物保持自然的倾听姿态，手指与手腕有细腻真实的微动，目光专注深邃，随着倾听内容轻轻点头表示领悟与赞同，伴随柔和眨眼与均匀呼吸起伏，极具真实视频质感。'
+        },
+        {
+          id: 'D06', name: '侧首微笑欣然赞许', tag: '欣然赞许', color: '#38b2ac',
+          desc: '保持原图单人出镜与原始场景构图不变，严禁出现其他人或新增肢体。画面中的人物作为正在认真观看视频的倾听者，嘴唇全程保持自然闭合，绝不说话、不做说话口型。人物头部有轻微自然的侧倾与缓和点头动作，眉眼舒展流露出欣然赞许的神情，手臂与手部自然放松微动，配合真实呼吸与眨眼，整体生动自然。'
+        },
+        {
+          id: 'D07', name: '车内静止专注点头', tag: '车内倾听', color: '#d69e2e',
+          desc: '保持原图单人出镜与车内构图不变，车辆处于完全停稳状态，车窗外景物保持完全静止。画面中的人物作为正在车内认真观看视频的倾听者，嘴唇全程保持自然闭合，绝不说话、不做说话口型。人物神情专注平和，在倾听时自然轻轻点头表示赞同，手部与肩部有轻微自然的放松微动与呼吸起伏，整体真实自然且绝不穿帮。'
+        },
+        {
+          id: 'D08', name: '抬手示意后自然回落', tag: '自然回落', color: '#ed64a6',
+          desc: '保持原图单人出镜与原始场景构图不变，严禁出现其他人或新增肢体。画面中的人物作为正在认真观看视频的倾听者，嘴唇全程保持自然闭合，绝不说话、不做说话口型。人物原本抬起的手部做出简短温和的赞同示意后，顺畅自然地缓缓放下回归放松姿态（绝不僵硬举在半空），同时配合轻轻点头、温和眼神与自然呼吸起伏，动作连贯真实。'
+        }
+      ];
+      const promptNodes = Vue.ref(DEFAULT_PROMPT_NODES.map(n => Object.assign({}, n)));
+      const batchBodyRef = Vue.ref(null);
+      const batchWires = Vue.ref([]);
+      const batchCtx = Vue.reactive({ show: false, x: 0, y: 0, p: '' });
+
+      async function loadPromptNodes() {
+        try {
+          const r = await API.get('/api/prompt-nodes');
+          if (r && Array.isArray(r.nodes) && r.nodes.length) {
+            promptNodes.value = r.nodes.map((n, idx) => {
+              const id = n.id || ('D' + String(idx + 1).padStart(2, '0'));
+              const rawName = String(n.name || ('描述语节点 ' + (idx + 1))).replace(/^D\d+\s*[·:：\-]\s*/i, '').trim();
+              return Object.assign({
+                id,
+                name: rawName || id,
+                tag: n.tag || '动作节点',
+                color: n.color || DEFAULT_PROMPT_NODES[idx % DEFAULT_PROMPT_NODES.length].color,
+                desc: n.desc || '',
+              }, n, { id, name: rawName || id });
+            });
+          }
+        } catch (e) { /* keep defaults */ }
+      }
+      loadPromptNodes();
+
+      async function savePromptNodesQuiet() {
+        try {
+          await API.post('/api/prompt-nodes', { nodes: promptNodes.value });
+        } catch (e) { /* ignore */ }
+      }
+
+      function nodeColorOf(nodeId) {
+        const nd = (promptNodes.value || []).find(n => n.id === nodeId);
+        return (nd && nd.color) || '#5b8cff';
+      }
+
+      function nodeLabelOf(im) {
+        if (!im) return '';
+        const nid = im.prompt_node_id || '';
+        const nd = (promptNodes.value || []).find(n => n.id === nid);
+        if (nd) return nd.id + ' · ' + String(nd.name || '').replace(/^D\d+\s*[·:：\-]\s*/i, '');
+        if (nid) {
+          const cleanNm = String(im.prompt_node_name || '').replace(/^D\d+\s*[·:：\-]\s*/i, '');
+          return nid + (cleanNm ? (' · ' + cleanNm) : '');
+        }
+        return '';
+      }
+
       function batchRowsFromIndex(rows) {
         return (rows || []).map(x => {
           const id = x.tid || x.id;
@@ -2053,12 +2135,57 @@ window.Panel_gemini = (() => {
             copy: x.copy || '',
             images: (x.images || []).map(im => ({
               p: im.p, desc: im.desc || '', role: im.role || '',
+              prompt_node_id: im.prompt_node_id || '',
+              prompt_node_name: im.prompt_node_name || '',
               url: im.file ? mediaUrl(id, im.file, im.mtime) : (im.url || ''),
             })),
           };
         });
       }
+
+      function updateBatchWires() {
+        if (!batchDlg.value || !batchBodyRef.value) {
+          batchWires.value = [];
+          return;
+        }
+        const wrap = batchBodyRef.value;
+        const wrapRect = wrap.getBoundingClientRect();
+        const tk = activeBatchTask();
+        if (!tk || !tk.images) {
+          batchWires.value = [];
+          return;
+        }
+        const map = (batchDlg.value.nodeMap && batchDlg.value.nodeMap[tk.tid]) || {};
+        const wires = [];
+        tk.images.forEach(im => {
+          const nid = map[im.p] || im.prompt_node_id || '';
+          if (!nid) return;
+          const imEl = wrap.querySelector('[data-batch-im="' + im.p + '"] .port-out');
+          const ndEl = wrap.querySelector('[data-batch-node="' + nid + '"] .port-in');
+          if (!imEl || !ndEl) return;
+          const r1 = imEl.getBoundingClientRect();
+          const r2 = ndEl.getBoundingClientRect();
+          const x1 = r1.left + r1.width / 2 - wrapRect.left;
+          const y1 = r1.top + r1.height / 2 - wrapRect.top;
+          const x2 = r2.left + r2.width / 2 - wrapRect.left;
+          const y2 = r2.top + r2.height / 2 - wrapRect.top;
+          const dx = Math.max(40, Math.abs(x2 - x1) * 0.45);
+          wires.push({
+            key: im.p + '->' + nid,
+            p: im.p,
+            nodeId: nid,
+            color: nodeColorOf(nid),
+            d: 'M ' + x1.toFixed(1) + ' ' + y1.toFixed(1)
+              + ' C ' + (x1 + dx).toFixed(1) + ' ' + y1.toFixed(1)
+              + ', ' + (x2 - dx).toFixed(1) + ' ' + y2.toFixed(1)
+              + ', ' + x2.toFixed(1) + ' ' + y2.toFixed(1),
+          });
+        });
+        batchWires.value = wires;
+      }
+
       async function openBatchDesc(seed) {
+        await loadPromptNodes();
         let rows = [];
         try {
           const r = await API.get('/api/images/batch-desc-index');
@@ -2074,34 +2201,269 @@ window.Panel_gemini = (() => {
             };
           }));
         }
-        batchDlg.value = Lsw.batchInit(rows);
-        batchDlg.value.filter = '';
-        batchDlg.value.onlyMissing = false;
-        if (tid.value && batchDlg.value.tasks.some(tk => tk.tid === tid.value && tk.selectable)) {
-          batchDlg.value.active = tid.value;
+        const st = Lsw.batchInit(rows);
+        st.filter = '';
+        st.onlyMissing = false;
+        st.mode = 'overwrite';
+        st.activeNodeId = (promptNodes.value[0] && promptNodes.value[0].id) || 'D01';
+        st.nodeMap = {};
+        (st.tasks || []).forEach(tk => {
+          st.nodeMap[tk.tid] = {};
+          (tk.images || []).forEach(im => {
+            if (im.prompt_node_id) {
+              st.nodeMap[tk.tid][im.p] = im.prompt_node_id;
+            }
+          });
+        });
+        if (tid.value && st.tasks.some(tk => tk.tid === tid.value && tk.selectable)) {
+          st.active = tid.value;
         }
-        if (seed) batchDlg.value.desc = String(seed);
+        if (seed && typeof seed === 'string') {
+          const matchNode = (promptNodes.value || []).find(n => n.id === seed);
+          if (matchNode) {
+            st.activeNodeId = matchNode.id;
+            st.desc = matchNode.desc;
+          } else {
+            st.desc = String(seed);
+          }
+        } else {
+          const firstNd = (promptNodes.value || [])[0];
+          if (firstNd) st.desc = firstNd.desc;
+        }
+        batchDlg.value = st;
+        Vue.nextTick(() => setTimeout(updateBatchWires, 40));
       }
-      function closeBatchDesc() { batchDlg.value = null; }
+      function closeBatchDesc() {
+        batchCtx.show = false;
+        batchDlg.value = null;
+      }
       function batchStats() {
         if (!batchDlg.value) return { tasks: 0, images: 0, had: 0 };
         return Lsw.stats(batchDlg.value, batchDlg.value.mode);
       }
+
+      function batchImgNodeId(im) {
+        if (!batchDlg.value || !batchDlg.value.active || !im) return '';
+        const map = (batchDlg.value.nodeMap && batchDlg.value.nodeMap[batchDlg.value.active]) || {};
+        return map[im.p] || im.prompt_node_id || '';
+      }
+
+      function batchNodeConnectedPs(nodeId) {
+        if (!batchDlg.value || !batchDlg.value.active) return [];
+        const tk = activeBatchTask();
+        if (!tk || !tk.images) return [];
+        const map = (batchDlg.value.nodeMap && batchDlg.value.nodeMap[tk.tid]) || {};
+        return tk.images.filter(im => (map[im.p] || im.prompt_node_id) === nodeId).map(im => im.p);
+      }
+
+      function connectBatchSelToNode(nodeId, explicitPs) {
+        if (!batchDlg.value || !batchDlg.value.active) return;
+        const tk = activeBatchTask();
+        if (!tk) return;
+        const nd = (promptNodes.value || []).find(n => n.id === nodeId);
+        if (!nd) return;
+        const ps = (explicitPs && explicitPs.length)
+          ? explicitPs
+          : ((batchDlg.value.sel && batchDlg.value.sel[tk.tid]) || []);
+        if (!ps.length) {
+          toast('请先在左侧勾选需要连线的图片（支持多选或右键连线）', '', 'bad');
+          return;
+        }
+        if (!batchDlg.value.nodeMap[tk.tid]) batchDlg.value.nodeMap[tk.tid] = {};
+        ps.forEach(p => {
+          batchDlg.value.nodeMap[tk.tid][p] = nd.id;
+          const im = (tk.images || []).find(x => x.p === p);
+          if (im) {
+            im.prompt_node_id = nd.id;
+            im.prompt_node_name = nd.name;
+            im.desc = nd.desc;
+          }
+        });
+        batchDlg.value.activeNodeId = nd.id;
+        batchDlg.value.desc = nd.desc;
+        batchCtx.show = false;
+        Vue.nextTick(updateBatchWires);
+        toast('已将 ' + ps.length + ' 张图片连线到节点 [' + nd.id + ' · ' + nd.name + ']', '', 'ok');
+      }
+
+      function unlinkBatchImg(p) {
+        if (!batchDlg.value || !batchDlg.value.active) return;
+        const tk = activeBatchTask();
+        if (!tk) return;
+        if (batchDlg.value.nodeMap && batchDlg.value.nodeMap[tk.tid]) {
+          delete batchDlg.value.nodeMap[tk.tid][p];
+        }
+        const im = (tk.images || []).find(x => x.p === p);
+        if (im) {
+          im.prompt_node_id = '';
+          im.prompt_node_name = '';
+        }
+        Vue.nextTick(updateBatchWires);
+      }
+
+      function autoDistributeBatchNodes() {
+        if (!batchDlg.value || !batchDlg.value.active) return;
+        const tk = activeBatchTask();
+        if (!tk || !tk.images || !tk.images.length) return;
+        const nodes = (promptNodes.value || []).filter(n => (n.desc || '').trim());
+        if (!nodes.length) return;
+        const selPs = (batchDlg.value.sel && batchDlg.value.sel[tk.tid] && batchDlg.value.sel[tk.tid].length)
+          ? batchDlg.value.sel[tk.tid]
+          : tk.images.map(im => im.p);
+        if (!batchDlg.value.nodeMap[tk.tid]) batchDlg.value.nodeMap[tk.tid] = {};
+        // Rotate across general reaction nodes so adjacent images never repeat the same action
+        const generalNodes = nodes.filter(n => n.id !== 'D07' && n.id !== 'D08');
+        const pool = generalNodes.length ? generalNodes : nodes;
+        selPs.forEach((p, idx) => {
+          const im = (tk.images || []).find(x => x.p === p);
+          // Preserve specialized nodes (D07 in-car, D08 raised hand) if already matched
+          const curId = (im && im.prompt_node_id) || batchDlg.value.nodeMap[tk.tid][p] || '';
+          const nd = (curId === 'D07' || curId === 'D08')
+            ? (nodes.find(n => n.id === curId) || pool[idx % pool.length])
+            : pool[idx % pool.length];
+          batchDlg.value.nodeMap[tk.tid][p] = nd.id;
+          if (im) {
+            im.prompt_node_id = nd.id;
+            im.prompt_node_name = nd.name;
+            im.desc = nd.desc;
+          }
+        });
+        Vue.nextTick(updateBatchWires);
+        toast('已按组不重复智能连线 ' + selPs.length + ' 张图片到右侧描述语节点', '', 'ok');
+      }
+
+      function addPromptNode() {
+        const nextIdx = (promptNodes.value || []).length + 1;
+        const newId = 'D' + String(nextIdx).padStart(2, '0');
+        const palette = ['#4a90e2', '#e26a6a', '#50b878', '#f5a623', '#9b6be2', '#38b2ac', '#d69e2e', '#ed64a6'];
+        promptNodes.value.push({
+          id: newId,
+          name: '自定义倾听动作 ' + nextIdx,
+          tag: '自定义',
+          color: palette[(nextIdx - 1) % palette.length],
+          desc: '保持原图单人出镜与原始场景构图不变，严禁出现其他人或新增肢体。画面中的人物作为正在认真观看视频的倾听者，嘴唇全程保持自然闭合，绝不说话、不做说话口型。人物神情专注自然，伴随轻轻点头、手部轻微自然动作与真实呼吸起伏。',
+        });
+        savePromptNodesQuiet();
+        Vue.nextTick(updateBatchWires);
+      }
+
+      function openBatchImgCtx(ev, im) {
+        if (!batchDlg.value || !batchDlg.value.active || !im) return;
+        const curSel = (batchDlg.value.sel && batchDlg.value.sel[batchDlg.value.active]) || [];
+        if (!curSel.includes(im.p)) {
+          toggleBatchImg(im.p, true);
+        }
+        batchCtx.p = im.p;
+        batchCtx.x = Math.min(ev.clientX, window.innerWidth - 280);
+        batchCtx.y = Math.min(ev.clientY, window.innerHeight - 360);
+        batchCtx.show = true;
+      }
+
+      async function connectWallImgsToNode(nodeId) {
+        const nd = (promptNodes.value || []).find(n => n.id === nodeId);
+        if (!nd || !tid.value) return;
+        const group = menu.group || lastGroup.value || 'subjects';
+        const curSel = (sel[group] || []).slice();
+        const targetPs = curSel.length
+          ? curSel
+          : (menu.im && menu.im.p ? [menu.im.p] : (focusP.value ? [focusP.value] : []));
+        closeImgMenu();
+        if (!targetPs.length) {
+          toast('请先勾选或右键点击至少一张图片', '', 'bad');
+          return;
+        }
+        const r = await API.post('/api/images/batch-desc', {
+          items: [{ tid: tid.value, ps: targetPs }],
+          desc: nd.desc,
+          node_id: nd.id,
+          node_name: nd.name,
+          mode: 'overwrite',
+        });
+        await loadManifestSafe();
+        toast('已将 ' + (r.n_images || targetPs.length) + ' 张图片连线到 [' + nd.id + ' · ' + nd.name + ']', '', 'ok');
+      }
+
+      async function autoDistributeWallNodes() {
+        if (!tid.value || !manifest.value || !manifest.value.images) return;
+        const group = menu.group || lastGroup.value || 'subjects';
+        const curSel = (sel[group] || []).slice();
+        const allSubjs = (subjects.value || []).map(im => im.p);
+        const targetPs = curSel.length ? curSel : allSubjs;
+        closeImgMenu();
+        if (!targetPs.length) return;
+        const nodes = (promptNodes.value || []).filter(n => (n.desc || '').trim());
+        const general = nodes.filter(n => n.id !== 'D07' && n.id !== 'D08');
+        const pool = general.length ? general : nodes;
+        const byNode = {};
+        targetPs.forEach((p, idx) => {
+          const im = findIm(p);
+          const curId = (im && im.prompt_node_id) || '';
+          const nd = (curId === 'D07' || curId === 'D08')
+            ? (nodes.find(n => n.id === curId) || pool[idx % pool.length])
+            : pool[idx % pool.length];
+          if (!byNode[nd.id]) byNode[nd.id] = { nd, ps: [] };
+          byNode[nd.id].ps.push(p);
+        });
+        const connections = Object.values(byNode).map(g => ({
+          node_id: g.nd.id,
+          node_name: g.nd.name,
+          desc: g.nd.desc,
+          items: [{ tid: tid.value, ps: g.ps }],
+        }));
+        const r = await API.post('/api/images/batch-desc', { connections, mode: 'overwrite' });
+        await loadManifestSafe();
+        toast('已按组不重复智能分配 ' + (r.n_images || targetPs.length) + ' 张图片的描述语节点', '', 'ok');
+      }
+
       async function runBatchDesc() {
         if (!batchDlg.value) return;
         const st = batchDlg.value;
+        await savePromptNodesQuiet();
+
+        // Build multi-node connections from st.nodeMap across checked tasks
+        const byNode = {};
+        (st.tasks || []).forEach(tk => {
+          if (!tk.checked || !tk.selectable) return;
+          const tmap = (st.nodeMap && st.nodeMap[tk.tid]) || {};
+          Object.keys(tmap).forEach(p => {
+            const nid = tmap[p];
+            const nd = (promptNodes.value || []).find(n => n.id === nid);
+            if (!nd || !(nd.desc || '').trim()) return;
+            if (!byNode[nid]) byNode[nid] = { nd, taskMap: {} };
+            if (!byNode[nid].taskMap[tk.tid]) byNode[nid].taskMap[tk.tid] = [];
+            byNode[nid].taskMap[tk.tid].push(p);
+          });
+        });
+
+        const connections = Object.values(byNode).map(entry => ({
+          node_id: entry.nd.id,
+          node_name: entry.nd.name,
+          desc: entry.nd.desc,
+          voice: st.voice || '',
+          items: Object.keys(entry.taskMap).map(tKey => ({ tid: tKey, ps: entry.taskMap[tKey] })),
+        }));
+
         const items = [];
         st.tasks.forEach(tk => {
           if (!tk.checked || !tk.selectable) return;
-          const ps = st.sel[tk.tid] || [];
+          const ps = (st.sel[tk.tid] || []).filter(p => !((st.nodeMap && st.nodeMap[tk.tid] && st.nodeMap[tk.tid][p])));
           if (ps.length) items.push({ tid: tk.tid, ps });
         });
-        if (!(st.desc || '').trim()) return;
-        if (!items.length) {
-          toast(t('gemini.batch_desc.none'), '', 'bad');
+
+        if (!connections.length && (!items.length || !(st.desc || '').trim())) {
+          toast('请先将左侧图片连线到右侧描述语节点，或勾选图片后填写描述语', '', 'bad');
           return;
         }
-        const body = { items, desc: st.desc, voice: st.voice, mode: st.mode === 'overwrite' ? 'overwrite' : 'fill_empty' };
+        const activeNd = (promptNodes.value || []).find(n => n.id === st.activeNodeId);
+        const body = {
+          connections,
+          items,
+          desc: st.desc || (activeNd ? activeNd.desc : ''),
+          node_id: activeNd ? activeNd.id : '',
+          node_name: activeNd ? activeNd.name : '',
+          voice: st.voice,
+          mode: st.mode === 'overwrite' ? 'overwrite' : 'fill_empty',
+        };
         const r = await API.post('/api/images/batch-desc', body);
         const wrote = Number(r.n_images || 0);
         if (!wrote) {
@@ -2233,6 +2595,10 @@ window.Panel_gemini = (() => {
         openBatchDesc, closeBatchDesc, batchStats, runBatchDesc,
         batchTasksShown, batchSelectAll, batchInvert, selectMissingImgs, selectAllImgs, selectNoneImgs, toggleBatchImg,
         activeBatchTask, activeBatchImgCount, previewHi, previewBrickStats,
+        promptNodes, batchBodyRef, batchWires, batchCtx,
+        nodeColorOf, nodeLabelOf, updateBatchWires, batchImgNodeId, batchNodeConnectedPs,
+        connectBatchSelToNode, unlinkBatchImg, autoDistributeBatchNodes, addPromptNode,
+        openBatchImgCtx, connectWallImgsToNode, autoDistributeWallNodes, savePromptNodesQuiet,
         focusP, sel, lastGroup, menu, menuRef,
         selN, isChecked, onCheckClick, onCardClick, selAll, selInvert, selNone, syncFromFocus,
         openImgMenu, onImgMenu, closeImgMenu, menuOff, menuTitle, menuSyncN,
@@ -2694,8 +3060,11 @@ window.Panel_gemini = (() => {
           <button class="btn ghost sm" type="button" @click="selInvert('subjects')">{{ t('gemini.sel.invert') }}</button>
           <button class="btn ghost sm" type="button" @click="selNone('subjects')">{{ t('gemini.sel.none') }}</button>
           <button class="btn sm primary" type="button" @click="syncFromFocus(['desc'])">{{ t('gemini.sel.sync') }}</button>
+          <button class="btn sm" type="button" style="border-color:#4a90e2;color:#7ab8ff" @click="openBatchDesc()">🔗 节点连线分配</button>
+          <button class="btn sm" type="button" style="border-color:#50b878;color:#7be0a0" @click="autoDistributeWallNodes()">🎲 按组不重复分配动作</button>
         </div>
         <span class="spacer"></span>
+        <button class="btn sm" type="button" style="border-color:#4a90e2;color:#7ab8ff" @click="openBatchDesc()">🔗 批量连线描述语节点</button>
         <button class="btn sm" type="button" @click="openRescan">{{ t('rescan.btn') }}</button>
         <expand-ui :tid="tid" :images="images" :expand-acc="expandAcc" :trigger="true"
                    @done="onExpandDone" @prompt="openPromptBlock('expand')"></expand-ui>
@@ -2733,7 +3102,11 @@ window.Panel_gemini = (() => {
           <div class="meta">
             <div class="meta-hd">
               <span class="mono">{{ im.p }}</span>
-                <span v-if="im.desc_manual" class="desc-manual" :title="t('gemini.manual_tip')">✎</span>
+              <span v-if="im.desc_manual" class="desc-manual" :title="t('gemini.manual_tip')">✎</span>
+              <span v-if="nodeLabelOf(im)" class="tag node-pill"
+                    :style="{borderColor: nodeColorOf(im.prompt_node_id), color: nodeColorOf(im.prompt_node_id)}"
+                    title="点击打开节点连线面板切换描述语节点"
+                    @click.stop="openBatchDesc(im.prompt_node_id)">🔗 {{ nodeLabelOf(im) }}</span>
               <span class="tag tail" v-if="im.origin==='tail'" :title="t('gemini.tail_tip')">{{ t('gemini.tail_of', { s: 's'+String(im.tail_of||0).padStart(3,'0') }) }}</span>
               <span class="tag dup" v-if="im.dup_warn">{{ t('gemini.cov.dup') }}</span>
               <span class="tag dup" v-if="im.stage_warn">{{ t('gemini.cov.stage_fail') }}</span>
@@ -2793,6 +3166,9 @@ window.Panel_gemini = (() => {
               <div class="meta-hd">
                 <span class="mono">{{ im.p }}</span>
                 <span v-if="im.desc_manual" class="desc-manual" :title="t('gemini.manual_tip')">✎</span>
+                <span v-if="nodeLabelOf(im)" class="tag node-pill"
+                      :style="{borderColor: nodeColorOf(im.prompt_node_id), color: nodeColorOf(im.prompt_node_id)}"
+                      @click.stop="openBatchDesc(im.prompt_node_id)">🔗 {{ nodeLabelOf(im) }}</span>
                 <span class="tag tail" v-if="im.origin==='tail'" :title="t('gemini.tail_tip')">{{ t('gemini.tail_of', { s: 's'+String(im.tail_of||0).padStart(3,'0') }) }}</span>
                 <select class="tag" :class="'role-'+im.role" :value="im.role" @change="onRoleChange(im, $event)">
                   <option value="主体">{{ t('gemini.role.主体') }}</option>
@@ -2830,12 +3206,19 @@ window.Panel_gemini = (() => {
     <li @click="onImgMenu('all')">{{ t('gemini.ctx.all', { n: String((menu.group==='brolls'?brolls:subjects).length) }) }}</li>
     <li @click="onImgMenu('none')">{{ t('gemini.ctx.none') }}</li>
     <li class="sep"></li>
+    <li class="ctx-sec-hd">🔗 右键批量连线到描述语节点 ({{ (sel[menu.group]||[]).length || 1 }} 张)</li>
+    <li v-for="nd in promptNodes" :key="'ctx-'+nd.id" class="ctx-node-item" @click="connectWallImgsToNode(nd.id)">
+      <span class="ctx-node-dot" :style="{background: nd.color}"></span>
+      <b>[{{ nd.id }}]</b> {{ nd.name }}
+    </li>
+    <li style="color:#7be0a0" @click="autoDistributeWallNodes()">🎲 按组不重复智能分配节点</li>
+    <li class="sep"></li>
     <li :class="{off: menuOff('syncDesc')}" :title="menuTitle('syncDesc')" @click="onImgMenu('syncDesc')">{{ t('gemini.ctx.sync_desc', { n: String(menuSyncN()) }) }}</li>
     <li :class="{off: menuOff('syncVoice')}" :title="menuTitle('syncVoice')" @click="onImgMenu('syncVoice')">{{ t('gemini.ctx.sync_voice', { n: String(menuSyncN()) }) }}</li>
     <li :class="{off: menuOff('syncBoth')}" :title="menuTitle('syncBoth')" @click="onImgMenu('syncBoth')">{{ t('gemini.ctx.sync_both') }}</li>
     <li class="sep"></li>
     <li @click="onImgMenu('copyDesc')">{{ t('gemini.ctx.copy_desc') }}</li>
-    <li @click="openBatchDesc((focusP && focusP.desc) || (sel && sel.desc) || '')">{{ t('gemini.batch_desc.from_card') }}</li>
+    <li @click="openBatchDesc((menu.im && menu.im.prompt_node_id) || '')">🔗 打开节点连线批量描述语面板…</li>
     <li :class="{off: menuOff('restoreAuto')}" :title="menuTitle('restoreAuto')" @click="onImgMenu('restoreAuto')">{{ t('gemini.ctx.restore_auto') }}</li>
     <li class="sep"></li>
     <li class="bad" :class="{off: menuOff('clear')}" :title="menuTitle('clear')" @click="onImgMenu('clear')">{{ t('gemini.ctx.clear') }}</li>
@@ -2859,14 +3242,22 @@ window.Panel_gemini = (() => {
   </div>
 
   <div class="g-batch-mask batch-desc" v-if="batchDlg" @click.self="closeBatchDesc()">
-    <div class="g-batch-dlg" @click.stop>
+    <div class="g-batch-dlg cutora-node-dlg" @click="batchCtx.show=false">
       <div class="hd">
-        <b>{{ t('gemini.batch_desc.title') }}</b>
+        <b>🔗 {{ t('gemini.batch_desc.title') }} · Cutora 式图片-文字节点连线工作台</b>
+        <span class="hint" style="margin-left:12px">左选多张图片（或右键图片）→ 连线到右侧带编号 [D01~D08] 描述语节点，一对多批量复用且互不雷同</span>
         <span class="spacer"></span>
+        <button class="btn sm" style="border-color:#50b878;color:#7be0a0;margin-right:8px" @click="autoDistributeBatchNodes()">🎲 智能按组不重复连线</button>
+        <button class="btn sm" style="border-color:#4a90e2;color:#7ab8ff;margin-right:8px" @click="addPromptNode()">＋ 新增描述语节点</button>
         <button class="btn ghost sm" @click="closeBatchDesc()">✕</button>
       </div>
-      <div class="body">
-        <div class="col col-tasks">
+      <div class="body batch-graph-body" ref="batchBodyRef">
+        <svg class="batch-wire-svg" aria-hidden="true">
+          <path v-for="w in batchWires" :key="w.key" :d="w.d"
+                :stroke="w.color" stroke-width="2" fill="none" stroke-opacity="0.72"
+                stroke-dasharray="none"></path>
+        </svg>
+        <div class="col col-tasks" @scroll="updateBatchWires">
           <input class="batch-search" :placeholder="t('gemini.batch_desc.search')" v-model="batchDlg.filter">
           <label class="batch-only-miss"><input type="checkbox" v-model="batchDlg.onlyMissing"> {{ t('gemini.batch_desc.only_missing') }}</label>
           <div class="batch-sel-row">
@@ -2875,50 +3266,102 @@ window.Panel_gemini = (() => {
           </div>
           <div class="task-row" v-for="tk in batchTasksShown" :key="tk.tid"
                :class="{active: batchDlg.active===tk.tid, draft: !tk.selectable}"
-               @click="tk.selectable && (batchDlg.active=tk.tid)">
+               @click="tk.selectable && (batchDlg.active=tk.tid, $nextTick(updateBatchWires))">
             <input type="checkbox" v-if="tk.selectable" v-model="tk.checked" @click.stop>
             <span>{{ tk.tid }} · {{ tk.name }}</span>
             <span class="dot" v-if="tk.missingDot"></span>
             <span v-if="!tk.selectable" class="hint">{{ t('gemini.batch_desc.draft_hint') }}</span>
           </div>
         </div>
-        <div class="col col-mid">
+        <div class="col col-mid" @scroll="updateBatchWires">
           <div class="batch-mid-hd" v-if="activeBatchTask()">
             <b>{{ activeBatchTask().tid }} · {{ activeBatchTask().name }}</b>
-            <span class="hint">{{ t('gemini.batch_desc.img_count', activeBatchImgCount()) }}</span>
+            <span class="hint">{{ t('gemini.batch_desc.img_count', activeBatchImgCount()) }} · 支持多选后右键一键连线到指定编号节点</span>
           </div>
           <div class="batch-mid-actions">
             <button class="btn ghost sm" @click="selectAllImgs">{{ t('gemini.batch_desc.select_all') }}</button>
             <button class="btn ghost sm" @click="selectNoneImgs">{{ t('gemini.batch_desc.select_none') }}</button>
             <button class="btn ghost sm" @click="selectMissingImgs">{{ t('gemini.batch_desc.only_sel_missing') }}</button>
-            <button class="btn ghost sm" @click="batchDlg.pickSource=true">{{ t('gemini.batch_desc.pick_source') }}</button>
+            <button class="btn ghost sm" @click="autoDistributeBatchNodes">🎲 智能分配</button>
           </div>
-          <div class="thumbs" v-if="batchDlg.active">
-            <div class="thumb" v-for="im in (activeBatchTask() && activeBatchTask().images) || []" :key="im.p"
-                 :class="{on: (batchDlg.sel[batchDlg.active]||[]).includes(im.p)}"
-                 @click="batchDlg.pickSource ? (batchDlg.desc=im.desc||'', batchDlg.pickSource=false) : toggleBatchImg(im.p)">
+          <div class="thumbs cutora-img-nodes" v-if="batchDlg.active">
+            <div class="thumb cutora-im-card" v-for="im in (activeBatchTask() && activeBatchTask().images) || []" :key="im.p"
+                 :data-batch-im="im.p"
+                 :class="{on: (batchDlg.sel[batchDlg.active]||[]).includes(im.p), linked: !!batchImgNodeId(im)}"
+                 :style="batchImgNodeId(im) ? {borderColor: nodeColorOf(batchImgNodeId(im))} : {}"
+                 @click="toggleBatchImg(im.p)"
+                 @contextmenu.prevent.stop="openBatchImgCtx($event, im)">
               <input class="ck" type="checkbox" :checked="(batchDlg.sel[batchDlg.active]||[]).includes(im.p)" @click.stop="toggleBatchImg(im.p, $event.target.checked)">
               <img v-if="im.url" :src="im.url" :alt="im.p">
               <div v-else class="thumb-ph">{{ im.p }}</div>
-              <div class="desc-prev" :title="im.desc">{{ (im.desc||'').slice(0,20) }}</div>
+              <div class="im-node-foot">
+                <b class="mono">{{ im.p }}</b>
+                <span v-if="batchImgNodeId(im)" class="im-node-badge"
+                      :style="{background: nodeColorOf(batchImgNodeId(im))}"
+                      @click.stop="unlinkBatchImg(im.p)"
+                      title="点击断开该节点连线">
+                  {{ batchImgNodeId(im) }} ✕
+                </span>
+                <span v-else class="im-node-unlinked">未连线</span>
+              </div>
+              <div class="desc-prev" :title="im.desc">{{ (im.desc||'').slice(0,22) }}</div>
+              <span class="port-dot port-out"
+                    :style="{background: batchImgNodeId(im) ? nodeColorOf(batchImgNodeId(im)) : '#666'}"
+                    title="右键或点击右侧节点『连入已选图』建立连线"></span>
             </div>
           </div>
         </div>
-        <div class="col col-right">
-          <label>{{ t('gemini.card.desc') }}</label>
-          <textarea class="batch-desc-box" v-model="batchDlg.desc"></textarea>
-          <label class="batch-voice-lab">{{ t('gemini.batch_desc.voice') }}</label>
-          <input v-model="batchDlg.voice">
-          <label class="batch-mode"><input type="radio" value="fill_empty" v-model="batchDlg.mode"> {{ t('gemini.batch_desc.fill_empty') }}</label>
-          <label class="batch-mode"><input type="radio" value="overwrite" v-model="batchDlg.mode"> {{ t('gemini.batch_desc.overwrite') }}</label>
-          <div class="batch-stats" :class="{over: batchDlg.mode==='overwrite' && batchStats().had}">
-            {{ t(batchDlg.mode==='overwrite' ? 'gemini.batch_desc.stats_over' : 'gemini.batch_desc.stats', batchStats()) }}
+        <div class="col col-right cutora-prompt-col" @scroll="updateBatchWires">
+          <div class="prompt-nodes-hd">
+            <b>右侧文字描述语节点 ({{ promptNodes.length }})</b>
+            <span class="hint">点击『🔗 连入已选图』将左侧勾选图片批量连入该编号节点</span>
+          </div>
+          <div class="prompt-node-list">
+            <div class="prompt-node-card" v-for="nd in promptNodes" :key="nd.id"
+                 :data-batch-node="nd.id"
+                 :class="{active: batchDlg.activeNodeId===nd.id}"
+                 :style="{borderColor: batchDlg.activeNodeId===nd.id ? nd.color : ''}"
+                 @click="batchDlg.activeNodeId=nd.id; batchDlg.desc=nd.desc">
+              <span class="port-dot port-in" :style="{background: nd.color}" @click.stop="connectBatchSelToNode(nd.id)" title="点击将左侧已选图片连接到此节点"></span>
+              <div class="pnode-hd">
+                <span class="pnode-id" :style="{background: nd.color}">{{ nd.id }}</span>
+                <input class="pnode-name" v-model="nd.name" @blur="savePromptNodesQuiet" @click.stop>
+                <span class="pnode-cnt" title="当前已连入此节点的图片数量">已连 {{ batchNodeConnectedPs(nd.id).length }} 张</span>
+                <button type="button" class="btn sm pnode-link-btn"
+                        :style="{borderColor: nd.color, color: nd.color}"
+                        @click.stop="connectBatchSelToNode(nd.id)">
+                  🔗 连入已选图 ({{ activeBatchImgCount().sel }})
+                </button>
+              </div>
+              <div class="pnode-ps" v-if="batchNodeConnectedPs(nd.id).length">
+                已连图片：{{ batchNodeConnectedPs(nd.id).join(', ') }}
+              </div>
+              <textarea class="pnode-desc" v-model="nd.desc"
+                        @input="batchDlg.activeNodeId===nd.id && (batchDlg.desc=nd.desc)"
+                        @blur="savePromptNodesQuiet"
+                        @click.stop></textarea>
+            </div>
+          </div>
+          <div class="batch-Global-opts">
+            <label class="batch-mode"><input type="radio" value="fill_empty" v-model="batchDlg.mode"> {{ t('gemini.batch_desc.fill_empty') }}</label>
+            <label class="batch-mode"><input type="radio" value="overwrite" v-model="batchDlg.mode"> {{ t('gemini.batch_desc.overwrite') }}</label>
           </div>
         </div>
       </div>
+      <ul v-if="batchCtx.show" class="ctx batch-inner-ctx"
+          :style="{left: batchCtx.x + 'px', top: batchCtx.y + 'px'}"
+          @click.stop>
+        <li class="ctx-sec-hd">🔗 将已选 {{ activeBatchImgCount().sel }} 张图片连线到节点：</li>
+        <li v-for="nd in promptNodes" :key="'bctx-'+nd.id" class="ctx-node-item" @click="connectBatchSelToNode(nd.id)">
+          <span class="ctx-node-dot" :style="{background: nd.color}"></span>
+          <b>[{{ nd.id }}]</b> {{ nd.name }}
+        </li>
+        <li class="sep"></li>
+        <li style="color:#7be0a0" @click="autoDistributeBatchNodes(); batchCtx.show=false">🎲 智能按组不重复分配所有图片</li>
+      </ul>
       <div class="ft">
         <button class="btn ghost" @click="closeBatchDesc()">{{ t('gemini.batch_desc.cancel') }}</button>
-        <button class="btn primary" :disabled="!(batchDlg.desc||'').trim()" @click="runBatchDesc()">{{ t('gemini.batch_desc.write') }}</button>
+        <button class="btn primary" @click="runBatchDesc()">✅ 按节点连线批量写入描述语</button>
       </div>
     </div>
   </div>

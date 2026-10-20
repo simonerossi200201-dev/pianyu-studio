@@ -368,21 +368,25 @@ def divider_lines(task) -> list[dict]:
     """[{id, axis, pos, pts:[(x,y)…]}] 画布像素。"""
     if not split_on(task):
         return []
-    from cutora.render.split_screen import _divider_span, divider_polyline
+    from cutora.render.split_screen import _divider_curve, _divider_span, divider_polyline
     w, h = canvas_size(task)
     sp = split_of(task)
     curve = str((sp.get("border") or {}).get("curve") or "straight")
     out = []
     for d in sp.get("dividers") or []:
         try:
-            pts = divider_polyline(d, w, h, curve=curve, n=24, span=_divider_span(sp, d))
+            d_curve = _divider_curve(sp, d, curve)
+            pts = divider_polyline(d, w, h, curve=d_curve, n=24, span=_divider_span(sp, d, w, h))
         except Exception:
             _LOG.exception("分界线 %s 取点失败", d.get("id"))
             continue
-        if not pts:
+        if not pts or len(pts) < 2:
             continue
         out.append({"id": str(d.get("id")), "axis": d.get("axis") or "h",
                     "pos": float(d.get("pos") or 0.5),
+                    "cx": float(d.get("cx", 0.5)),
+                    "cy": float(d.get("cy", d.get("pos", 0.5))),
+                    "r": float(d.get("r", 0.30)),
                     "pts": [(float(p[0]), float(p[1])) for p in pts]})
     return out
 
@@ -421,6 +425,11 @@ def set_divider_pos(task, did: str, pos: float) -> float:
         if str(d.get("id")) == str(did):
             return float(d.get("pos") or pos)
     return float(pos)
+
+
+def set_divider_patch(task, did: str, patch: dict) -> dict:
+    from cutora.render.split_layout import set_divider_on_task
+    return set_divider_on_task(task, did, patch)
 
 
 def set_divider_rotation(task, did: str, deg: float) -> float:

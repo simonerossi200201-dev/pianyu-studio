@@ -117,8 +117,12 @@ def normalize(raw) -> dict:
 
 def is_active(host) -> bool:
     """有会话且启用 → 渲染要查缓存。"""
-    sp = spec(host)
-    return bool(sp["enabled"] and sp["session"])
+    if host is None:
+        return False
+    raw = host.get("ai_matte") if isinstance(host, dict) else getattr(host, "ai_matte", None)
+    if not isinstance(raw, dict) or not raw.get("session") or not raw.get("enabled", True):
+        return False
+    return True
 
 
 def has_data(host) -> bool:

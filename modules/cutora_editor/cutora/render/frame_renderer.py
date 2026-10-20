@@ -2007,7 +2007,26 @@ class FrameRenderer:
                                 Qt.TransformationMode.SmoothTransformation)
                             painter.drawImage(target, _fade_qimage(scaled, el))
                         else:
-                            painter.drawImage(target, cached)
+                            tw = max(1, int(round(target.width())))
+                            th = max(1, int(round(target.height())))
+                            if cached.width() != tw or cached.height() != th:
+                                sc_cache = getattr(FrameRenderer, "_sticker_scaled_cache", None)
+                                if sc_cache is None:
+                                    sc_cache = {}
+                                    FrameRenderer._sticker_scaled_cache = sc_cache
+                                sc_key = (int(cached.cacheKey()), tw, th)
+                                scaled = sc_cache.get(sc_key)
+                                if scaled is None:
+                                    if len(sc_cache) >= 64:
+                                        sc_cache.clear()
+                                    scaled = cached.scaled(
+                                        tw, th,
+                                        Qt.AspectRatioMode.IgnoreAspectRatio,
+                                        Qt.TransformationMode.SmoothTransformation)
+                                    sc_cache[sc_key] = scaled
+                                painter.drawImage(target, scaled)
+                            else:
+                                painter.drawImage(target, cached)
             result = target
         finally:
             painter.restore()

@@ -64,7 +64,10 @@ def track_props_of(track) -> dict:
 
 def track_needs_layer(track) -> bool:
     """Non-identity track props must composite to an offscreen layer first."""
-    props = track_props_of(track)
+    raw = getattr(track, "props", None)
+    if not raw or raw == IDENTITY_TRACK_PROPS:
+        return False
+    props = normalize_track_props(raw)
     if abs(props["x"]) > 1e-9 or abs(props["y"]) > 1e-9:
         return True
     if abs(props["scale"] - 1.0) > 1e-9:
@@ -206,13 +209,13 @@ def blit_track_layer(painter, layer, track_props, canvas_w, canvas_h, luma_overr
 
 def paint_track_layer(painter, track, canvas_w, canvas_h, paint_clips):
     """Call paint_clips(painter). Non-identity tracks go through an offscreen layer."""
-    from PySide6.QtGui import QImage, QPainter
     from cutora.render.frame_renderer import take_luma_note
 
     if not track_needs_layer(track):
         paint_clips(painter)
         take_luma_note()
         return
+    from PySide6.QtGui import QImage, QPainter
     w = int(canvas_w)
     h = int(canvas_h)
     if w <= 0 or h <= 0:

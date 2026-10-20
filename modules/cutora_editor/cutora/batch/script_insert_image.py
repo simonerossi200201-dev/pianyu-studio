@@ -993,6 +993,7 @@ def insert_into_tasks(
                 )
                 from cutora.batch.link_import import main_video_track
                 lay = split.get("layout") or "top_bottom"
+                use_fs = bool(split.get("face_safe", True))
                 if lay == SPLIT_RANDOM_BY_COUNT or split.get("random_by_count"):
                     res_sp = assign_random_split_for_task(
                         task, None,
@@ -1001,10 +1002,12 @@ def insert_into_tasks(
                         feather_px=split.get("feather"),
                         backdrop=split.get("backdrop"),
                         shuffle_cells=True,
+                        face_safe=use_fs,
                     )
                     if log:
-                        log("    🎲 随机分屏（%d条视频轨）→ %s" % (
-                            res_sp.get("n_videos", 2), res_sp.get("style_label", lay)))
+                        log("    🎲 随机分屏（%d条视频轨）→ %s%s" % (
+                            res_sp.get("n_videos", 2), res_sp.get("style_label", lay),
+                            " · 🛡️人脸零穿帮已校准" if use_fs else ""))
                 else:
                     cells = layout_cells(lay)
                     main_cell = split.get("main_cell") or cells[0]
@@ -1014,7 +1017,8 @@ def insert_into_tasks(
                         task, lay, [main_video_track(tl), placed_track][:len(order)],
                         border=split.get("border"), feather_px=split.get("feather"),
                         cells=order, backdrop=split.get("backdrop"),
-                        used_history=used_split_history)
+                        used_history=used_split_history,
+                        face_safe=use_fs)
         elif animated:
             fps = 30.0
             if tl is not None:

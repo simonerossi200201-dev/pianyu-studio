@@ -17,6 +17,118 @@ from cutora.render.grade import apply_grade_to_frame
 class ExportRenderer:
 
     @staticmethod
+    def _static_overlay_key(task_data, w, h, t, render_order):
+        if not isinstance(task_data, dict):
+            return None
+        if task_data.get("segments"):
+            return None
+        from cutora.render.keyframe import has_keyframes
+        from cutora.render import anim_engine
+
+        text_ids = []
+        for ov in (task_data.get("text_overlays") or []):
+            if not isinstance(ov, dict):
+                continue
+            s = float(ov.get("start", 0.0) or 0.0)
+            e = float(ov.get("end", 0.0) or 0.0)
+            if not (s <= t <= e):
+                continue
+            if has_keyframes(ov):
+                return None
+            if str(ov.get("blend_mode", "normal") or "normal") != "normal":
+                return None
+            if str(ov.get("anim_in_type", "none") or "none") != "none":
+                return None
+            if str(ov.get("anim_out_type", "none") or "none") != "none":
+                return None
+            t_preset = str(ov.get("transition_preset", "none") or "none")
+            if t_preset != "none":
+                t_dur = float(ov.get("transition_duration", anim_engine.DEFAULT_TRANSITION_DURATION) or 0.0)
+                if (t - s) <= t_dur + 0.05 or (e - t) <= t_dur + 0.05:
+                    return None
+            if ov.get("fx"):
+                return None
+            text_ids.append((
+                id(ov),
+                str(ov.get("content", "")),
+                float(ov.get("x", 0.0) or 0.0),
+                float(ov.get("y", 0.0) or 0.0),
+                float(ov.get("w", 0.0) or 0.0),
+                float(ov.get("h", 0.0) or 0.0),
+                int(ov.get("fontsize", 40) or 40),
+            ))
+
+        img_ids = []
+        for ov in (task_data.get("image_overlays") or []):
+            if not isinstance(ov, dict):
+                continue
+            s = float(ov.get("start", 0.0) or 0.0)
+            e = float(ov.get("end", 0.0) or 0.0)
+            if not (s <= t <= e):
+                continue
+            if has_keyframes(ov):
+                return None
+            if str(ov.get("blend_mode", "normal") or "normal") != "normal":
+                return None
+            t_preset = str(ov.get("transition_preset", "none") or "none")
+            if t_preset != "none":
+                t_dur = float(ov.get("transition_duration", anim_engine.DEFAULT_TRANSITION_DURATION) or 0.0)
+                if (t - s) <= t_dur + 0.05 or (e - t) <= t_dur + 0.05:
+                    return None
+            els = ov.get("elements") or []
+            el_sig = []
+            for el in els:
+                if not isinstance(el, dict):
+                    continue
+                if has_keyframes(el) or el.get("sticker_id") or el.get("video_path"):
+                    return None
+                if str(el.get("blend_mode", "normal") or "normal") != "normal":
+                    return None
+                ip = str(el.get("image_path") or "").lower()
+                if ip.endswith((".gif", ".webp", ".apng", ".mov", ".mp4", ".webm")):
+                    return None
+                el_sig.append((ip, float(el.get("x", 0.0) or 0.0), float(el.get("y", 0.0) or 0.0),
+                               float(el.get("w", 0.0) or 0.0), float(el.get("h", 0.0) or 0.0)))
+            img_ids.append((id(ov), tuple(el_sig)))
+
+        if not text_ids and not img_ids:
+            return None
+        return (int(w), int(h), tuple(render_order or ()), tuple(text_ids), tuple(img_ids))
+
+    @staticmethod
+    def _build_static_overlay_strips(task_data, w, h, t, render_order, fast):
+        import numpy as np
+        ov_img = QImage(int(w), int(h), QImage.Format.Format_ARGB32_Premultiplied)
+        ov_img.fill(0)
+        op = QPainter(ov_img)
+        try:
+            ExportRenderer._apply_hints(op, fast)
+            FrameRenderer.draw_layers(op, task_data, w, h, t, render_order=render_order, backdrop=None)
+        finally:
+            if op.isActive():
+                op.end()
+        bpl = ov_img.bytesPerLine()
+        arr = np.frombuffer(ov_img.constBits(), dtype=np.uint8).reshape(int(h), bpl // 4, 4)[:, :int(w)]
+        row_has = (arr[:, :, 3] > 0).any(axis=1)
+        idx = np.flatnonzero(row_has)
+        if idx.size == 0:
+            return []
+        strips = []
+        # Split into contiguous vertical bands if separated by >= 64 empty rows
+        gaps = np.where(np.diff(idx) >= 64)[0]
+        starts = [int(idx[0])] + [int(idx[g + 1]) for g in gaps]
+        ends = [int(idx[g]) + 1 for g in gaps] + [int(idx[-1]) + 1]
+        for y0, y1 in zip(starts, ends):
+            band_a = arr[y0:y1, :, 3]
+            cols = np.flatnonzero((band_a > 0).any(axis=0))
+            if cols.size == 0:
+                continue
+            x0, x1 = int(cols[0]), int(cols[-1]) + 1
+            sub = ov_img.copy(x0, y0, x1 - x0, y1 - y0)
+            strips.append((x0, y0, sub))
+        return strips
+
+    @staticmethod
     def build_overlay_index(task_data):
         """把所有覆层的 [start, end] 区间预先收集并按 start 排序。
 
@@ -116,7 +228,9 @@ class ExportRenderer:
             if _probe.on():
                 _probe.add_ms("other", time.perf_counter() - _t_other)
             if draw_background:
+                painter._canvas_cleared_black = True
                 draw_background(painter)
+                painter._canvas_cleared_black = False
             if backdrop is None and isinstance(task_data, dict):
                 backdrop = task_data.pop("_fx_backdrop", None)
             if backdrop is None and ExportRenderer._frame_needs_glass(task_data, t):
@@ -129,9 +243,30 @@ class ExportRenderer:
 
             # ── 快速跳过：无可见覆层时不调用 draw_layers ──
             if ExportRenderer._has_visible_overlay(task_data, t, overlay_index):
-                FrameRenderer.draw_layers(painter, task_data, w, h, t,
-                                          render_order=render_order,
-                                          backdrop=backdrop)
+                static_key = (
+                    ExportRenderer._static_overlay_key(task_data, w, h, t, render_order)
+                    if backdrop is None and isinstance(task_data, dict)
+                    else None
+                )
+                if static_key is not None:
+                    scache = task_data.get("_export_static_ov_cache")
+                    if not isinstance(scache, dict):
+                        scache = {}
+                        task_data["_export_static_ov_cache"] = scache
+                    strips = scache.get(static_key)
+                    if strips is None:
+                        strips = ExportRenderer._build_static_overlay_strips(
+                            task_data, w, h, t, render_order, fast
+                        )
+                        if len(scache) >= 16:
+                            scache.clear()
+                        scache[static_key] = strips
+                    for sx, sy, sub_img in strips:
+                        painter.drawImage(sx, sy, sub_img)
+                else:
+                    FrameRenderer.draw_layers(painter, task_data, w, h, t,
+                                              render_order=render_order,
+                                              backdrop=backdrop)
         finally:
             t_end = time.perf_counter() if _probe.on() else 0.0
             if painter.isActive():

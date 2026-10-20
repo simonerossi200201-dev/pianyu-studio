@@ -1571,31 +1571,37 @@ class MonitorGrid(KeyMenuMixin, LayerOpsMixin, LayerPropsMixin, QWidget):
 
     def paintEvent(self, ev):
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        area = QRectF(ev.rect())
-        p.fillRect(area, QColor(T.BG0))
-        if not self.tiles:
-            p.setPen(QColor(T.FG1))
-            p.setFont(self._font)
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                       "没有视频。先在媒体库导入视频，或在批量加载里勾选要看的视频。")
-            return
-        for tile in self.tiles:
-            outer = tile.head.united(tile.rect).adjusted(-4, -4, 4, 4)
-            if not outer.intersects(area):
-                continue
-            self._paint_tile(p, tile)
-        self._paint_op_overlays(p)
-        if self._band is not None:
-            r = QRectF(self._band[0], self._band[1]).normalized()
-            c = QColor(T.ACCENT)
-            c.setAlpha(40)
-            p.fillRect(r, c)
-            p.setPen(QPen(QColor(T.ACCENT), 1, Qt.PenStyle.DashLine))
-            p.drawRect(r)
-        if self._hud:
-            self._paint_hud(p)
+        try:
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+            area = QRectF(ev.rect())
+            p.fillRect(area, QColor(T.BG0))
+            if not self.tiles:
+                p.setPen(QColor(T.FG1))
+                p.setFont(self._font)
+                p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
+                           "没有视频。先在媒体库导入视频，或在批量加载里勾选要看的视频。")
+                return
+            for tile in self.tiles:
+                outer = tile.head.united(tile.rect).adjusted(-4, -4, 4, 4)
+                if not outer.intersects(area):
+                    continue
+                self._paint_tile(p, tile)
+            self._paint_op_overlays(p)
+            if self._band is not None:
+                r = QRectF(self._band[0], self._band[1]).normalized()
+                c = QColor(T.ACCENT)
+                c.setAlpha(40)
+                p.fillRect(r, c)
+                p.setPen(QPen(QColor(T.ACCENT), 1, Qt.PenStyle.DashLine))
+                p.drawRect(r)
+            if self._hud:
+                self._paint_hud(p)
+        except Exception:
+            _LOG.exception("监视器绘制异常")
+        finally:
+            if p.isActive():
+                p.end()
 
     def _paint_tile(self, p, tile):
         sel = tile.idx in self.selected
@@ -1727,12 +1733,15 @@ class MonitorGrid(KeyMenuMixin, LayerOpsMixin, LayerPropsMixin, QWidget):
         if self._op and self._op.get("kind") == "divider" and self._op.get("tile") is tile:
             drag_id = self._op["did"]
         for d in mm.divider_lines(tile.task):
+            pts = [tile.to_widget(x, y) for x, y in (d.get("pts") or [])]
+            if len(pts) < 2:
+                continue
             path = QPainterPath()
-            pts = [tile.to_widget(x, y) for x, y in d["pts"]]
             path.moveTo(pts[0])
             for q in pts[1:]:
                 path.lineTo(q)
             hot = d["id"] in (hov_id, drag_id)
+            p.setBrush(Qt.BrushStyle.NoBrush)
             if hot:
                 p.setPen(QPen(QColor(0, 0, 0, 120), 4))
                 p.drawPath(path)
@@ -1745,6 +1754,7 @@ class MonitorGrid(KeyMenuMixin, LayerOpsMixin, LayerPropsMixin, QWidget):
                 p.setBrush(QColor(T.ACCENT_HI))
                 p.setPen(QPen(QColor(0, 0, 0, 160), 1))
                 p.drawEllipse(mid, 5, 5)
+                p.setBrush(Qt.BrushStyle.NoBrush)
 
     def _paint_op_overlays(self, p):
         op = self._op
@@ -2096,7 +2106,10 @@ class MonitorGrid(KeyMenuMixin, LayerOpsMixin, LayerPropsMixin, QWidget):
             mid = pts[len(pts) // 2]
             self._op = {"kind": "divider", "tile": tile, "did": payload["id"],
                         "axis": payload.get("axis") or "h", "targets": targets,
-                        "rot": alt, "mid": mid,
+                        "rot": alt, "ctrl": ctrl, "mid": mid,
+                        "cx0": float(payload.get("cx", 0.5)),
+                        "cy0": float(payload.get("cy", payload.get("pos", 0.5))),
+                        "r0": float(payload.get("r", 0.30)),
                         "token": self.history.begin([t.task for t in targets])}
         elif kind == "overlay":
             name, ov = payload
@@ -2243,6 +2256,44 @@ class MonitorGrid(KeyMenuMixin, LayerOpsMixin, LayerPropsMixin, QWidget):
             self._changed([tile], overlays=False, prio=0)
             self._changed(same, overlays=False, prio=1)
             self._set_hud("分界线旋转 %.1f°" % got, pos)
+        elif kind == "divider" and op["axis"] == "circle":
+            base = max(1.0, float(min(tile.cw, tile.ch)))
+            cx_px = float(op.get("cx0", 0.5)) * max(1.0, float(tile.cw))
+            cy_px = float(op.get("cy0", 0.5)) * max(1.0, float(tile.ch))
+            if op.get("ctrl"):
+                cx_n = max(0.04, min(0.96, x / max(1.0, float(tile.cw))))
+                cy_n = max(0.04, min(0.96, y / max(1.0, float(tile.ch))))
+                patch = {"cx": cx_n, "cy": cy_n, "pos": cy_n}
+                hud_txt = "圆心 (%.0f%%, %.0f%%)" % (cx_n * 100, cy_n * 100)
+            else:
+                r_n = max(0.04, min(0.48, math.hypot(x - cx_px, y - cy_px) / base))
+                patch = {"r": r_n}
+                hud_txt = "圆半径 %.1f%%" % (r_n * 100)
+            mm.set_divider_patch(tile.task, op["did"], patch)
+            same = [t for t in op["targets"] if t is not tile and mm.split_on(t.task)
+                    and mm.divider_compatible(mm.split_of(t.task), mm.split_of(tile.task), op["did"])]
+            for t in same:
+                mm.set_divider_patch(t.task, op["did"], patch)
+            self._changed([tile], overlays=False, prio=0)
+            self._changed(same, overlays=False, prio=1)
+            n = 1 + len(same)
+            self._set_hud(hud_txt + ("  · 同步 %d 条" % n if n > 1 else ""), pos)
+        elif kind == "divider" and op["axis"] == "blade":
+            hx, hy = op["mid"]
+            ang = math.degrees(math.atan2(y - hy, x - hx))
+            while ang > 180.0:
+                ang -= 360.0
+            while ang < -180.0:
+                ang += 360.0
+            patch = {"rotation_deg": round(ang, 1)}
+            mm.set_divider_patch(tile.task, op["did"], patch)
+            same = [t for t in op["targets"] if t is not tile and mm.split_on(t.task)
+                    and mm.divider_compatible(mm.split_of(t.task), mm.split_of(tile.task), op["did"])]
+            for t in same:
+                mm.set_divider_patch(t.task, op["did"], patch)
+            self._changed([tile], overlays=False, prio=0)
+            self._changed(same, overlays=False, prio=1)
+            self._set_hud("扇叶角度 %.1f°" % ang, pos)
         elif kind == "divider":
             pos_n = (y / tile.ch) if op["axis"] == "h" else (x / tile.cw)
             if not self._snap_off:

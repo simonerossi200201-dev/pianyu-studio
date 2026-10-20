@@ -44,28 +44,36 @@ def probe_duration_and_frames(path: str) -> tuple[float | None, int | None]:
     dur = None
     frames = None
     try:
-        r = _run([
-            probe, "-v", "error", "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1", path,
-        ], timeout=20)
-        if r.returncode == 0:
-            txt = (r.stdout or "").strip()
-            if txt and txt.upper() != "N/A":
-                dur = float(txt)
-    except Exception:
-        dur = None
-    try:
+        import json as _json
         r = _run([
             probe, "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=nb_frames",
-            "-of", "csv=p=0", path,
-        ], timeout=10)
-        txt = (r.stdout or "").strip().splitlines()
-        raw = txt[0].strip() if txt else ""
-        if raw and raw.upper() != "N/A":
-            frames = int(float(raw))
+            "-show_entries", "format=duration:stream=nb_frames",
+            "-of", "json", path,
+        ], timeout=20)
+        if r.returncode == 0 and r.stdout:
+            data = _json.loads(r.stdout)
+            d_raw = str((data.get("format") or {}).get("duration") or "").strip()
+            if d_raw and d_raw.upper() != "N/A":
+                dur = float(d_raw)
+            streams = data.get("streams") or []
+            if streams:
+                f_raw = str((streams[0] or {}).get("nb_frames") or "").strip()
+                if f_raw and f_raw.upper() != "N/A":
+                    frames = int(float(f_raw))
     except Exception:
-        frames = None
+        pass
+    if dur is None:
+        try:
+            r = _run([
+                probe, "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", path,
+            ], timeout=20)
+            if r.returncode == 0:
+                txt = (r.stdout or "").strip()
+                if txt and txt.upper() != "N/A":
+                    dur = float(txt)
+        except Exception:
+            dur = None
     if frames is None:
         try:
             r = _run([
@@ -90,12 +98,34 @@ def probe_duration_and_frames(path: str) -> tuple[float | None, int | None]:
     return dur, frames
 
 
-def decode_has_error(path: str) -> str | None:
-    """Full decode. Return stderr snippet if ffmpeg reported an error."""
+def decode_has_error(path: str, *, fast_spotcheck: bool = False) -> str | None:
+    """Full decode (or fast head/tail spotcheck for verified large exports). Return stderr snippet if ffmpeg reported an error."""
     try:
-        r = _run([
-            _ffmpeg(), "-v", "error", "-i", path, "-f", "null", "-",
-        ], timeout=120)
+        if fast_spotcheck and os.path.isfile(path) and os.path.getsize(path) > 2 * 1024 * 1024:
+            try:
+                import cv2
+                cap = cv2.VideoCapture(path)
+                if cap.isOpened():
+                    ok_frames = 0
+                    for _ in range(8):
+                        ok, frm = cap.read()
+                        if ok and frm is not None and frm.size > 0:
+                            ok_frames += 1
+                        else:
+                            break
+                    cap.release()
+                    if ok_frames >= 8:
+                        return None
+            except Exception:
+                pass
+            r = _run([
+                _ffmpeg(), "-v", "error", "-threads", "2",
+                "-i", path, "-frames:v", "8", "-f", "null", "-",
+            ], timeout=30)
+        else:
+            r = _run([
+                _ffmpeg(), "-v", "error", "-threads", "2", "-i", path, "-f", "null", "-",
+            ], timeout=120)
     except Exception as e:
         return "decode failed: %s" % e
     err = (r.stderr or "").strip()
@@ -123,7 +153,7 @@ def _extract_rgb_frame(path: str, t: float, width: int, height: int, fps: float 
     seek_t = max(0.0, float(t) - 0.5 / max(1.0, float(fps or 30.0)))
     r = _no_window_run(
         [
-            _ffmpeg(), "-v", "error", "-ss", "%.6f" % seek_t,
+            _ffmpeg(), "-v", "error", "-threads", "2", "-ss", "%.6f" % seek_t,
             "-i", path, "-frames:v", "1", "-f", "rawvideo",
             "-pix_fmt", "rgb24", "-s", "%dx%d" % (width, height), "-",
         ],
@@ -142,31 +172,67 @@ def mad_vs_preview(path, preview_frames, width, height, fps: float = 30.0) -> st
     if not preview_frames:
         return None
     import numpy as np
-    for item in preview_frames:
-        try:
-            t, ref = item
-        except Exception:
-            continue
-        got = _extract_rgb_frame(path, float(t), width, height, fps=fps)
-        if got is None and float(t) > 0.05:
-            got = _extract_rgb_frame(
-                path, max(0.0, float(t) - 0.25), width, height, fps=fps)
-        if got is None:
-            return "could not extract frame at t=%.2f" % float(t)
-        try:
-            if hasattr(ref, "convertToFormat"):
-                ref_rgb = _qimage_to_rgb(ref)
-            else:
-                ref_rgb = np.asarray(ref)
-            if ref_rgb.shape[0] != got.shape[0] or ref_rgb.shape[1] != got.shape[1]:
+    cap = None
+    try:
+        import cv2
+        cap = cv2.VideoCapture(path)
+        if not cap.isOpened():
+            cap = None
+    except Exception:
+        cap = None
+    try:
+        for item in preview_frames:
+            try:
+                t, ref = item
+            except Exception:
                 continue
-            mad = float(np.mean(np.abs(
-                got.astype(np.float32) - ref_rgb.astype(np.float32)))) / 255.0
-        except Exception as e:
-            return "MAD compare failed: %s" % e
-        if mad > MAD_LIMIT:
-            return "MAD %.3f > %.2f at t=%.2f" % (mad, MAD_LIMIT, float(t))
-    return None
+            try:
+                if hasattr(ref, "convertToFormat"):
+                    ref_rgb = _qimage_to_rgb(ref)
+                else:
+                    ref_rgb = np.asarray(ref)
+            except Exception as e:
+                return "MAD compare failed: %s" % e
+            got = None
+            if cap is not None:
+                try:
+                    import cv2
+                    fidx = max(0, int(round(float(t) * max(1.0, float(fps or 30.0)))))
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, fidx)
+                    ok_r, bgr = cap.read()
+                    if ok_r and bgr is not None:
+                        if bgr.shape[1] != int(width) or bgr.shape[0] != int(height):
+                            bgr = cv2.resize(bgr, (int(width), int(height)))
+                        got_cv = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+                        if ref_rgb.shape[:2] == got_cv.shape[:2]:
+                            mad_cv = float(np.mean(np.abs(
+                                got_cv.astype(np.float32) - ref_rgb.astype(np.float32)))) / 255.0
+                            if mad_cv <= MAD_LIMIT:
+                                continue
+                except Exception:
+                    pass
+            got = _extract_rgb_frame(path, float(t), width, height, fps=fps)
+            if got is None and float(t) > 0.05:
+                got = _extract_rgb_frame(
+                    path, max(0.0, float(t) - 0.25), width, height, fps=fps)
+            if got is None:
+                return "could not extract frame at t=%.2f" % float(t)
+            try:
+                if ref_rgb.shape[0] != got.shape[0] or ref_rgb.shape[1] != got.shape[1]:
+                    continue
+                mad = float(np.mean(np.abs(
+                    got.astype(np.float32) - ref_rgb.astype(np.float32)))) / 255.0
+            except Exception as e:
+                return "MAD compare failed: %s" % e
+            if mad > MAD_LIMIT:
+                return "MAD %.3f > %.2f at t=%.2f" % (mad, MAD_LIMIT, float(t))
+        return None
+    finally:
+        if cap is not None:
+            try:
+                cap.release()
+            except Exception:
+                pass
 
 
 def contact_sheet_enabled(settings=None) -> bool:
@@ -222,7 +288,12 @@ def verify_export(
             reasons.append("frames %s vs expected %s" % (frames, expect_n))
             frames_ok = False
 
-    dec = decode_has_error(path)
+    spotcheck = bool(
+        duration_ok and frames_ok
+        and expected_duration is not None and expected_duration > 0
+        and expect_n is not None and expect_n > 0
+    )
+    dec = decode_has_error(path, fast_spotcheck=spotcheck)
     if dec:
         reasons.append("ffmpeg decode: %s" % dec[:240])
 

@@ -1523,16 +1523,16 @@ class PropertyPanel(QWidget):
         _custom_presets = [
             ("🎲 随机换创意", "random", None, None),
             ("🔀 随机交换位置", "__shuffle__", None, None),
-            ("📐 L形·左2下3", "l_left2_bottom3", None, None),
+            ("🌈 穹顶下弧分屏", "arc_top_bottom", None, "arc"),
+            ("🌈 苍穹上弧分屏", "arch_bottom_top", None, "arch_up"),
+            ("🌈 双层怀抱弧", "center_h_embrace", None, "arc"),
+            ("🌊 S流线弧分屏", "swave_top_bottom", None, "s_wave"),
+            ("📐 L形·右上主", "l_left2_bottom3", None, None),
+            ("📐 反L·左上主", "l_right_bottom", None, None),
             ("🎞️ 动感斜夹心", "center_h_tilt", None, None),
             ("⬡ 六角中主四角", "hex_center", None, None),
-            ("📷 相机快门穿插", "shutter", None, None),
-            ("❤️ 心形分屏", "shape_heart", None, None),
-            ("🕊️ 鸽子形分屏", "shape_dove", None, None),
-            ("🍀 幸运草分屏", "shape_clover", None, None),
-            ("🌿 橄榄叶分屏", "shape_olive", None, None),
             ("⭕ 底部套圆圈", "circle_bottom", None, None),
-            ("🌊 波浪流线切", "slash_top", 0.0, "wave"),
+            ("🔪 黄金斜切分屏", "slash_top", 9.0, "straight"),
         ]
         for _ci, (_ctitle, _cmode, _crot, _ccurve) in enumerate(_custom_presets):
             _cbtn = QPushButton(_ctitle)
@@ -1587,7 +1587,7 @@ class PropertyPanel(QWidget):
         self.trk_split_shape.setMinimumWidth(0)
         for _sh_k in SPLIT_SHAPES:
             self.trk_split_shape.addItem(SHAPE_LABELS.get(_sh_k, _sh_k), _sh_k)
-        self.trk_split_shape.setToolTip("选择圆圈或中央主屏的形状（心形、五边形、六角形、鸽子形、幸运草、橄榄叶、五角星等）")
+        self.trk_split_shape.setToolTip("选择圆圈或中央主屏的形状（光滑圆形、正六角形、正八角形、菱形等）")
         self.trk_split_shape.currentIndexChanged.connect(self._commit_split_divider)
 
         self.trk_split_poly_sides = QSpinBox()
@@ -1641,7 +1641,7 @@ class PropertyPanel(QWidget):
         self.trk_split_border_width.setRange(0, 64)
         self.trk_split_border_width.editingFinished.connect(self._commit_split_border)
         self.trk_split_border_curve = ValueCombo((
-            ("straight", "直线"), ("wave", "波浪"), ("arc", "弧线")))
+            ("straight", "直线"), ("arc", "穹顶下弧"), ("arch_up", "苍穹上弧"), ("s_wave", "S流线弧"), ("wave", "波浪")))
         self.trk_split_border_curve.setMinimumWidth(0)
         self.trk_split_border_curve.valueChanged.connect(self._commit_split_border)
         self.trk_split_border_shadow = QSpinBox()
@@ -2878,24 +2878,26 @@ class PropertyPanel(QWidget):
         layout = str(sp.get("layout") or "top_bottom")
         btn_layout_key = layout
         if btn_layout_key not in self.trk_split_layout_btns:
-            if btn_layout_key.startswith("center_h_tilt"):
+            if btn_layout_key.startswith("center_h_arc"):
+                btn_layout_key = "center_h_arc"
+            elif btn_layout_key.startswith("center_h_embrace"):
+                btn_layout_key = "center_h_embrace"
+            elif btn_layout_key.startswith("center_h_swave"):
+                btn_layout_key = "center_h_swave"
+            elif btn_layout_key.startswith("center_h_tilt"):
                 btn_layout_key = "center_h_tilt"
             elif btn_layout_key.startswith("center_h"):
                 btn_layout_key = "center_h"
+            elif btn_layout_key.startswith("l_right") and "_bottom" in btn_layout_key:
+                btn_layout_key = "l_right1_bottom2"
+            elif btn_layout_key.startswith("l_left") and "_top" in btn_layout_key:
+                btn_layout_key = "l_left1_top2"
             elif btn_layout_key.startswith("l_left"):
                 btn_layout_key = "l_left2_bottom3"
             elif btn_layout_key.startswith("hex_center") or btn_layout_key.startswith("poly_center"):
                 btn_layout_key = "hex_center_4"
             elif btn_layout_key.startswith("shutter"):
                 btn_layout_key = "shutter_4"
-            elif btn_layout_key.startswith("shape_heart"):
-                btn_layout_key = "shape_heart_3"
-            elif btn_layout_key.startswith("shape_dove"):
-                btn_layout_key = "shape_dove_3"
-            elif btn_layout_key.startswith("shape_clover"):
-                btn_layout_key = "shape_clover_3"
-            elif btn_layout_key.startswith("shape_olive"):
-                btn_layout_key = "shape_olive_3"
         for key, btn in self.trk_split_layout_btns.items():
             btn.setChecked(key == btn_layout_key)
         if hasattr(self, "trk_custom_split_box"):

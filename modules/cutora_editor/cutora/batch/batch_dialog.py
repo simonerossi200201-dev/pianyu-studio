@@ -527,6 +527,18 @@ def build_batch_dialog(parent):
     btn_reroll_split.setToolTip(
         "无需重新导入视频，直接对当前勾选的视频（若未勾选则对全部多轨视频）按各自视频轨道数量随机分配不重复的分屏样式！")
     vprop_form.addRow(btn_reroll_split)
+    ck_face_safe = QCheckBox("🛡️ 人脸与画面零穿帮自动校准（防切脸 · 防标题贴纸挡脸 · 防黑底露白）")
+    ck_face_safe.setChecked(True)
+    ck_face_safe.setToolTip(
+        "开启后，通过 YuNet/MediaPipe 人脸检测与实景渲染抽帧复核，自动解算主视频与所有分屏格子的安全缩放与偏移，\n"
+        "以及标题、电话贴纸的避让位置，确保主视频及所有分屏格子无切脸、无标题/贴纸挡脸、无黑底或原视频旧字幕露白！")
+    vprop_form.addRow(ck_face_safe)
+    btn_face_safe_verify = QPushButton("🛡️ 一键执行「人脸与画面零穿帮核验 + 实景渲染抽帧复核」")
+    btn_face_safe_verify.setObjectName("btnSecondary")
+    btn_face_safe_verify.setToolTip(
+        "立即对所选视频（未勾选则全部视频）执行人脸检测、防遮挡自动校准与双阶段（标题帧+贴纸帧）实景渲染抽帧复核，\n"
+        "自动修复切脸/挡脸/露白并生成核验预览总览图！")
+    vprop_form.addRow(btn_face_safe_verify)
     cb_split = QComboBox()
     from cutora.batch.split_assign import LAYOUT_HINTS
     for lay in SPLIT_CHOICES:
@@ -677,10 +689,12 @@ def build_batch_dialog(parent):
                 feather_px=f_val,
                 backdrop=bd_cfg,
                 shuffle_cells=True,
+                face_safe=bool(ck_face_safe.isChecked()),
             )
             changed += 1
             vname = os.path.basename(t_item.get("video") or "?")
-            dlg.log("  %s（%d条视频轨）→ %s" % (vname, res["n_videos"], res["style_label"]))
+            fs_tag = " · 🛡️人脸零穿帮已校准" if (res.get("face_safe") or {}).get("ok") else ""
+            dlg.log("  %s（%d条视频轨）→ %s%s" % (vname, res["n_videos"], res["style_label"], fs_tag))
         if changed == 0:
             QMessageBox.information(
                 dlg, "未发现多轨视频",
@@ -696,11 +710,56 @@ def build_batch_dialog(parent):
         canvas.update()
         QMessageBox.information(
             dlg, "随机分屏分配完成",
-            "已按每条视频实际对应的轨道数量，为 %d 条视频随机分配了各不相同的分屏样式！" % changed)
+            "已按每条视频实际对应的轨道数量，为 %d 条视频随机分配了各不相同的分屏样式%s！"
+            % (changed, "，并完成人脸与画面零穿帮自动校准" if ck_face_safe.isChecked() else ""))
+
+    def _run_face_safe_verify():
+        target_tasks = picker.selected_tasks() or list(getattr(parent, "tasks", None) or [])
+        if not target_tasks:
+            QMessageBox.information(dlg, "没有视频任务", "当前工程里没有可核验的视频任务。")
+            return
+        from cutora.batch.face_safe import verify_and_calibrate_tasks
+        first_v = str(target_tasks[0].get("video") or "")
+        proj_dir = os.path.dirname(os.path.dirname(first_v)) if first_v else tempfile.gettempdir()
+        sheet_dir = os.path.join(proj_dir, "_face_safe_preview")
+        btn_face_safe_verify.setEnabled(False)
+        dlg.log("==== 🛡️ 开始执行「人脸与画面零穿帮核验 + 实景渲染抽帧复核」 ====")
+        try:
+            res = verify_and_calibrate_tasks(
+                target_tasks,
+                force_top_main_if_needed=False,
+                render_contact_sheet_dir=sheet_dir,
+                log=dlg.log,
+            )
+            if hasattr(parent, "refresh_ui") and getattr(parent, "curr_idx", -1) >= 0:
+                parent.refresh_ui()
+            if hasattr(parent, "timeline"):
+                parent.timeline.update()
+            if hasattr(parent, "video_canvas"):
+                parent.video_canvas.update()
+            _paint_background()
+            canvas.update()
+            sheets = res.get("contact_sheets") or []
+            sheet_note = f"\n\n实景渲染抽帧核验图已保存至：\n{sheets[0]}" if sheets else ""
+            dlg.log(f"==== ✓ 核验完成：{res['ok_count']}/{res['total']} 个任务全部零穿帮通过（耗时 {res['elapsed_sec']}s）====")
+            QMessageBox.information(
+                dlg,
+                "人脸与画面零穿帮核验完成",
+                f"已完成 {res['total']} 个任务的人脸检测、防遮挡自动校准与实景渲染抽帧复核：\n"
+                f"• 零穿帮通过：{res['ok_count']} / {res['total']} 个任务\n"
+                f"• 主视频及所有分屏格子无切脸、无标题/贴纸挡脸、无黑底或旧字幕露白！{sheet_note}",
+            )
+        except Exception as e:
+            _LOG.exception("人脸与画面零穿帮核验失败")
+            dlg.log(f"✘ 核验异常: {e}")
+            QMessageBox.warning(dlg, "核验异常", str(e))
+        finally:
+            btn_face_safe_verify.setEnabled(True)
 
     cb_split.currentIndexChanged.connect(_on_split_combo_changed)
     ck_split_random.toggled.connect(_on_split_random_toggled)
     btn_reroll_split.clicked.connect(_reroll_selected_splits)
+    btn_face_safe_verify.clicked.connect(_run_face_safe_verify)
     cb_backdrop.currentIndexChanged.connect(_remember_split)
     cb_backdrop.currentIndexChanged.connect(_sync_split_enabled)
     sp_backdrop_blur.valueChanged.connect(_remember_split)
@@ -715,6 +774,7 @@ def build_batch_dialog(parent):
         return {
             "layout": SPLIT_RANDOM_BY_COUNT if is_rand else (cb_split.currentData() or SPLIT_DEFAULT_LAYOUT),
             "random_by_count": is_rand,
+            "face_safe": bool(ck_face_safe.isChecked()),
             "main_cell": cb_cell_main.currentData(),
             "insert_cell": cb_cell_ins.currentData(),
             "border": {"style": cb_border.currentData() or "none",
@@ -730,6 +790,8 @@ def build_batch_dialog(parent):
     dlg.ck_split = ck_split
     dlg.ck_split_random = ck_split_random
     dlg.btn_reroll_split = btn_reroll_split
+    dlg.ck_face_safe = ck_face_safe
+    dlg.btn_face_safe_verify = btn_face_safe_verify
     dlg.cb_split = cb_split
     dlg.cb_cell_main = cb_cell_main
     dlg.cb_cell_ins = cb_cell_ins
@@ -1814,7 +1876,8 @@ def build_batch_dialog(parent):
                 split_border=(sp or {}).get("border") if sp else None,
                 split_feather=(sp or {}).get("feather") if sp else None,
                 split_backdrop=(sp or {}).get("backdrop") if sp else None,
-                split_cells=[c for c in ((sp or {}).get("main_cell"), (sp or {}).get("insert_cell")) if c] if sp else None)
+                split_cells=[c for c in ((sp or {}).get("main_cell"), (sp or {}).get("insert_cell")) if c] if sp else None,
+                face_safe=bool(ck_face_safe.isChecked()))
         except Exception as e:
             _log("✘ %s" % e)
             QMessageBox.warning(dlg, "导入失败", str(e))

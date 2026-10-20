@@ -23,18 +23,23 @@ LAYOUTS = (
     "top1_bottom2",
     "top1_bottom3",
     "top1_bottom4",
+    "bottom1_top2",
+    "bottom1_top3",
     "left1_right3",
     "left1_right4",
+    "right1_left2",
+    "right1_left3",
     "center_h",
+    "center_h_arc",
+    "center_h_embrace",
     "center_h_tilt",
     "l_left2_bottom3",
     "l_left1_bottom2",
+    "l_right1_bottom2",
     "hex_center_4",
     "shutter_4",
-    "shape_heart_3",
-    "shape_dove_3",
-    "shape_clover_3",
-    "shape_olive_3",
+    "circle_bottom3",
+    "circle_right3",
     "custom",
 )
 
@@ -42,34 +47,16 @@ SPLIT_SHAPES = (
     "circle",
     "polygon",
     "hexagon",
-    "pentagon",
     "octagon",
     "diamond",
-    "heart",
-    "clover",
-    "dove",
-    "olive",
-    "star",
-    "flower",
-    "shield",
-    "butterfly",
 )
 
 SHAPE_LABELS = {
     "circle": "⭕ 光滑圆形",
     "polygon": "⬢ 多边形 (分段可调→圆)",
     "hexagon": "⬢ 六角形",
-    "pentagon": "⬠ 五边形",
     "octagon": "⯃ 八角形",
     "diamond": "◆ 菱形",
-    "heart": "❤️ 心形",
-    "clover": "🍀 幸运草形",
-    "dove": "🕊️ 鸽子形",
-    "olive": "🌿 橄榄叶形",
-    "star": "⭐ 五角星形",
-    "flower": "🌸 海棠花形",
-    "shield": "🛡️ 盾牌形",
-    "butterfly": "🦋 蝴蝶形",
 }
 
 SHAPE_DEFAULT_SIDES = {
@@ -92,28 +79,38 @@ LAYOUT_LABELS = {
     "top1_bottom2": "上1下2",
     "top1_bottom3": "上1下3",
     "top1_bottom4": "上1下4",
+    "bottom1_top2": "下1上2",
+    "bottom1_top3": "下1上3",
+    "bottom1_top4": "下1上4",
     "left1_right3": "左1右3",
     "left1_right4": "左1右4",
+    "right1_left2": "右1左2",
+    "right1_left3": "右1左3",
+    "right1_left4": "右1左4",
     "center_h": "中主上下副",
+    "center_h_arc": "双层弧夹心",
+    "center_h_embrace": "怀抱弧夹心",
+    "center_h_swave": "流线S弧夹心",
     "center_h_tilt": "动感斜夹心",
     "center_h_auto": "中主上下（自动）",
     "l_left2_bottom3": "L形·左2下3",
     "l_left1_bottom2": "L形·左1下2",
     "l_left2_bottom2": "L形·左2下2",
+    "l_right1_bottom2": "反L·右1下2",
+    "l_right2_bottom2": "反L·右2下2",
+    "l_left1_top2": "顶L·左1上2",
+    "l_left2_top2": "顶L·左2上2",
     "l_shape_auto": "L形分屏（自动）",
     "hex_center_4": "六角中主四角",
     "hex_center_auto": "六角中主（自动）",
     "shutter_4": "相机快门穿插",
     "shutter_auto": "相机快门（自动）",
-    "shape_heart_3": "心形分屏",
-    "shape_dove_3": "鸽子形分屏",
-    "shape_clover_3": "幸运草分屏",
-    "shape_olive_3": "橄榄叶分屏",
-    "shape_pentagon_3": "五边形分屏",
-    "shape_star_3": "五角星分屏",
-    "shape_flower_3": "海棠花分屏",
+    "circle_bottom3": "底部圆窗",
+    "circle_right3": "右侧圆窗",
     "top1_bottom_auto": "上1下多（自动）",
+    "bottom1_top_auto": "下1上多（自动）",
     "left1_right_auto": "左1右多（自动）",
+    "right1_left_auto": "右1左多（自动）",
     "circle_bottom_auto": "底部圆圈（自动）",
     "circle_right_auto": "右侧圆圈（自动）",
     "circle_scatter_auto": "错落圆圈（自动）",
@@ -130,9 +127,9 @@ def cell_id_for_index(idx: int) -> str:
 
 
 def parse_1_to_n(layout: str | None) -> tuple[str, int] | None:
-    """解析一对多布局名：'top1_bottom<N>' / 'left1_right<N>' (N >= 2) -> (mode, N)。"""
+    """解析一对多布局名：'top1_bottom<N>' / 'bottom1_top<N>' / 'left1_right<N>' / 'right1_left<N>' (N >= 2) -> (mode, N)。"""
     name = str(layout or "").strip()
-    for prefix in ("top1_bottom", "left1_right"):
+    for prefix in ("top1_bottom", "bottom1_top", "left1_right", "right1_left"):
         if name.startswith(prefix):
             tail = name[len(prefix):]
             if tail.isdigit():
@@ -142,33 +139,52 @@ def parse_1_to_n(layout: str | None) -> tuple[str, int] | None:
     return None
 
 
-def parse_l_layout(layout: str | None) -> tuple[int, int] | None:
-    """解析 L 形分屏布局名：'l_left<NL>_bottom<NB>' 或 'l_shape_auto' -> (n_left, n_bottom)。"""
+def parse_l_layout(layout: str | None) -> tuple[int, int, str, str] | None:
+    """解析 L 形分屏布局名：
+    'l_left<NL>_bottom<NB>' / 'l_right<NR>_bottom<NB>' / 'l_left<NL>_top<NT>' / 'l_right<NR>_top<NT>'
+    -> (n_side, n_band, side, band)。
+    """
     name = str(layout or "").strip()
     if name == "l_shape_auto":
-        return 2, 3
-    if name.startswith("l_left") and "_bottom" in name:
-        try:
-            body = name[len("l_left"):]
-            s_left, s_bot = body.split("_bottom", 1)
-            nl, nb = int(s_left), int(s_bot)
-            if nl >= 1 and nb >= 1:
-                return nl, nb
-        except (TypeError, ValueError):
-            pass
+        return 2, 3, "left", "bottom"
+    for side_key, side_prefix in (("left", "l_left"), ("right", "l_right")):
+        if name.startswith(side_prefix):
+            body = name[len(side_prefix):]
+            for band_key, band_sep in (("bottom", "_bottom"), ("top", "_top")):
+                if band_sep in body:
+                    try:
+                        s_side, s_band = body.split(band_sep, 1)
+                        ns, nb = int(s_side), int(s_band)
+                        if ns >= 1 and nb >= 1:
+                            return ns, nb, side_key, band_key
+                    except (TypeError, ValueError):
+                        pass
     return None
 
 
-def parse_center_h_layout(layout: str | None) -> tuple[int, int, float] | None:
-    """解析横向夹心分屏（主视频在中间，上下副屏，分界线可旋转）：
-    'center_h' / 'center_h_tilt' / 'center_h<NT>_<NB>' / 'center_h_tilt<NT>_<NB>' -> (n_top, n_bottom, rot_deg)。
+def parse_center_h_layout(layout: str | None) -> tuple[int, int, float, str, str] | None:
+    """解析横向夹心分屏（主视频在中间，上下副屏，分界线可旋转或呈双层弧线）：
+    返回 (n_top, n_bottom, rot_deg, c_top, c_bottom)。
     """
     name = str(layout or "").strip()
     if name in ("center_h", "center_h_auto"):
-        return 1, 1, 0.0
+        return 1, 1, 0.0, "straight", "straight"
     if name in ("center_h_tilt", "center_h_tilt_auto"):
-        return 1, 1, 9.0
-    for prefix, def_rot in (("center_h_tilt", 9.0), ("center_h", 0.0)):
+        return 1, 1, 9.0, "straight", "straight"
+    if name in ("center_h_arc", "center_h_arc_auto"):
+        return 1, 1, 0.0, "arc", "arc"
+    if name in ("center_h_embrace", "center_h_embrace_auto"):
+        return 1, 1, 0.0, "arch_up", "arc"
+    if name in ("center_h_swave", "center_h_swave_auto"):
+        return 1, 1, 0.0, "s_wave", "s_wave"
+    prefixes = (
+        ("center_h_embrace", 0.0, "arch_up", "arc"),
+        ("center_h_arc", 0.0, "arc", "arc"),
+        ("center_h_swave", 0.0, "s_wave", "s_wave"),
+        ("center_h_tilt", 9.0, "straight", "straight"),
+        ("center_h", 0.0, "straight", "straight"),
+    )
+    for prefix, def_rot, ct, cb in prefixes:
         if name.startswith(prefix):
             tail = name[len(prefix):].lstrip("_")
             if "_" in tail:
@@ -176,7 +192,7 @@ def parse_center_h_layout(layout: str | None) -> tuple[int, int, float] | None:
                     st, sb = tail.split("_", 1)
                     nt, nb = int(st), int(sb)
                     if nt >= 1 and nb >= 1:
-                        return nt, nb, def_rot
+                        return nt, nb, def_rot, ct, cb
                 except (TypeError, ValueError):
                     pass
     return None
@@ -211,9 +227,9 @@ def parse_center_aperture_layout(layout: str | None) -> tuple[str, str, int, flo
 
 
 def parse_circle_layout(layout: str | None) -> tuple[str, int] | None:
-    """解析圆圈/异形气泡分屏布局名：
+    """解析圆圈画中画分屏布局名：
     - 'circle_bottom<N>' / 'circle_right<N>' / 'circle_scatter<N>' (N >= 1)
-    - 'shape_<shape>_<N>' / 'shape_<pos>_<shape>_<N>' -> (mode_with_shape, N)
+    - 兼容旧工程 'shape_<shape>_<N>' 自动映射为圆滑画中画
     """
     name = str(layout or "").strip()
     for prefix in ("circle_bottom", "circle_right", "circle_scatter"):
@@ -228,14 +244,17 @@ def parse_circle_layout(layout: str | None) -> tuple[str, int] | None:
     if name.startswith("shape_"):
         tail = name[len("shape_"):]
         parts = tail.split("_")
-        if len(parts) == 2 and parts[0] in SPLIT_SHAPES and parts[1].isdigit():
+        if len(parts) == 2 and parts[1].isdigit():
             n = max(1, int(parts[1]))
-            return f"circle_bottom:{parts[0]}", n
-        if len(parts) == 2 and parts[0] in SPLIT_SHAPES and parts[1] == "auto":
-            return f"circle_bottom:{parts[0]}", 3
-        if len(parts) == 3 and parts[0] in ("bottom", "right", "scatter") and parts[1] in SPLIT_SHAPES and parts[2].isdigit():
+            sh = parts[0] if parts[0] in SPLIT_SHAPES else "circle"
+            return f"circle_bottom:{sh}", n
+        if len(parts) == 2 and parts[1] == "auto":
+            sh = parts[0] if parts[0] in SPLIT_SHAPES else "circle"
+            return f"circle_bottom:{sh}", 3
+        if len(parts) == 3 and parts[0] in ("bottom", "right", "scatter") and parts[2].isdigit():
             n = max(1, int(parts[2]))
-            return f"circle_{parts[0]}:{parts[1]}", n
+            sh = parts[1] if parts[1] in SPLIT_SHAPES else "circle"
+            return f"circle_{parts[0]}:{sh}", n
     return None
 
 
@@ -259,15 +278,32 @@ def layout_label_for(layout: str | None) -> str:
     parsed = parse_1_to_n(name)
     if parsed is not None:
         mode, n = parsed
-        return ("上1下%d" if mode == "top1_bottom" else "左1右%d") % n
+        label_map = {
+            "top1_bottom": "上1下%d",
+            "bottom1_top": "下1上%d",
+            "left1_right": "左1右%d",
+            "right1_left": "右1左%d",
+        }
+        return label_map.get(mode, "上1下%d") % n
     pl = parse_l_layout(name)
     if pl is not None:
-        nl, nb = pl
-        return "L形·左%d下%d" % (nl, nb)
+        ns, nb, side_k, band_k = pl
+        s_zh = "左" if side_k == "left" else "右"
+        b_zh = "下" if band_k == "bottom" else "上"
+        return "L形·%s%d%s%d" % (s_zh, ns, b_zh, nb)
     pch = parse_center_h_layout(name)
     if pch is not None:
-        nt, nb, rot = pch
-        prefix = "斜夹心" if abs(rot) > 0.5 else "中主"
+        nt, nb, rot, ct, cb = pch
+        if ct == "arch_up" and cb == "arc":
+            prefix = "怀抱弧夹心"
+        elif ct in ("arc", "arch_up"):
+            prefix = "双层弧夹心"
+        elif ct == "s_wave":
+            prefix = "S弧夹心"
+        elif abs(rot) > 0.5:
+            prefix = "斜夹心"
+        else:
+            prefix = "中主"
         return "%s·上%d下%d" % (prefix, nt, nb)
     pca = parse_center_aperture_layout(name)
     if pca is not None:
@@ -282,7 +318,7 @@ def layout_label_for(layout: str | None) -> str:
         sh = "circle"
         if ":" in cmode:
             cmode, sh = cmode.split(":", 1)
-        sh_name = "圆圈" if sh == "circle" else SHAPE_LABELS.get(sh, sh).split()[-1]
+        sh_name = "圆窗" if sh == "circle" else SHAPE_LABELS.get(sh, sh).split()[-1]
         if cmode == "circle_right":
             return "右侧%d%s" % (cn, sh_name)
         if cmode == "circle_scatter":
@@ -292,7 +328,7 @@ def layout_label_for(layout: str | None) -> str:
 
 
 BORDER_STYLES = ("none", "solid", "gradient", "glass", "shadow")
-BORDER_CURVES = ("straight", "wave", "arc")
+BORDER_CURVES = ("straight", "wave", "arc", "arch_up", "s_wave")
 
 DEFAULT_BORDER = {
     "style": "none",
@@ -418,7 +454,7 @@ def _circle_preset_geometry(
     shape: str | None = None,
     sides: int | None = None,
 ):
-    """生成主视频全屏 + N 个圆形/异形气泡副屏的几何结构（bottom / right / scatter + 任意形状）。"""
+    """生成主视频全屏 + N 个圆窗画中画副屏的几何结构（bottom / right / scatter）。"""
     n = max(1, int(n))
     sh = str(shape or "circle")
     if ":" in str(mode):
@@ -427,7 +463,7 @@ def _circle_preset_geometry(
             sh = sh_from_mode
     if sh not in SPLIT_SHAPES:
         sh = "circle"
-    n_sides = int(sides) if sides is not None else SHAPE_DEFAULT_SIDES.get(sh, 6)
+    n_sides = int(sides) if sides is not None else SHAPE_DEFAULT_SIDES.get(sh, 64)
     ext_f = _shape_extent_factor(sh, n_sides)
     sec_ids = [cell_id_for_index(1 + i) for i in range(n)]
     cells = [_cell("A", 0.0, 0.0, 1.0, 1.0)]
@@ -444,7 +480,7 @@ def _circle_preset_geometry(
             dividers.append(_div(
                 "d%d" % (i + 1), "circle", cy,
                 cx=cx, cy=cy, r=r, shape=sh, sides=n_sides,
-                neg_cell="A", pos_cell=cid, feather_px=3.0,
+                neg_cell="A", pos_cell=cid, feather_px=0.0,
             ))
         return cells, dividers
     if mode == "circle_scatter":
@@ -471,10 +507,10 @@ def _circle_preset_geometry(
             dividers.append(_div(
                 "d%d" % (i + 1), "circle", cy,
                 cx=cx, cy=cy, r=r, shape=sh, sides=n_sides,
-                neg_cell="A", pos_cell=cid, feather_px=3.0,
+                neg_cell="A", pos_cell=cid, feather_px=0.0,
             ))
         return cells, dividers
-    # 默认 circle_bottom：底部横排圆圈/异形气泡
+    # 默认 circle_bottom：底部横排圆圈
     base_r = float(radius_override) if radius_override else min(0.165, 0.44 / max(1.2, float(n)))
     span_x0, span_x1 = (0.24, 0.76) if n == 2 else ((0.18, 0.82) if n == 3 else (0.14, 0.86))
     for i, cid in enumerate(sec_ids):
@@ -486,70 +522,110 @@ def _circle_preset_geometry(
         dividers.append(_div(
             "d%d" % (i + 1), "circle", cy,
             cx=cx, cy=cy, r=r, shape=sh, sides=n_sides,
-            neg_cell="A", pos_cell=cid, feather_px=3.0,
+            neg_cell="A", pos_cell=cid, feather_px=0.0,
         ))
     return cells, dividers
 
 
-def _l_preset_geometry(n_left: int = 2, n_bottom: int = 3, p_left: float = 0.32, p_bottom: float = 0.72):
-    """L 形分屏：主视频 A 在右上方占最大画面，左侧纵向排 n_left 个副屏，底部横向排 n_bottom 个副屏。"""
-    nl = max(1, int(n_left))
-    nb = max(1, int(n_bottom))
-    pl = _clamp_pos(p_left, 0.14, 0.72)
-    pb = _clamp_pos(p_bottom, 0.28, 0.86)
-    left_ids = [cell_id_for_index(1 + i) for i in range(nl)]
-    bot_ids = [cell_id_for_index(1 + nl + j) for j in range(nb)]
-    cells = [_cell("A", pl, 0.0, 1.0 - pl, pb)]
-    step_l = pb / float(nl)
-    for i, cid in enumerate(left_ids):
-        y0 = i * step_l
-        y1 = pb if i == nl - 1 else (i + 1) * step_l
-        cells.append(_cell(cid, 0.0, y0, pl, y1 - y0))
+def _l_preset_geometry(
+    n_side: int = 2,
+    n_band: int = 3,
+    p_side: float | None = None,
+    p_band: float | None = None,
+    side: str = "left",
+    band: str = "bottom",
+):
+    """四方位 L 形分屏：
+    - side='left',  band='bottom': 主视频 A 在右上，左侧 n_side 个 + 底部 n_band 个
+    - side='right', band='bottom': 主视频 A 在左上，右侧 n_side 个 + 底部 n_band 个
+    - side='left',  band='top':    主视频 A 在右下，左侧 n_side 个 + 顶部 n_band 个
+    - side='right', band='top':    主视频 A 在左下，右侧 n_side 个 + 顶部 n_band 个
+    """
+    nl = max(1, int(n_side))
+    nb = max(1, int(n_band))
+    side_k = "right" if str(side) == "right" else "left"
+    band_k = "top" if str(band) == "top" else "bottom"
+    def_ps = 0.68 if side_k == "right" else 0.32
+    def_pb = 0.28 if band_k == "top" else 0.72
+    ps = _clamp_pos(p_side if p_side is not None else def_ps, 0.14, 0.86)
+    pb = _clamp_pos(p_band if p_band is not None else def_pb, 0.14, 0.86)
+    side_ids = [cell_id_for_index(1 + i) for i in range(nl)]
+    band_ids = [cell_id_for_index(1 + nl + j) for j in range(nb)]
+
+    v_span = [pb, 1.0] if band_k == "top" else [0.0, pb]
+    v_len = max(0.08, v_span[1] - v_span[0])
+    ax_x = 0.0 if side_k == "right" else ps
+    ax_w = ps if side_k == "right" else (1.0 - ps)
+    sx_x = ps if side_k == "right" else 0.0
+    sx_w = (1.0 - ps) if side_k == "right" else ps
+
+    cells = [_cell("A", ax_x, v_span[0], ax_w, v_len)]
+    step_l = v_len / float(nl)
+    for i, cid in enumerate(side_ids):
+        y0 = v_span[0] + i * step_l
+        y1 = v_span[1] if i == nl - 1 else (v_span[0] + (i + 1) * step_l)
+        cells.append(_cell(cid, sx_x, y0, sx_w, y1 - y0))
+
+    by_y = 0.0 if band_k == "top" else pb
+    by_h = pb if band_k == "top" else (1.0 - pb)
     step_b = 1.0 / float(nb)
-    for j, cid in enumerate(bot_ids):
+    for j, cid in enumerate(band_ids):
         x0 = j * step_b
         x1 = 1.0 if j == nb - 1 else (j + 1) * step_b
-        cells.append(_cell(cid, x0, pb, x1 - x0, 1.0 - pb))
+        cells.append(_cell(cid, x0, by_y, x1 - x0, by_h))
+
+    d1_neg = "A" if side_k == "right" else ",".join(side_ids)
+    d1_pos = ",".join(side_ids) if side_k == "right" else "A"
+    upper_group = ",".join(band_ids) if band_k == "top" else ("A," + ",".join(side_ids))
+    lower_group = ("A," + ",".join(side_ids)) if band_k == "top" else ",".join(band_ids)
 
     dividers = [
         _div(
-            "d1", "v", pl,
-            span=[0.0, pb],
-            neg_cell=",".join(left_ids),
-            pos_cell="A",
+            "d1", "v", ps,
+            span=v_span,
+            neg_cell=d1_neg,
+            pos_cell=d1_pos,
             l_role="main_v",
             l_nl=nl,
             l_nb=nb,
-            feather_px=10.0,
+            l_side=side_k,
+            l_band=band_k,
+            feather_px=0.0,
         ),
         _div(
             "d2", "h", pb,
             span=[0.0, 1.0],
-            neg_cell="A," + ",".join(left_ids),
-            pos_cell=",".join(bot_ids),
+            neg_cell=upper_group,
+            pos_cell=lower_group,
             l_role="main_h",
             l_nl=nl,
             l_nb=nb,
-            feather_px=10.0,
+            l_side=side_k,
+            l_band=band_k,
+            feather_px=0.0,
         ),
     ]
+    sub_v_span = [ps, 1.0] if side_k == "right" else [0.0, ps]
     for k in range(1, nl):
         dividers.append(_div(
-            "d%d" % (2 + k), "h", k * step_l,
-            span=[0.0, pl],
-            neg_cell=left_ids[k - 1],
-            pos_cell=left_ids[k],
+            "d%d" % (2 + k), "h", v_span[0] + k * step_l,
+            span=sub_v_span,
+            neg_cell=side_ids[k - 1],
+            pos_cell=side_ids[k],
             l_role="left_sub",
-            feather_px=8.0,
+            curve="straight",
+            feather_px=0.0,
         ))
+    sub_h_span = [0.0, pb] if band_k == "top" else [pb, 1.0]
     for j in range(1, nb):
         dividers.append(_div(
             "d%d" % (1 + nl + j), "v", j * step_b,
-            span=[pb, 1.0],
-            neg_cell=bot_ids[j - 1],
-            pos_cell=bot_ids[j],
+            span=sub_h_span,
+            neg_cell=band_ids[j - 1],
+            pos_cell=band_ids[j],
             l_role="bottom_sub",
-            feather_px=8.0,
+            curve="straight",
+            feather_px=0.0,
         ))
     return cells, dividers
 
@@ -560,28 +636,36 @@ def _center_h_preset_geometry(
     rot_deg: float = 0.0,
     p_top: float = 0.25,
     p_bottom: float = 0.75,
+    c_top: str = "straight",
+    c_bottom: str = "straight",
 ):
     """横向夹心分屏（上-中-下）：主视频 A 在中间占最大画面，上方 n_top 条，下方 n_bottom 条；
-    上下两条横向分界线 d1 / d2 支持任意角度旋转，更具动感。
+    上下两条横向分界线 d1 / d2 支持任意角度旋转或双层弧线（同向层叠弧 / 对称怀抱弧 / 流线S弧）。
     """
     nt = max(1, int(n_top))
     nb = max(1, int(n_bottom))
     pt = _clamp_pos(p_top, 0.10, 0.45)
     pb = _clamp_pos(p_bottom, pt + 0.20, 0.90)
     rot = float(rot_deg or 0.0)
+    ct = str(c_top or "straight")
+    cb = str(c_bottom or "straight")
     top_ids = [cell_id_for_index(1 + i) for i in range(nt)]
     bot_ids = [cell_id_for_index(1 + nt + j) for j in range(nb)]
-    pad_y = min(0.28, 0.55 * abs(math.tan(math.radians(rot)))) if abs(rot) > 0.1 else 0.0
-    ay0 = max(0.0, pt - pad_y)
-    ay1 = min(1.0, pb + pad_y)
+    pad_rot = min(0.28, 0.55 * abs(math.tan(math.radians(rot)))) if abs(rot) > 0.1 else 0.0
+    pad_ct = 0.085 if ct != "straight" else 0.0
+    pad_cb = 0.085 if cb != "straight" else 0.0
+    pad1 = max(pad_rot, pad_ct)
+    pad2 = max(pad_rot, pad_cb)
+    ay0 = max(0.0, pt - pad1)
+    ay1 = min(1.0, pb + pad2)
     cells = [_cell("A", 0.0, ay0, 1.0, max(0.15, ay1 - ay0))]
     step_t = 1.0 / float(nt)
     for i, cid in enumerate(top_ids):
         x0 = i * step_t
         x1 = 1.0 if i == nt - 1 else (i + 1) * step_t
-        cells.append(_cell(cid, x0, 0.0, x1 - x0, min(1.0, pt + pad_y)))
+        cells.append(_cell(cid, x0, 0.0, x1 - x0, min(1.0, pt + pad1)))
     step_b = 1.0 / float(nb)
-    by0 = max(0.0, pb - pad_y)
+    by0 = max(0.0, pb - pad2)
     for j, cid in enumerate(bot_ids):
         x0 = j * step_b
         x1 = 1.0 if j == nb - 1 else (j + 1) * step_b
@@ -591,22 +675,24 @@ def _center_h_preset_geometry(
         _div(
             "d1", "h", pt,
             rotation_deg=rot,
+            curve=ct,
             neg_cell=",".join(top_ids),
             pos_cell="A," + ",".join(bot_ids),
             ch_role="top_h",
             ch_nt=nt,
             ch_nb=nb,
-            feather_px=12.0,
+            feather_px=0.0,
         ),
         _div(
             "d2", "h", pb,
             rotation_deg=rot,
+            curve=cb,
             neg_cell="A," + ",".join(top_ids),
             pos_cell=",".join(bot_ids),
             ch_role="bottom_h",
             ch_nt=nt,
             ch_nb=nb,
-            feather_px=12.0,
+            feather_px=0.0,
         ),
     ]
     for k in range(1, nt):
@@ -616,7 +702,8 @@ def _center_h_preset_geometry(
             neg_cell=top_ids[k - 1],
             pos_cell=top_ids[k],
             ch_role="top_sub",
-            feather_px=8.0,
+            curve="straight",
+            feather_px=0.0,
         ))
     for j in range(1, nb):
         dividers.append(_div(
@@ -625,7 +712,8 @@ def _center_h_preset_geometry(
             neg_cell=bot_ids[j - 1],
             pos_cell=bot_ids[j],
             ch_role="bottom_sub",
-            feather_px=8.0,
+            curve="straight",
+            feather_px=0.0,
         ))
     return cells, dividers
 
@@ -687,7 +775,7 @@ def _center_aperture_preset_geometry(
     aspect: float = 1.0,
     rot_deg: float = 0.0,
 ):
-    """中央多边形/六角形/异形/快门孔径主屏 A + 四角/穿插叶片副屏 B, C, D...：
+    """中央多边形/六角形/快门孔径主屏 A + 四角/穿插叶片副屏 B, C, D...：
     - 当 twist_deg == 0 且 sides == 6 时，就是「中央六角形主屏 + 四角副屏」；
     - 当 sides 从 6 调高到 64 时，六角形可平滑过渡为光滑圆形；
     - 当 twist_deg != 0（如 36°）时，四周分界线呈相机快门叶片穿插式环绕中央主屏！
@@ -725,7 +813,7 @@ def _center_aperture_preset_geometry(
             blade_count=m,
             neg_cell=all_sec,
             pos_cell="A",
-            feather_px=4.0,
+            feather_px=0.0,
         )
     ]
     if m >= 2:
@@ -739,7 +827,7 @@ def _center_aperture_preset_geometry(
                 twist_deg=float(twist_deg or 0.0),
                 neg_cell=sec_ids[(i - 1) % m],
                 pos_cell=sec_ids[i],
-                feather_px=4.0,
+                feather_px=0.0,
             ))
     return cells, dividers
 
@@ -784,10 +872,10 @@ def preset_geometry(layout: str):
         return cells, dividers
     pl = parse_l_layout(name)
     if pl is not None:
-        return _l_preset_geometry(pl[0], pl[1])
+        return _l_preset_geometry(pl[0], pl[1], side=pl[2], band=pl[3])
     pch = parse_center_h_layout(name)
     if pch is not None:
-        return _center_h_preset_geometry(pch[0], pch[1], rot_deg=pch[2])
+        return _center_h_preset_geometry(pch[0], pch[1], rot_deg=pch[2], c_top=pch[3], c_bottom=pch[4])
     pca = parse_center_aperture_layout(name)
     if pca is not None:
         kind, sh, sides, tw, n_sec = pca
@@ -808,11 +896,45 @@ def preset_geometry(layout: str):
                 y0 = i * step
                 y1 = 1.0 if i == n - 1 else (i + 1) * step
                 cells.append(_cell(cid, 0.5, y0, 0.5, y1 - y0))
-            dividers = [_div("d1", "v", 0.5, neg_cell="A", pos_cell=all_sec)]
+            dividers = [_div("d1", "v", 0.5, neg_cell="A", pos_cell=all_sec, role_1n=mode)]
             for k in range(1, n):
                 dividers.append(_div(
                     "d%d" % (k + 1), "h", k * step,
+                    span=[0.5, 1.0],
                     neg_cell=sec_ids[k - 1], pos_cell=sec_ids[k],
+                    curve="straight",
+                ))
+            return cells, dividers
+        if mode == "right1_left":
+            p1 = 0.44
+            cells = [_cell("A", p1, 0.0, 1.0 - p1, 1.0)]
+            for i, cid in enumerate(sec_ids):
+                y0 = i * step
+                y1 = 1.0 if i == n - 1 else (i + 1) * step
+                cells.append(_cell(cid, 0.0, y0, p1, y1 - y0))
+            dividers = [_div("d1", "v", p1, neg_cell=all_sec, pos_cell="A", role_1n=mode, feather_px=0.0)]
+            for k in range(1, n):
+                dividers.append(_div(
+                    "d%d" % (k + 1), "h", k * step,
+                    span=[0.0, p1],
+                    neg_cell=sec_ids[k - 1], pos_cell=sec_ids[k],
+                    curve="straight", feather_px=0.0,
+                ))
+            return cells, dividers
+        if mode == "bottom1_top":
+            p1 = 0.40
+            cells = [_cell("A", 0.0, p1, 1.0, 1.0 - p1)]
+            for i, cid in enumerate(sec_ids):
+                x0 = i * step
+                x1 = 1.0 if i == n - 1 else (i + 1) * step
+                cells.append(_cell(cid, x0, 0.0, x1 - x0, p1))
+            dividers = [_div("d1", "h", p1, neg_cell=all_sec, pos_cell="A", role_1n=mode, feather_px=0.0)]
+            for k in range(1, n):
+                dividers.append(_div(
+                    "d%d" % (k + 1), "v", k * step,
+                    span=[0.0, p1],
+                    neg_cell=sec_ids[k - 1], pos_cell=sec_ids[k],
+                    curve="straight", feather_px=0.0,
                 ))
             return cells, dividers
         cells = [_cell("A", 0.0, 0.0, 1.0, 0.5)]
@@ -820,11 +942,13 @@ def preset_geometry(layout: str):
             x0 = i * step
             x1 = 1.0 if i == n - 1 else (i + 1) * step
             cells.append(_cell(cid, x0, 0.5, x1 - x0, 0.5))
-        dividers = [_div("d1", "h", 0.5, neg_cell="A", pos_cell=all_sec)]
+        dividers = [_div("d1", "h", 0.5, neg_cell="A", pos_cell=all_sec, role_1n=mode)]
         for k in range(1, n):
             dividers.append(_div(
                 "d%d" % (k + 1), "v", k * step,
+                span=[0.5, 1.0],
                 neg_cell=sec_ids[k - 1], pos_cell=sec_ids[k],
+                curve="straight",
             ))
         return cells, dividers
     cells, dividers = preset_geometry("top_bottom")
@@ -905,6 +1029,8 @@ def _norm_divider(raw, fallback_id="d1") -> dict:
         "rotation_deg": rot,
         "feather_px": feather,
     }
+    if src.get("curve") in BORDER_CURVES:
+        d["curve"] = str(src["curve"])
     if isinstance(src.get("span"), (list, tuple)) and len(src["span"]) >= 2:
         try:
             s0 = max(0.0, min(1.0, float(src["span"][0])))
@@ -912,7 +1038,7 @@ def _norm_divider(raw, fallback_id="d1") -> dict:
             d["span"] = [s0, s1]
         except (TypeError, ValueError):
             pass
-    for meta_k in ("l_role", "ch_role"):
+    for meta_k in ("l_role", "l_side", "l_band", "ch_role", "role_1n"):
         if src.get(meta_k):
             d[meta_k] = str(src[meta_k])
     for int_k in ("l_nl", "l_nb", "ch_nt", "ch_nb", "blade_idx", "blade_count"):
@@ -1081,7 +1207,7 @@ def recompute(split) -> dict:
             rect_i = _blade_sector_rect(cx, cy, r, i, m, twist_deg, rot)
             cells.append(_cell(cid, rect_i[0], rect_i[1], rect_i[2], rect_i[3]))
         out_divs = [d1_obj]
-        f_px = float(d1_obj.get("feather_px") if d1_obj.get("feather_px") is not None else 4.0)
+        f_px = float(d1_obj.get("feather_px") if d1_obj.get("feather_px") is not None else 0.0)
         if m >= 2:
             for i in range(m):
                 did = "d%d" % (i + 2)
@@ -1102,7 +1228,7 @@ def recompute(split) -> dict:
         sp["dividers"] = out_divs
         return sp
 
-    # 2. 圆圈/椭圆/异形气泡分屏 (circle_bottomN / circle_rightN / circle_scatterN / shape_* 或 custom 下的 circle dividers)
+    # 2. 圆窗/椭圆画中画分屏 (circle_bottomN / circle_rightN / circle_scatterN)
     circle_divs = [dv for dv in (sp.get("dividers") or []) if str(dv.get("axis")) == "circle"]
     if circle_divs:
         cells = [_cell("A", 0.0, 0.0, 1.0, 1.0)]
@@ -1116,7 +1242,7 @@ def recompute(split) -> dict:
             sh = str(dv.get("shape") or "circle")
             if sh not in SPLIT_SHAPES:
                 sh = "circle"
-            sides = max(3, min(64, int(dv.get("sides") or SHAPE_DEFAULT_SIDES.get(sh, 6))))
+            sides = max(3, min(64, int(dv.get("sides") or SHAPE_DEFAULT_SIDES.get(sh, 64))))
             dv["cx"] = cx
             dv["cy"] = cy
             dv["r"] = r
@@ -1143,74 +1269,107 @@ def recompute(split) -> dict:
         sp["dividers"] = circle_divs
         return sp
 
-    # 3. L 形分屏（左侧 NL 个视频 + 底部 NB 个视频 + 右上主视频 A）
+    # 3. 四方位 L 形分屏（左/右侧 NL 个视频 + 底/顶部 NB 个视频 + 对角主视频 A）
     pl_spec = parse_l_layout(layout)
     if "d1" in d and "d2" in d and str(d["d1"].get("l_role") or "") == "main_v" and d["d1"].get("l_nl") and d["d1"].get("l_nb"):
-        pl_spec = (int(d["d1"].get("l_nl") or 2), int(d["d1"].get("l_nb") or 3))
+        pl_spec = (
+            int(d["d1"].get("l_nl") or 2),
+            int(d["d1"].get("l_nb") or 3),
+            str(d["d1"].get("l_side") or "left"),
+            str(d["d1"].get("l_band") or "bottom"),
+        )
     if pl_spec is not None and "d1" in d and "d2" in d:
         nl, nb = max(1, int(pl_spec[0])), max(1, int(pl_spec[1]))
-        pl = _clamp_pos(d["d1"].get("pos", 0.32), 0.12, 0.75)
-        pb = _clamp_pos(d["d2"].get("pos", 0.72), 0.25, 0.88)
-        left_ids = [cell_id_for_index(1 + i) for i in range(nl)]
-        bot_ids = [cell_id_for_index(1 + nl + j) for j in range(nb)]
+        side_k = "right" if str(pl_spec[2]) == "right" else "left"
+        band_k = "top" if str(pl_spec[3]) == "top" else "bottom"
+        def_ps = 0.68 if side_k == "right" else 0.32
+        def_pb = 0.28 if band_k == "top" else 0.72
+        ps = _clamp_pos(d["d1"].get("pos", def_ps), 0.12, 0.88)
+        pb = _clamp_pos(d["d2"].get("pos", def_pb), 0.12, 0.88)
+        side_ids = [cell_id_for_index(1 + i) for i in range(nl)]
+        band_ids = [cell_id_for_index(1 + nl + j) for j in range(nb)]
+        v_span = [pb, 1.0] if band_k == "top" else [0.0, pb]
+        v_len = max(0.08, v_span[1] - v_span[0])
+        d1_neg = "A" if side_k == "right" else ",".join(side_ids)
+        d1_pos = ",".join(side_ids) if side_k == "right" else "A"
+        upper_group = ",".join(band_ids) if band_k == "top" else ("A," + ",".join(side_ids))
+        lower_group = ("A," + ",".join(side_ids)) if band_k == "top" else ",".join(band_ids)
         d["d1"].update({
-            "axis": "v", "pos": pl, "span": [0.0, pb],
-            "neg_cell": ",".join(left_ids), "pos_cell": "A",
-            "l_role": "main_v", "l_nl": nl, "l_nb": nb,
+            "axis": "v", "pos": ps, "span": v_span,
+            "neg_cell": d1_neg, "pos_cell": d1_pos,
+            "l_role": "main_v", "l_nl": nl, "l_nb": nb, "l_side": side_k, "l_band": band_k,
         })
         d["d2"].update({
             "axis": "h", "pos": pb, "span": [0.0, 1.0],
-            "neg_cell": "A," + ",".join(left_ids), "pos_cell": ",".join(bot_ids),
-            "l_role": "main_h", "l_nl": nl, "l_nb": nb,
+            "neg_cell": upper_group, "pos_cell": lower_group,
+            "l_role": "main_h", "l_nl": nl, "l_nb": nb, "l_side": side_k, "l_band": band_k,
         })
-        l_stops = [0.0]
+        sub_v_span = [ps, 1.0] if side_k == "right" else [0.0, ps]
+        l_stops = [v_span[0]]
         for k in range(1, nl):
             did = "d%d" % (2 + k)
+            def_pk = v_span[0] + (k / float(nl)) * v_len
             if did not in d:
-                d[did] = _div(did, "h", (k / float(nl)) * pb, span=[0.0, pl], neg_cell=left_ids[k - 1], pos_cell=left_ids[k], l_role="left_sub")
+                d[did] = _div(did, "h", def_pk, span=sub_v_span, neg_cell=side_ids[k - 1], pos_cell=side_ids[k], l_role="left_sub", curve="straight", feather_px=0.0)
             lo = l_stops[-1] + 0.04
-            hi = max(lo, pb - (nl - k) * 0.04)
-            pk = _clamp_pos(d[did].get("pos", (k / float(nl)) * pb), lo, hi)
+            hi = max(lo, v_span[1] - (nl - k) * 0.04)
+            pk = _clamp_pos(d[did].get("pos", def_pk), lo, hi)
             d[did].update({
-                "axis": "h", "pos": pk, "span": [0.0, pl],
-                "neg_cell": left_ids[k - 1], "pos_cell": left_ids[k], "l_role": "left_sub",
+                "axis": "h", "pos": pk, "span": sub_v_span,
+                "neg_cell": side_ids[k - 1], "pos_cell": side_ids[k], "l_role": "left_sub",
             })
             l_stops.append(pk)
-        l_stops.append(pb)
+        l_stops.append(v_span[1])
+        sub_h_span = [0.0, pb] if band_k == "top" else [pb, 1.0]
         b_stops = [0.0]
         for j in range(1, nb):
             did = "d%d" % (1 + nl + j)
             if did not in d:
-                d[did] = _div(did, "v", j / float(nb), span=[pb, 1.0], neg_cell=bot_ids[j - 1], pos_cell=bot_ids[j], l_role="bottom_sub")
+                d[did] = _div(did, "v", j / float(nb), span=sub_h_span, neg_cell=band_ids[j - 1], pos_cell=band_ids[j], l_role="bottom_sub", curve="straight", feather_px=0.0)
             lo = b_stops[-1] + 0.04
             hi = max(lo, 0.96 - (nb - 1 - j) * 0.04)
             pj = _clamp_pos(d[did].get("pos", j / float(nb)), lo, hi)
             d[did].update({
-                "axis": "v", "pos": pj, "span": [pb, 1.0],
-                "neg_cell": bot_ids[j - 1], "pos_cell": bot_ids[j], "l_role": "bottom_sub",
+                "axis": "v", "pos": pj, "span": sub_h_span,
+                "neg_cell": band_ids[j - 1], "pos_cell": band_ids[j], "l_role": "bottom_sub",
             })
             b_stops.append(pj)
         b_stops.append(1.0)
-        cells = [_cell("A", pl, 0.0, 1.0 - pl, pb)]
-        for i, cid in enumerate(left_ids):
-            cells.append(_cell(cid, 0.0, l_stops[i], pl, max(0.04, l_stops[i + 1] - l_stops[i])))
-        for j, cid in enumerate(bot_ids):
-            cells.append(_cell(cid, b_stops[j], pb, max(0.04, b_stops[j + 1] - b_stops[j]), 1.0 - pb))
+        ax_x = 0.0 if side_k == "right" else ps
+        ax_w = ps if side_k == "right" else (1.0 - ps)
+        sx_x = ps if side_k == "right" else 0.0
+        sx_w = (1.0 - ps) if side_k == "right" else ps
+        by_y = 0.0 if band_k == "top" else pb
+        by_h = pb if band_k == "top" else (1.0 - pb)
+        cells = [_cell("A", ax_x, v_span[0], ax_w, v_len)]
+        for i, cid in enumerate(side_ids):
+            cells.append(_cell(cid, sx_x, l_stops[i], sx_w, max(0.04, l_stops[i + 1] - l_stops[i])))
+        for j, cid in enumerate(band_ids):
+            cells.append(_cell(cid, b_stops[j], by_y, max(0.04, b_stops[j + 1] - b_stops[j]), max(0.04, by_h)))
         sp["cells"] = cells
         ordered_ids = ["d1", "d2"] + ["d%d" % (2 + k) for k in range(1, nl)] + ["d%d" % (1 + nl + j) for j in range(1, nb)]
         sp["dividers"] = [d[k] for k in ordered_ids if k in d]
         return sp
 
-    # 4. 横向夹心分屏（主视频 A 居中，上方 NT 条，下方 NB 条，上下分界线可旋转角度）
+    # 4. 横向夹心分屏（主视频 A 居中，上方 NT 条，下方 NB 条，上下分界线可旋转角度或呈双层弧线）
     pch_spec = parse_center_h_layout(layout)
     if "d1" in d and "d2" in d and str(d["d1"].get("ch_role") or "") == "top_h" and d["d1"].get("ch_nt") and d["d1"].get("ch_nb"):
-        pch_spec = (int(d["d1"].get("ch_nt") or 1), int(d["d1"].get("ch_nb") or 1), float(d["d1"].get("rotation_deg") or 0.0))
+        pch_spec = (
+            int(d["d1"].get("ch_nt") or 1),
+            int(d["d1"].get("ch_nb") or 1),
+            float(d["d1"].get("rotation_deg") or 0.0),
+            str(d["d1"].get("curve") or "straight"),
+            str(d["d2"].get("curve") or "straight"),
+        )
     if pch_spec is not None and "d1" in d and "d2" in d:
-        nt, nb, _def_rot = max(1, int(pch_spec[0])), max(1, int(pch_spec[1])), pch_spec[2]
+        nt, nb = max(1, int(pch_spec[0])), max(1, int(pch_spec[1]))
         pt = _clamp_pos(d["d1"].get("pos", 0.25), 0.08, 0.48)
         pb = _clamp_pos(d["d2"].get("pos", 0.75), pt + 0.16, 0.92)
         rot1 = float(d["d1"].get("rotation_deg") or 0.0)
         rot2 = float(d["d2"].get("rotation_deg") or 0.0)
+        b_curve = str((sp.get("border") or {}).get("curve") or "straight")
+        ct = str(d["d1"].get("curve") or (pch_spec[3] if len(pch_spec) > 3 else "") or b_curve)
+        cb = str(d["d2"].get("curve") or (pch_spec[4] if len(pch_spec) > 4 else "") or b_curve)
         top_ids = [cell_id_for_index(1 + i) for i in range(nt)]
         bot_ids = [cell_id_for_index(1 + nt + j) for j in range(nb)]
         d["d1"].update({
@@ -1218,16 +1377,20 @@ def recompute(split) -> dict:
             "neg_cell": ",".join(top_ids), "pos_cell": "A," + ",".join(bot_ids),
             "ch_role": "top_h", "ch_nt": nt, "ch_nb": nb,
         })
+        if ct in BORDER_CURVES and ct != "straight":
+            d["d1"]["curve"] = ct
         d["d2"].update({
             "axis": "h", "pos": pb, "rotation_deg": rot2,
             "neg_cell": "A," + ",".join(top_ids), "pos_cell": ",".join(bot_ids),
             "ch_role": "bottom_h", "ch_nt": nt, "ch_nb": nb,
         })
+        if cb in BORDER_CURVES and cb != "straight":
+            d["d2"]["curve"] = cb
         t_stops = [0.0]
         for k in range(1, nt):
             did = "d%d" % (2 + k)
             if did not in d:
-                d[did] = _div(did, "v", k / float(nt), span=[0.0, pt], neg_cell=top_ids[k - 1], pos_cell=top_ids[k], ch_role="top_sub")
+                d[did] = _div(did, "v", k / float(nt), span=[0.0, pt], neg_cell=top_ids[k - 1], pos_cell=top_ids[k], ch_role="top_sub", curve="straight", feather_px=0.0)
             lo = t_stops[-1] + 0.04
             hi = max(lo, 0.96 - (nt - 1 - k) * 0.04)
             pk = _clamp_pos(d[did].get("pos", k / float(nt)), lo, hi)
@@ -1241,7 +1404,7 @@ def recompute(split) -> dict:
         for j in range(1, nb):
             did = "d%d" % (1 + nt + j)
             if did not in d:
-                d[did] = _div(did, "v", j / float(nb), span=[pb, 1.0], neg_cell=bot_ids[j - 1], pos_cell=bot_ids[j], ch_role="bottom_sub")
+                d[did] = _div(did, "v", j / float(nb), span=[pb, 1.0], neg_cell=bot_ids[j - 1], pos_cell=bot_ids[j], ch_role="bottom_sub", curve="straight", feather_px=0.0)
             lo = b_stops[-1] + 0.04
             hi = max(lo, 0.96 - (nb - 1 - j) * 0.04)
             pj = _clamp_pos(d[did].get("pos", j / float(nb)), lo, hi)
@@ -1251,8 +1414,8 @@ def recompute(split) -> dict:
             })
             b_stops.append(pj)
         b_stops.append(1.0)
-        pad1 = min(0.28, 0.55 * abs(math.tan(math.radians(rot1)))) if abs(rot1) > 0.1 else 0.0
-        pad2 = min(0.28, 0.55 * abs(math.tan(math.radians(rot2)))) if abs(rot2) > 0.1 else 0.0
+        pad1 = max(min(0.28, 0.55 * abs(math.tan(math.radians(rot1)))) if abs(rot1) > 0.1 else 0.0, 0.085 if ct != "straight" else 0.0)
+        pad2 = max(min(0.28, 0.55 * abs(math.tan(math.radians(rot2)))) if abs(rot2) > 0.1 else 0.0, 0.085 if cb != "straight" else 0.0)
         ay0 = max(0.0, pt - pad1)
         ay1 = min(1.0, pb + pad2)
         cells = [_cell("A", 0.0, ay0, 1.0, max(0.15, ay1 - ay0))]
@@ -1314,7 +1477,7 @@ def recompute(split) -> dict:
         sp["cells"] = cells
 
     parsed = parse_1_to_n(layout)
-    # 若是 custom 布局但内部是一主多副结构 (len(cells) >= 3 且 d1 neg_cell == 'A' 且无特殊角色)，同样按一主多副联动重算
+    # 若是 custom 布局但内部是一主多副结构 (len(cells) >= 3 且无特殊角色)，同样按一主多副联动重算
     if (
         parsed is None
         and layout == "custom"
@@ -1325,7 +1488,13 @@ def recompute(split) -> dict:
         and not d["d1"].get("center_main")
     ):
         n_custom = len(sp.get("cells") or []) - 1
-        mode_custom = "left1_right" if str(d["d1"].get("axis")) == "v" else "top1_bottom"
+        r1n = str(d["d1"].get("role_1n") or "")
+        if r1n in ("top1_bottom", "bottom1_top", "left1_right", "right1_left"):
+            mode_custom = r1n
+        elif str(d["d1"].get("pos_cell") or "") == "A":
+            mode_custom = "right1_left" if str(d["d1"].get("axis")) == "v" else "bottom1_top"
+        else:
+            mode_custom = "left1_right" if str(d["d1"].get("axis")) == "v" else "top1_bottom"
         parsed = (mode_custom, n_custom)
 
     if parsed is not None and "d1" in d:
@@ -1334,25 +1503,32 @@ def recompute(split) -> dict:
         all_sec = ",".join(sec_ids)
         p1 = _clamp_pos(d["d1"]["pos"])
         d["d1"]["pos"] = p1
-        d["d1"]["axis"] = "v" if mode == "left1_right" else "h"
-        d["d1"]["neg_cell"] = "A"
-        d["d1"]["pos_cell"] = all_sec
+        is_horiz_split = mode in ("left1_right", "right1_left")
+        is_main_pos = mode in ("bottom1_top", "right1_left")
+        d["d1"]["axis"] = "v" if is_horiz_split else "h"
+        d["d1"]["neg_cell"] = all_sec if is_main_pos else "A"
+        d["d1"]["pos_cell"] = "A" if is_main_pos else all_sec
+        d["d1"]["role_1n"] = mode
         m = n - 1
         min_gap = min(0.04, 0.6 / max(2, n))
         sec_pos = []
-        sec_axis = "h" if mode == "left1_right" else "v"
+        sec_axis = "h" if is_horiz_split else "v"
+        sec_span = [0.0, p1] if is_main_pos else [p1, 1.0]
         for idx in range(m):
             did = "d%d" % (idx + 2)
             if did not in d:
                 d[did] = _div(
                     did, sec_axis, (idx + 1) / float(n),
+                    span=sec_span,
                     neg_cell=sec_ids[idx], pos_cell=sec_ids[idx + 1],
+                    curve="straight",
                 )
             lo = _POS_MIN if idx == 0 else (sec_pos[idx - 1] + min_gap)
             hi = _POS_MAX - (m - 1 - idx) * min_gap
             pk = _clamp_pos(d[did]["pos"], lo, max(lo, hi))
             d[did]["pos"] = pk
             d[did]["axis"] = sec_axis
+            d[did]["span"] = sec_span
             d[did]["neg_cell"] = sec_ids[idx]
             d[did]["pos_cell"] = sec_ids[idx + 1]
             sec_pos.append(pk)
@@ -1361,6 +1537,16 @@ def recompute(split) -> dict:
             cells = [_cell("A", 0.0, 0.0, p1, 1.0)]
             for i, cid in enumerate(sec_ids):
                 cells.append(_cell(cid, p1, stops[i], 1.0 - p1, stops[i + 1] - stops[i]))
+            sp["cells"] = cells
+        elif mode == "right1_left":
+            cells = [_cell("A", p1, 0.0, 1.0 - p1, 1.0)]
+            for i, cid in enumerate(sec_ids):
+                cells.append(_cell(cid, 0.0, stops[i], p1, stops[i + 1] - stops[i]))
+            sp["cells"] = cells
+        elif mode == "bottom1_top":
+            cells = [_cell("A", 0.0, p1, 1.0, 1.0 - p1)]
+            for i, cid in enumerate(sec_ids):
+                cells.append(_cell(cid, stops[i], 0.0, stops[i + 1] - stops[i], p1))
             sp["cells"] = cells
         else:
             cells = [_cell("A", 0.0, 0.0, 1.0, p1)]
@@ -1403,6 +1589,8 @@ def apply_layout(split, layout=None) -> dict:
                 d["feather_px"] = max(0.0, float(prev.get("feather_px") if prev.get("feather_px") is not None else d.get("feather_px", 24.0)))
             except (TypeError, ValueError):
                 pass
+            if prev.get("curve") in BORDER_CURVES:
+                d["curve"] = prev["curve"]
         if "pos" in prev and same_layout:
             d["pos"] = _clamp_pos(prev.get("pos"), _POS_MIN, _POS_MAX)
         if str(d.get("axis")) == "circle" and str(prev.get("axis")) == "circle" and same_layout:
@@ -1440,7 +1628,11 @@ def set_divider(split, divider_id, patch) -> dict:
     if parsed is None and sp.get("layout") == "custom" and len(sp.get("cells") or []) >= 3:
         d1_obj = (sp.get("dividers") or [{}])[0]
         if str(d1_obj.get("axis")) != "circle" and not d1_obj.get("l_role") and not d1_obj.get("ch_role"):
-            parsed = ("left1_right" if str(d1_obj.get("axis")) == "v" else "top1_bottom", len(sp.get("cells") or []) - 1)
+            r1n = str(d1_obj.get("role_1n") or "")
+            if r1n in ("top1_bottom", "bottom1_top", "left1_right", "right1_left"):
+                parsed = (r1n, len(sp.get("cells") or []) - 1)
+            else:
+                parsed = ("left1_right" if str(d1_obj.get("axis")) == "v" else "top1_bottom", len(sp.get("cells") or []) - 1)
     div_by_id = {str(x.get("id")): x for x in (sp.get("dividers") or [])}
     apply_all = bool(raw.get("apply_all_circles")) or did == "all_circles"
     for d in sp.get("dividers") or []:
@@ -1512,6 +1704,8 @@ def set_divider(split, divider_id, patch) -> dict:
                 d["feather_px"] = max(0.0, float(raw["feather_px"]))
             except (TypeError, ValueError):
                 logger.warning("feather_px 非法: %r", raw["feather_px"])
+        if "curve" in raw and str(raw["curve"]) in BORDER_CURVES:
+            d["curve"] = str(raw["curve"])
         if not apply_all:
             break
     if not found:
@@ -1637,14 +1831,13 @@ def apply_custom_creative_split(
     twist_deg: float | None = None,
 ) -> dict:
     """全方位「自定义创意分屏」引擎：
-    支持：
-    - L 形分屏（左侧 2 个 + 底部 3 个，或按轨道数自动 L 形）
-    - 横向动感夹心分屏（主视频在中间，上 1 下 1 或上 N 下 M，上下分割线可旋转角度）
-    - 六角形/多边形中心主屏 + 四角副屏（可调节分段数，平滑过渡到光滑圆形）
-    - 相机快门穿插式分屏（六角快门 / 八角弧叶快门 / 菱形快门 / 心形快门，穿插角度可调）
-    - 多样化异形气泡分屏（心形 / 五边形 / 六角形 / 鸽子形 / 幸运草形 / 橄榄叶形 / 五角星 / 海棠花 / 蝴蝶形）
-    - 斜切 / 波浪 / 电影弧线分屏
-    并且自动把时间线上的视频轨道依次分配进 A, B, C, D... 格子。
+    采用完整、优美、富有层次感与设计感的分屏形式：
+    - 多层次弧线分屏（上主下弧、下主上弧、双层同向层叠弧、双层对称怀抱弧、流线S弧、侧翼流线弧）
+    - 四方位 L 形黄金分屏（右上主、左上主、右下主、左下主）
+    - 横向动感斜切夹心分屏
+    - 中央圆窗 / 六角孔径 / 弧叶快门分屏
+    - 底部 / 右侧圆窗画中画
+    并且自动把时间线上的视频轨道依次分配进 A, B, C, D... 格子，严格遵循时间线轨道叠压顺序。
     """
     if not isinstance(task, dict):
         return default_split()
@@ -1659,30 +1852,29 @@ def apply_custom_creative_split(
     recipe_name = chosen_mode
     r_bcol = "#E5A93C"
     r_bw = 6
-    r_feather = 6.0
+    r_feather = 0.0
 
     if chosen_mode == "random":
-        # 18 种大师级创意分屏模板库，每次点击随机轮换，全部兼容所有新形式！
         recipes = [
             # (kind, main_pos, rot_deg, curve, bstyle, bcol, bw, feather, sh, sds, tw, title)
-            ("l_shape", 0.72, 0.0, "straight", "solid", "#E5A93C", 6, 8.0, "circle", 6, 0.0, "📐 L形黄金分屏 · 右上主屏+左副下副"),
-            ("center_h_tilt", 0.24, 9.0, "straight", "gradient", "#F3C668", 7, 10.0, "circle", 6, 0.0, "🎞️ 动感斜切夹心 · 主视频居中+上下斜线"),
-            ("hex_center", 0.50, 0.0, "straight", "solid", "#E5A93C", 6, 4.0, "polygon", 6, 0.0, "⬢ 六角中主+四角副屏 (分段可调至圆)"),
-            ("shutter_hex", 0.50, 0.0, "straight", "gradient", "#F3C668", 6, 4.0, "polygon", 6, 38.0, "📷 相机快门穿插 · 六角孔径叶片分屏"),
-            ("shutter_iris", 0.50, 0.0, "arc", "solid", "#E5A93C", 6, 4.0, "octagon", 8, 42.0, "📷 旋风弧叶快门 · 八角电影虹膜分屏"),
-            ("circle_bottom", 0.76, 0.0, "straight", "solid", "#FF6B8B", 6, 2.5, "heart", 64, 0.0, "❤️ 浪漫心形气泡分屏"),
-            ("circle_scatter", 0.75, 0.0, "straight", "gradient", "#88E0EF", 6, 2.5, "dove", 64, 0.0, "🕊️ 灵动和平鸽异形分屏"),
-            ("circle_bottom", 0.76, 0.0, "straight", "solid", "#59CE8F", 6, 2.5, "clover", 64, 0.0, "🍀 四叶幸运草创意分屏"),
-            ("circle_right", 0.78, 0.0, "straight", "gradient", "#A6E3E9", 6, 2.5, "olive", 64, 0.0, "🌿 橄榄叶流线画中画分屏"),
-            ("circle_bottom", 0.76, 0.0, "straight", "solid", "#F3C668", 6, 2.5, "pentagon", 5, 0.0, "⬠ 五边形几何阵列分屏"),
-            ("hex_center", 0.50, 0.0, "straight", "glass", "#F5D082", 10, 6.0, "polygon", 64, 0.0, "⭕ 光滑圆中主+四角毛玻璃分屏"),
-            ("shutter_diamond", 0.50, 0.0, "straight", "shadow", "#E5A93C", 7, 4.0, "diamond", 4, -36.0, "📷 菱形反向快门穿插分屏"),
-            ("center_h_wave", 0.25, -7.0, "wave", "solid", "#E5A93C", 6, 12.0, "circle", 6, 0.0, "🌊 斜波浪横向夹心 · 主视频居中"),
-            ("circle_scatter", 0.75, 0.0, "straight", "solid", "#FFD966", 6, 2.5, "star", 5, 0.0, "⭐ 璀璨五角星芒错落分屏"),
-            ("circle_bottom", 0.76, 0.0, "straight", "gradient", "#F9B5D0", 6, 2.5, "flower", 5, 0.0, "🌸 国风海棠花窗分屏"),
-            ("slash_top", 0.60, 12.0, "straight", "gradient", "#E5A93C", 8, 12.0, "circle", 6, 0.0, "🔪 12° 黄金斜切 · 上主下副"),
-            ("slash_left", 0.60, -14.0, "straight", "shadow", "#E5A93C", 8, 10.0, "circle", 6, 0.0, "🔪 -14° 反斜切刀 · 左主右副"),
-            ("circle_scatter", 0.75, 0.0, "straight", "gradient", "#D4ADFC", 6, 2.5, "butterfly", 64, 0.0, "🦋 灵动蝴蝶画中画分屏"),
+            ("arc_top", 0.58, 0.0, "arc", "gradient", "#F3C668", 7, 0.0, "circle", 64, 0.0, "🌈 穹顶层叠弧分屏 · 上主下副优美下弧"),
+            ("arch_up_bottom", 0.40, 0.0, "arch_up", "gradient", "#88E0EF", 7, 0.0, "circle", 64, 0.0, "🌈 苍穹托举弧分屏 · 下主上副优雅上弧"),
+            ("center_h_embrace", 0.25, 0.0, "arc", "gradient", "#F3C668", 7, 0.0, "circle", 64, 0.0, "🌈 双层对称怀抱弧夹心 · 主视频居中"),
+            ("center_h_arc", 0.25, 0.0, "arc", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "🌈 双层同向层叠弧夹心 · 主视频居中"),
+            ("center_h_swave", 0.25, 0.0, "s_wave", "gradient", "#88E0EF", 6, 0.0, "circle", 64, 0.0, "🌊 双层流线S弧夹心 · 主视频居中"),
+            ("l_shape", 0.72, 0.0, "straight", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "📐 L形黄金分屏 · 右上主屏+左副下副"),
+            ("l_right_bottom", 0.72, 0.0, "straight", "gradient", "#F3C668", 6, 0.0, "circle", 64, 0.0, "📐 反L形黄金分屏 · 左上主屏+右副下副"),
+            ("l_left_top", 0.28, 0.0, "straight", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "📐 顶L形黄金分屏 · 右下主屏+左副上副"),
+            ("center_h_tilt", 0.24, 8.0, "straight", "gradient", "#F3C668", 7, 0.0, "circle", 64, 0.0, "🎞️ 动感斜切夹心 · 主视频居中+上下斜线"),
+            ("arc_left", 0.56, 0.0, "arc", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "🌈 侧翼流线左弧 · 左主右副"),
+            ("arc_right", 0.44, 0.0, "arch_up", "gradient", "#F3C668", 6, 0.0, "circle", 64, 0.0, "🌈 侧翼流线右弧 · 右主左副"),
+            ("hex_center", 0.50, 0.0, "straight", "glass", "#F5D082", 9, 0.0, "polygon", 64, 0.0, "⭕ 中央圆窗主屏+四角毛玻璃分屏"),
+            ("hex_center", 0.50, 0.0, "straight", "solid", "#E5A93C", 6, 0.0, "polygon", 6, 0.0, "⬢ 六角中主+四角副屏 (分段可调至圆)"),
+            ("shutter_iris", 0.50, 0.0, "arc", "solid", "#E5A93C", 6, 0.0, "octagon", 8, 38.0, "📷 旋风弧叶快门 · 八角电影虹膜分屏"),
+            ("circle_bottom", 0.76, 0.0, "straight", "solid", "#F3C668", 6, 0.0, "circle", 64, 0.0, "⭕ 底部圆窗画中画分屏"),
+            ("circle_right", 0.78, 0.0, "straight", "gradient", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "⭕ 右侧圆窗画中画分屏"),
+            ("slash_top", 0.58, 10.0, "straight", "gradient", "#E5A93C", 7, 0.0, "circle", 64, 0.0, "📐 10° 黄金斜切 · 上主下副"),
+            ("slash_bottom", 0.40, -10.0, "straight", "shadow", "#E5A93C", 7, 0.0, "circle", 64, 0.0, "📐 -10° 黄金斜切 · 下主上副"),
         ]
         pick = recipes[(seed - 1) % len(recipes)]
         chosen_mode, r_pos, r_rot, r_curve, r_bstyle, r_bcol, r_bw, r_feather, r_sh, r_sds, r_tw, recipe_name = pick
@@ -1707,28 +1899,39 @@ def apply_custom_creative_split(
     b_curve = curve or "straight"
     out_layout = "custom"
 
-    if chosen_mode in ("l_shape", "l_left2_bottom3", "l_left1_bottom2"):
+    if chosen_mode in ("l_shape", "l_left2_bottom3", "l_left1_bottom2", "l_right_bottom", "l_left_top", "l_right1_bottom2", "l_left1_top2"):
+        side_k = "right" if "right" in chosen_mode else "left"
+        band_k = "top" if "top" in chosen_mode else "bottom"
         if chosen_mode == "l_left2_bottom3" or n >= 5:
-            nl = max(2, n // 2) if chosen_mode == "l_shape" else 2
-            nb = max(3, n - nl) if chosen_mode == "l_shape" else 3
-        elif chosen_mode == "l_left1_bottom2" or n <= 3:
+            nl = max(2, n // 2) if chosen_mode != "l_left2_bottom3" else 2
+            nb = max(3, n - nl) if chosen_mode != "l_left2_bottom3" else 3
+        elif n <= 3:
             nl, nb = 1, max(1, n - 1)
         elif n == 4:
             nl, nb = 2, 2
         else:
             nl, nb = 2, 3
-        cells, dividers = _l_preset_geometry(nl, nb)
-        out_layout = "l_left%d_bottom%d" % (nl, nb)
+        cells, dividers = _l_preset_geometry(nl, nb, side=side_k, band=band_k)
+        out_layout = "l_%s%d_%s%d" % (side_k, nl, band_k, nb)
         b_curve = "straight"
-    elif chosen_mode in ("center_h", "center_h_tilt", "center_h_wave"):
+    elif chosen_mode in ("center_h", "center_h_tilt", "center_h_wave", "center_h_arc", "center_h_embrace", "center_h_swave"):
         nt = max(1, n // 2) if n >= 2 else 1
         nb = max(1, n - nt) if n >= 2 else 1
-        r_deg = float(rot_deg if rot_deg is not None else (9.0 if "tilt" in chosen_mode else (-7.0 if "wave" in chosen_mode else 0.0)))
-        cells, dividers = _center_h_preset_geometry(nt, nb, rot_deg=r_deg)
-        if (nt, nb) == (1, 1):
-            out_layout = "center_h_tilt" if abs(r_deg) > 0.5 else "center_h"
+        r_deg = float(rot_deg if rot_deg is not None else (8.0 if "tilt" in chosen_mode else (-6.0 if "wave" in chosen_mode else 0.0)))
+        if chosen_mode == "center_h_embrace":
+            ct, cb = "arch_up", "arc"
+            base_ch = "center_h_embrace"
+        elif chosen_mode == "center_h_arc":
+            ct, cb = "arc", "arc"
+            base_ch = "center_h_arc"
+        elif chosen_mode in ("center_h_swave", "center_h_wave"):
+            ct, cb = "s_wave", "s_wave"
+            base_ch = "center_h_swave"
         else:
-            out_layout = ("center_h_tilt_%d_%d" if abs(r_deg) > 0.5 else "center_h_%d_%d") % (nt, nb)
+            ct, cb = "straight", "straight"
+            base_ch = "center_h_tilt" if abs(r_deg) > 0.5 else "center_h"
+        cells, dividers = _center_h_preset_geometry(nt, nb, rot_deg=r_deg, c_top=ct, c_bottom=cb)
+        out_layout = base_ch if (nt, nb) == (1, 1) else ("%s_%d_%d" % (base_ch, nt, nb))
     elif chosen_mode in ("hex_center", "poly_center", "shutter", "shutter_hex", "shutter_iris", "shutter_diamond"):
         is_shutter = chosen_mode.startswith("shutter")
         sh = shape or ("octagon" if chosen_mode == "shutter_iris" else ("diamond" if chosen_mode == "shutter_diamond" else "polygon"))
@@ -1742,34 +1945,38 @@ def apply_custom_creative_split(
         )
         out_layout = ("shutter_%d" % m_sec) if is_shutter else ("hex_center_%d" % m_sec)
     elif chosen_mode.startswith("circle_") or chosen_mode.startswith("shape_"):
-        sh = shape or "circle"
-        if chosen_mode.startswith("shape_"):
-            sh = chosen_mode[len("shape_"):]
-            cmode = "circle_bottom"
-        else:
-            cmode = chosen_mode
-        sds = int(sides if sides is not None else SHAPE_DEFAULT_SIDES.get(sh, 6))
+        cmode = "circle_right" if "right" in chosen_mode else ("circle_scatter" if "scatter" in chosen_mode else "circle_bottom")
         m_sec = max(1, n)
-        cells, dividers = _circle_preset_geometry(cmode, m_sec, radius_override=circle_r, shape=sh, sides=sds)
+        cells, dividers = _circle_preset_geometry(cmode, m_sec, radius_override=circle_r, shape="circle", sides=64)
         for dv in dividers:
-            dv["feather_px"] = float(r_feather)
+            dv["feather_px"] = 0.0
         b_curve = "straight"
-        if sh != "circle":
-            out_layout = "shape_%s_%d" % (sh, m_sec)
-        else:
-            out_layout = "%s%d" % (cmode, m_sec)
+        out_layout = "%s%d" % (cmode, m_sec)
     else:
-        is_left = (chosen_mode == "slash_left")
-        if n <= 1:
-            base_lay = "left_right" if is_left else "top_bottom"
+        if chosen_mode in ("arch_up_bottom", "slash_bottom", "arc_bottom"):
+            prefix_1n = "bottom1_top"
+            def_p = 0.40
+        elif chosen_mode in ("arc_left", "slash_left"):
+            prefix_1n = "left1_right"
+            def_p = 0.56
+        elif chosen_mode in ("arc_right", "slash_right"):
+            prefix_1n = "right1_left"
+            def_p = 0.44
         else:
-            base_lay = ("left1_right%d" if is_left else "top1_bottom%d") % n
+            prefix_1n = "top1_bottom"
+            def_p = 0.58
+        if n <= 1:
+            base_lay = "left_right" if prefix_1n in ("left1_right", "right1_left") else "top_bottom"
+        else:
+            base_lay = "%s%d" % (prefix_1n, n)
         cells, dividers = preset_geometry(base_lay)
-        p_val = _clamp_pos(main_pos if main_pos is not None else 0.60, 0.50, 0.82)
-        rot_val = float(rot_deg if rot_deg is not None else 12.0)
+        p_val = _clamp_pos(main_pos if main_pos is not None else def_p, 0.25, 0.78)
+        rot_val = float(rot_deg if rot_deg is not None else 0.0)
         if dividers:
             dividers[0]["pos"] = p_val
             dividers[0]["rotation_deg"] = rot_val
+            if b_curve in BORDER_CURVES and b_curve != "straight":
+                dividers[0]["curve"] = b_curve
             for dv in dividers:
                 dv["feather_px"] = float(r_feather)
         out_layout = base_lay
@@ -1796,7 +2003,6 @@ def apply_custom_creative_split(
     new_sp["custom_seed"] = seed
     task["split"] = new_sp
 
-    # 自动把当前时间线上的所有视频轨按顺序放入 A, B, C, D... 格子，多余轨道置 None，并将任何拉伸背景改为镜头模糊
     cell_ids = [str(c.get("id")) for c in (new_sp.get("cells") or [])]
     for i, tr in enumerate(v_tracks):
         tr.split_cell = cell_ids[i] if i < len(cell_ids) else None
@@ -1810,23 +2016,22 @@ def apply_custom_creative_split(
 
 
 def _adapt_preset_layout_for_tracks(layout: str, n_tracks: int) -> str:
-    """当用户在属性面板点击按钮预设（如 center_h_tilt、shape_heart_3、hex_center_4 等）时，
-    若当前时间线有 >= 3 条视频轨道，自动将该系列预设的副屏格子数适配到 n_sec = n_tracks - 1，
-    让每一条副视频轨道都拥有独立格子！
+    """当用户在属性面板点击按钮预设时，若当前时间线有 >= 3 条视频轨道，
+    自动将该系列预设的副屏格子数适配到 n_sec = n_tracks - 1，让每一条副视频轨道都拥有独立格子！
     """
     name = str(layout or "")
     n_sec = max(1, int(n_tracks) - 1)
     if n_tracks < 2:
         return name
-    if name in ("center_h", "center_h_tilt"):
+    if name in ("center_h", "center_h_tilt", "center_h_arc", "center_h_embrace", "center_h_swave"):
         if n_sec <= 2:
             return name
         nt = max(1, n_sec // 2)
         nb = max(1, n_sec - nt)
         return ("%s_%d_%d" % (name, nt, nb))
-    if name in ("shape_heart_3", "shape_dove_3", "shape_clover_3", "shape_olive_3"):
-        base_sh = name.rsplit("_", 1)[0]
-        return "%s_%d" % (base_sh, max(1, n_sec))
+    if name in ("circle_bottom3", "circle_right3"):
+        base_c = name[:-1]
+        return "%s%d" % (base_c, max(1, n_sec))
     if name in ("hex_center_4", "shutter_4"):
         base_ap = name.rsplit("_", 1)[0]
         return "%s_%d" % (base_ap, max(2, n_sec))
@@ -1846,15 +2051,16 @@ def apply_split_to_task(task, layout=None, enabled=None, border=None, backdrop=N
     layout_changed = bool(target_layout and str(target_layout) != str(sp.get("layout")))
     if target_layout:
         sp = apply_layout(sp, target_layout)
+        for dv in sp.get("dividers") or []:
+            dv["feather_px"] = 0.0
         if enabled is None:
             sp["enabled"] = True
         # Q151：新开的左右完整 → 每格各自的镜头模糊背景（老工程里已有的不动）
         if sp.get("layout") in CONTAIN_LAYOUTS and not isinstance(sp.get("backdrop"), dict):
             sp["backdrop"] = dict(NEW_BACKDROP)
-        # 对于快门/六角中主/异形气泡布局，若描边是 none，自动给一条精致实线边框方便看清分界形状
         if border is None and str((sp.get("border") or {}).get("style") or "none") == "none":
             lname = str(sp.get("layout") or "")
-            if lname.startswith(("hex_center", "shutter", "shape_", "l_left", "center_h_tilt")):
+            if lname.startswith(("hex_center", "shutter", "circle_", "l_", "center_h", "bottom1_top", "right1_left")):
                 sp["border"] = _norm_border({**(sp.get("border") or {}), "style": "solid", "width_px": 6})
     if isinstance(backdrop, dict):
         merged = backdrop_spec(sp)

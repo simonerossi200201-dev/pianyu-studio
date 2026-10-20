@@ -24,7 +24,7 @@ COMPOSE_WORKERS_ENV = "CUTORA_COMPOSE_WORKERS"
 # In-flight BGRA cap: 256 MiB. 1080×1920×4 ≈ 8.3 MiB → ~30 frames.
 COMPOSE_INFLIGHT_BYTES = 256 * 1024 * 1024
 # Q180 replay：解码线程取好、还没被合成线程用掉的源帧最多占这么多（1080×1920 BGR ≈ 6 MiB/张）
-REPLAY_INFLIGHT_BYTES = 96 * 1024 * 1024
+REPLAY_INFLIGHT_BYTES = 160 * 1024 * 1024
 # 批量并行导出（一个视频一个进程）时每个进程最多几个合成线程：画帧大头（Qt 画图）拿着 Python 的 GIL，
 # 一个进程里线程再多也只能排队（Luca 实测 6 / 8 线程都是每进程约 15 帧/秒），多开进程才真的快
 PARALLEL_JOB_COMPOSE_MAX = 4
@@ -254,6 +254,12 @@ def run_compose_pool(
 
     handoff = OrderedHandoff(frame_start, frame_end, max_ahead)
     decoded_q = queue.Queue(maxsize=max(1, max_ahead))
+    use_zero_copy_canvas = hasattr(pipe_writer, "ensure_canvas_pool") and getattr(pipe_writer, "_free", None) is not None
+    if use_zero_copy_canvas:
+        try:
+            pipe_writer.ensure_canvas_pool(max_ahead + n_workers + getattr(pipe_writer, "maxsize", 8) + 4)
+        except Exception:
+            use_zero_copy_canvas = False
     # 各段耗时（秒）：解码线程取帧 / 解码线程等队列 / 合成线程画帧（合计）/ 合成线程等帧（合计）/ 主线程写管道
     stats = {"decode_s": 0.0, "decode_block_s": 0.0, "compose_s": 0.0, "starve_s": 0.0, "pipe_s": 0.0,
              "decode_cpu": 0.0, "compose_cpu": 0.0}
@@ -380,9 +386,10 @@ def run_compose_pool(
             _c_last[0] = c
         try:
             ctx = overlay_ctx_factory()
-            canvas = QImage(
-                int(width), int(height),
-                QImage.Format.Format_ARGB32_Premultiplied)
+            if not use_zero_copy_canvas:
+                canvas = QImage(
+                    int(width), int(height),
+                    QImage.Format.Format_ARGB32_Premultiplied)
             while True:
                 if _stopped():
                     return
@@ -395,6 +402,10 @@ def run_compose_pool(
                 stats["starve_s"] += time.perf_counter() - _tw
                 if item is _SENTINEL:
                     return
+                if use_zero_copy_canvas:
+                    canvas = pipe_writer.acquire_canvas()
+                    if canvas is None:
+                        return
                 t = item[0] / float(fps)
                 idx = item[0]
                 _tc = time.perf_counter()
@@ -411,7 +422,10 @@ def run_compose_pool(
                     _i, video, backdrop = item
                     canvas = render_worker._compose_overlay_frame(
                         t, canvas, ctx, video, backdrop)
-                data = qimage_to_bgra_bytes(canvas, expected_bytes, idx)
+                if use_zero_copy_canvas:
+                    data = canvas
+                else:
+                    data = qimage_to_bgra_bytes(canvas, expected_bytes, idx)
                 with _stats_lock:
                     stats["compose_s"] += time.perf_counter() - _tc
                 _cpu_tick()
@@ -419,7 +433,11 @@ def run_compose_pool(
                 if mad_want and idx in mad_want:
                     extra = canvas.copy()
                 if not handoff.put(idx, (data, extra)):
+                    if use_zero_copy_canvas and data is not None:
+                        pipe_writer.release_canvas(data)
                     return
+                if use_zero_copy_canvas:
+                    canvas = None
                 n_done += 1
         except Exception as e:
             _LOG.exception("合成叠层线程 %d 失败", wid)

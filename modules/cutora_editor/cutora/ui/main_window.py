@@ -15981,7 +15981,10 @@ class MainWindow(CommandBodies, QMainWindow):
         """视频层合成倍率 = min(拖动 / 擦洗时的半分辨率, 画布实际显示像素)。"""
         drag = 1.0
         canvas = getattr(self, "video_canvas", None)
-        if canvas is not None and getattr(canvas, "_dragging_item", None) is not None:
+        if canvas is not None and (
+            getattr(canvas, "_dragging_item", None) is not None
+            or getattr(canvas, "_split_drag", None) is not None
+        ):
             drag = 0.5
         tl = getattr(self, "timeline", None)
         if tl is not None and bool(getattr(tl, "_scrubbing", False) or getattr(tl, "_dragging", False)):

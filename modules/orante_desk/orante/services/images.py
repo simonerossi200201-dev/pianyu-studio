@@ -1629,6 +1629,8 @@ def batch_image_index() -> list[dict]:
                 "file": im.get("file") or "",
                 "mtime": im.get("mtime") or 0,
                 "exists": bool(im.get("exists")),
+                "prompt_node_id": im.get("prompt_node_id") or "",
+                "prompt_node_name": im.get("prompt_node_name") or "",
             })
         out.append({
             "tid": t.get("id") or "",
@@ -1640,10 +1642,132 @@ def batch_image_index() -> list[dict]:
     return out
 
 
-def batch_desc(items, desc: str, voice=None, mode: str = "fill_empty") -> dict:
-    """跨任务批量写入描述语（规格 85）。
+DEFAULT_PROMPT_NODES: list[dict] = [
+    {
+        "id": "D01",
+        "name": "D01 · 竖起大拇指赞同",
+        "color": "#F59E0B",
+        "desc": (
+            "人物正专注认真地倾听视频内容，眼中流露出由衷的认同与赞许；自然地抬起一只手对着镜头竖起大拇指表示强烈赞同，同时温和地点头微笑，随后手部自然放松回落，呼吸与肩部微动真实自然。人物嘴唇全程保持自然闭合，绝不说话、绝不张嘴、不做任何说话口型。\n"
+            "The person is attentively listening to a video with genuine agreement and appreciation, naturally raising one hand to give a warm thumbs-up gesture while nodding gently with a warm smile, then relaxing their hand naturally. The mouth remains calm and closed the entire time with strictly no speaking, no talking, and no lip movement."
+        ),
+    },
+    {
+        "id": "D02",
+        "name": "D02 · 手捂胸口深表感动",
+        "color": "#EC4899",
+        "desc": (
+            "人物正全神贯注地倾听视频，内心深受触动与感动；一只手自然轻放在胸口（心口）位置并轻轻抚按，配合深表共鸣的温和点头与自然眨眼，眼神温暖虔诚，肩膀与手臂随呼吸自然微动，绝不僵硬。人物嘴唇全程保持自然闭合，绝不说话、绝不张嘴、不做任何说话口型。\n"
+            "The person is listening deeply and attentively, genuinely moved and touched at heart; one hand rests or gently presses over their chest/heart in heartfelt resonance while nodding warmly and blinking naturally, with relaxed breathing and subtle shoulder motion. The mouth stays calm and closed throughout with strictly no speaking and no lip movement."
+        ),
+    },
+    {
+        "id": "D03",
+        "name": "D03 · 频频点头深表认同",
+        "color": "#10B981",
+        "desc": (
+            "人物正认真专注地观看倾听视频，十分赞同所听到的内容；头部随着倾听节奏自然温和地连续点头两三次，眼神明亮专注，偶尔自然眨眼，身体微微前倾，双肩与搁放的手臂有真实自然的轻微放松动作。人物嘴唇全程保持自然闭合，绝不说话、绝不张嘴、不做任何说话口型。\n"
+            "The person is watching and listening intently, nodding their head warmly and naturally two or three times in strong agreement with what they hear, with bright attentive eyes, natural blinking, a slight forward lean, and relaxed subtle arm and shoulder movement. The mouth remains completely closed and silent with strictly no speaking or lip movement."
+        ),
+    },
+    {
+        "id": "D04",
+        "name": "D04 · 微笑倾听双手微动",
+        "color": "#3B82F6",
+        "desc": (
+            "人物正专注倾听视频，脸上浮现温暖会心的微笑，表现出深深的理解与赞同；双手与胳膊在桌面或身前做自然放松的小幅姿态调整，配合轻轻点头与自然眨眼，充满真实人物视频的生动感。人物嘴唇全程保持自然闭合，绝不说话、绝不张嘴、不做任何说话口型。\n"
+            "The person is listening attentively with a warm, understanding smile, showing natural lifelike presence as their hands and arms make a small, relaxed posture adjustment in front of them, accompanied by a gentle agreeing nod and natural blinking. The mouth stays calm and closed the entire time with strictly no speaking or lip movement."
+        ),
+    },
+    {
+        "id": "D05",
+        "name": "D05 · 托腮/交握静思共鸣",
+        "color": "#8B5CF6",
+        "desc": (
+            "人物保持托腮或双手交握的自然倾听姿态，目光温和专注地看着前方，随着听到的内容若有所思地轻轻点头表示赞同，手指与手腕有极其自然的轻微放松微动，呼吸平稳真实，绝不像静态照片。人物嘴唇全程保持自然闭合，绝不说话、绝不张嘴、不做任何说话口型。\n"
+            "Keeping a natural listening posture with hands clasped or resting near the chin, the person gazes warmly and attentively ahead, nodding thoughtfully in quiet agreement with subtle, relaxed finger and wrist micro-movements and natural breathing. The mouth remains calm and closed throughout with strictly no speaking or lip movement."
+        ),
+    },
+    {
+        "id": "D06",
+        "name": "D06 · 侧首微笑欣然赞许",
+        "color": "#06B6D4",
+        "desc": (
+            "人物正认真倾听视频，听到精辟之处欣然微笑，头部自然微微侧倾并温和点头表示高度认可，眉毛微微舒展，胳膊与手部姿态自然放松微动，整体神态生动自然。人物嘴唇全程保持自然闭合，绝不说话、绝不张嘴、不做任何说话口型。\n"
+            "The person listens attentively and smiles warmly in appreciation, tilting their head slightly and giving a gentle, approving nod with relaxed eyebrow expression and natural subtle arm movement. The mouth stays completely calm and closed with strictly no speaking or lip movement."
+        ),
+    },
+    {
+        "id": "D07",
+        "name": "D07 · 车内静止专注点头",
+        "color": "#F97316",
+        "desc": (
+            "人物坐在完全停稳的车内专注倾听视频，车窗外的所有景物、树木与车辆保持100%静止不动（车辆处于泊车静止状态）；人物神情温和专注，随着内容轻轻点头表示赞同，扶在方向盘或安全带旁的手臂自然放松微动。人物嘴唇全程保持自然闭合，绝不说话、绝不张嘴、不做任何说话口型。\n"
+            "Sitting inside a completely parked, stationary car with everything outside the windows 100% still and motionless, the person listens attentively and nods gently in warm agreement while their arm and hand rest naturally with subtle lifelike relaxation. The mouth remains closed and silent throughout with strictly no speaking or lip movement."
+        ),
+    },
+    {
+        "id": "D08",
+        "name": "D08 · 抬手示意后自然回落",
+        "color": "#14B8A6",
+        "desc": (
+            "人物顺着第一帧的抬手或扶镜框姿态，自然地完成一个简短温和的认同示意（若戴眼镜则眼镜稳固戴在鼻梁上绝不变形或摘下），随后手臂顺畅自然地放松回落，同时温和点头微笑表示赞同，绝不僵硬举手定格。人物嘴唇全程保持自然闭合，绝不说话、绝不张嘴、不做任何说话口型。\n"
+            "Following the initial raised-hand pose in the first frame, the person completes a brief, natural acknowledging gesture (keeping any eyeglasses solid and intact on the nose bridge without deforming or removing them) and then smoothly relaxes and lowers their hand naturally while nodding warmly in agreement. The mouth stays calm and closed with strictly no speaking or lip movement."
+        ),
+    },
+]
+
+
+def get_prompt_nodes() -> list[dict]:
+    from .. import config
+    saved = config.get("prompts.desc_nodes", None)
+    if isinstance(saved, list) and saved:
+        out = []
+        for i, n in enumerate(saved):
+            if not isinstance(n, dict):
+                continue
+            nid = str(n.get("id") or f"D{i+1:02d}").strip()
+            out.append({
+                "id": nid,
+                "name": str(n.get("name") or nid).strip(),
+                "color": str(n.get("color") or "#F59E0B").strip(),
+                "desc": str(n.get("desc") or "").strip(),
+                "voice": str(n.get("voice") or "").strip(),
+            })
+        if out:
+            return out
+    return [dict(x) for x in DEFAULT_PROMPT_NODES]
+
+
+def save_prompt_nodes(nodes: list[dict] | None) -> list[dict]:
+    from .. import config
+    if not nodes:
+        config.set("prompts.desc_nodes", [dict(x) for x in DEFAULT_PROMPT_NODES])
+        return get_prompt_nodes()
+    palette = ["#F59E0B", "#EC4899", "#10B981", "#3B82F6", "#8B5CF6", "#06B6D4", "#F97316", "#14B8A6", "#EAB308", "#F43F5E"]
+    cleaned = []
+    for i, n in enumerate(nodes):
+        if not isinstance(n, dict):
+            continue
+        nid = str(n.get("id") or f"D{i+1:02d}").strip()
+        cleaned.append({
+            "id": nid,
+            "name": str(n.get("name") or nid).strip(),
+            "color": str(n.get("color") or palette[i % len(palette)]).strip(),
+            "desc": str(n.get("desc") or "").strip(),
+            "voice": str(n.get("voice") or "").strip(),
+        })
+    config.set("prompts.desc_nodes", cleaned)
+    return cleaned
+
+
+def batch_desc(items, desc: str = "", voice=None, mode: str = "fill_empty",
+               *, node_id: str | None = None, node_name: str | None = None,
+               connections: list[dict] | None = None) -> dict:
+    """跨任务批量写入描述语（规格 85 + 节点连线模式支持）。
 
     items: [{"tid": "...", "ps": ["p01", ...]}, ...]
+    connections: [{"node_id": "D01", "node_name": "...", "desc": "...", "voice": ..., "items": [{"tid": "...", "ps": [...]}]}]
     mode: fill_empty | overwrite
     voice: None=不动音色；字符串（含空串）=写入
     每个任务一次拿锁、一次 _save_unlocked。拿不到锁的任务进 skipped，其余照写。
@@ -1653,47 +1777,80 @@ def batch_desc(items, desc: str, voice=None, mode: str = "fill_empty") -> dict:
     from ..models import Manifest
     from .. import tasks as taskmod
 
-    desc = "" if desc is None else str(desc)
-    if not str(desc).strip():
-        raise OranteError("描述语不能为空", "先在右边写好要填的描述语。")
     if mode not in ("fill_empty", "overwrite"):
         raise OranteError("mode 只能是 fill_empty 或 overwrite")
-    if not isinstance(items, list) or not items:
-        raise OranteError("请至少选一个任务和图片")
 
-    for raw in items:
-        if not isinstance(raw, dict):
-            continue
-        tid = str(raw.get("tid") or "").strip()
-        if not tid:
-            continue
-        try:
-            trow = taskmod.get(tid)
-        except Exception:
-            raise OranteError(f"没有任务 {tid}")
-        if (trow.get("status") or "draft") == "draft":
-            raise OranteError(
-                f"任务 {tid} 还是草稿",
-                "草稿要先准备好才能填描述语。请从列表里去掉草稿任务。",
-            )
+    if isinstance(connections, list) and connections:
+        groups = []
+        for conn in connections:
+            if not isinstance(conn, dict):
+                continue
+            c_desc = str(conn.get("desc") or "").strip()
+            c_items = conn.get("items") or []
+            if not c_desc or not c_items:
+                continue
+            groups.append({
+                "items": c_items,
+                "desc": c_desc,
+                "voice": conn["voice"] if "voice" in conn else voice,
+                "node_id": str(conn.get("node_id") or "").strip() or None,
+                "node_name": str(conn.get("node_name") or "").strip() or None,
+            })
+        if not groups:
+            raise OranteError("请先将图片连接到至少一个有描述语内容的节点")
+    else:
+        desc = "" if desc is None else str(desc)
+        if not str(desc).strip():
+            raise OranteError("描述语不能为空", "先在右边写好要填的描述语。")
+        if not isinstance(items, list) or not items:
+            raise OranteError("请至少选一个任务和图片")
+        groups = [{
+            "items": items,
+            "desc": desc,
+            "voice": voice,
+            "node_id": str(node_id or "").strip() or None,
+            "node_name": str(node_name or "").strip() or None,
+        }]
+
+    # 按 tid 汇总所有 (pth, desc, voice, node_id, node_name)
+    by_tid: dict[str, list[dict]] = {}
+    for g in groups:
+        for raw in g["items"]:
+            if not isinstance(raw, dict):
+                continue
+            tid = str(raw.get("tid") or "").strip()
+            ps = list(raw.get("ps") or [])
+            if not tid or not ps:
+                continue
+            try:
+                trow = taskmod.get(tid)
+            except Exception:
+                raise OranteError(f"没有任务 {tid}")
+            if (trow.get("status") or "draft") == "draft":
+                raise OranteError(
+                    f"任务 {tid} 还是草稿",
+                    "草稿要先准备好才能填描述语。请从列表里去掉草稿任务。",
+                )
+            for pth in ps:
+                by_tid.setdefault(tid, []).append({
+                    "p": pth,
+                    "desc": g["desc"],
+                    "voice": g["voice"],
+                    "node_id": g["node_id"],
+                    "node_name": g["node_name"],
+                })
 
     changed = []
     skipped = []
     touched_tasks = set()
 
-    for raw in items:
-        if not isinstance(raw, dict):
-            continue
-        tid = str(raw.get("tid") or "").strip()
-        ps = list(raw.get("ps") or [])
-        if not tid or not ps:
-            continue
+    for tid, ops in by_tid.items():
         try:
             taskmod.ensure_writable(tid)
         except OranteError as e:
             why = getattr(e, "msg", None) or getattr(e, "args", [str(e)])[0]
-            for pth in ps:
-                skipped.append({"tid": tid, "p": _norm_p(pth) or str(pth), "why": str(why)})
+            for op in ops:
+                skipped.append({"tid": tid, "p": _norm_p(op["p"]) or str(op["p"]), "why": str(why)})
             continue
 
         d = _task_dir(tid)
@@ -1701,15 +1858,16 @@ def batch_desc(items, desc: str, voice=None, mode: str = "fill_empty") -> dict:
             lock = manifest_lock(d, timeout=0.35)
             lock.acquire()
         except OranteError:
-            for pth in ps:
-                skipped.append({"tid": tid, "p": _norm_p(pth) or str(pth), "why": "清单正被占用"})
+            for op in ops:
+                skipped.append({"tid": tid, "p": _norm_p(op["p"]) or str(op["p"]), "why": "清单正被占用"})
             continue
 
         try:
             m = Manifest.load(d)
             wrote = False
-            for raw_p in ps:
-                pth = _norm_p(raw_p)
+            touched_ps = set()
+            for op in ops:
+                pth = _norm_p(op["p"])
                 if not pth:
                     continue
                 im = _find_im(m, pth)
@@ -1732,12 +1890,21 @@ def batch_desc(items, desc: str, voice=None, mode: str = "fill_empty") -> dict:
                     "desc_manual_old": bool(im.get("desc_manual")),
                     "voice_manual_old": bool(im.get("voice_manual")),
                 }
-                patch(im, {"desc": desc}, by="user")
-                if voice is not None:
-                    patch(im, {"voice": str(voice)}, by="user")
+                patch(im, {"desc": op["desc"]}, by="user")
+                if op["voice"] is not None:
+                    patch(im, {"voice": str(op["voice"])}, by="user")
+                if op.get("node_id"):
+                    im["prompt_node_id"] = op["node_id"]
+                if op.get("node_name"):
+                    im["prompt_node_name"] = op["node_name"]
                 changed.append(rec)
+                touched_ps.add(im.get("p") or pth)
                 wrote = True
             if wrote:
+                for sg in getattr(m, "segments", None) or []:
+                    if (sg.get("image") or "") in touched_ps and not sg.get("prompt_locked"):
+                        sg["prompt_final"] = ""
+                        sg.pop("prompt_snap", None)
                 # 外层已持有 .manifest.lock，禁止再走 m.save（会再次加锁，Windows 下 PermissionError）
                 m._save_unlocked(d)
                 touched_tasks.add(tid)

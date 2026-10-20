@@ -117,7 +117,12 @@ def _is_legacy(raw) -> bool:
 
 
 def is_active(host) -> bool:
-    return spec(host)["enabled"]
+    if host is None:
+        return False
+    raw = host.get("keyer") if isinstance(host, dict) else getattr(host, "keyer", None)
+    if not isinstance(raw, dict) or not raw.get("enabled"):
+        return False
+    return True
 
 
 def signature(k: dict) -> tuple:

@@ -112,22 +112,22 @@ def prepare_task_audio_for_export(task):
 IS_RENDER_CHILD = is_render_child()
 
 def _default_parallel_workers():
-    """默认并行进程数：核数的 1/4，夹在 2~8 之间。
+    """默认并行进程数：核数的 1/3，夹在 2~10 之间。
 
-    现代 GeForce RTX 显卡驱动允许 8 路并发 NVENC 编码。
+    现代 GeForce RTX 显卡驱动允许 8~12 路并发 NVENC 编码。
     """
     try:
         n = os.cpu_count() or 4
     except Exception:
         n = 4
-    return max(2, min(8, n // 4))
+    return max(2, min(10, n // 3))
 
 def _load_parallel_settings():
     s = _load_app_settings()
-    enabled = bool(s.get("parallel_export_enabled", False))
+    enabled = bool(s.get("parallel_export_enabled", True))
     try:
         workers = int(s.get("parallel_export_workers", 0)) or _default_parallel_workers()
-        if workers == 6 and not s.get("parallel_workers_manual") and _default_parallel_workers() > 6:
+        if workers in (6, 8) and not s.get("parallel_workers_manual") and _default_parallel_workers() > workers:
             workers = _default_parallel_workers()
     except Exception:
         workers = _default_parallel_workers()
@@ -330,6 +330,8 @@ def run_render_job(job_path):
                 failed.append(gidx)
             elif video_only:
                 print(f"[RenderJob] #{gidx} 分段完成: {out_path}")     # 验收由父进程拼接后统一做
+            elif getattr(worker, "_verified_ok", False):
+                print(f"[RenderJob] #{gidx} 完成: {out_path}")
             else:
                 from cutora.render.export_params import verify_window_for_task
                 from cutora.render.export_verify import verify_export
@@ -441,7 +443,7 @@ class ParallelExportManager(QObject):
     _PREV_GUARD = None
 
     def __init__(self, jobs, mode, use_gpu, export_mode, workers, parent=None,
-                 gpu_workers=None, enc_threads=0, spawn_stagger=1.2):
+                 gpu_workers=None, enc_threads=0, spawn_stagger=0.35):
         super().__init__(parent)
         self._jobs = list(jobs)                 # [(task, out_path), ...]
         self._mode = mode
@@ -755,11 +757,11 @@ class ParallelExportManager(QObject):
             COMPOSE_WORKERS_MAX,
             PARALLEL_JOB_COMPOSE_MAX,
         )
-        env[COMPOSE_WORKERS_ENV] = str(max(1, min(COMPOSE_WORKERS_MAX, PARALLEL_JOB_COMPOSE_MAX,
-                                                  cpu // n_work)))
+        comp_w = 1 if n_work >= 6 else max(1, min(COMPOSE_WORKERS_MAX, PARALLEL_JOB_COMPOSE_MAX, max(2, cpu // n_work)))
+        env[COMPOSE_WORKERS_ENV] = str(comp_w)
         # Q180：每个解码器的线程数。不设的话 FFmpeg 每个源开 16 个解码线程，6 个进程 × 3 个源就是近 300 个
         from cutora.render.render_worker import EXPORT_DECODE_THREADS_ENV
-        env[EXPORT_DECODE_THREADS_ENV] = str(max(2, min(4, cpu // n_work // 3)))
+        env[EXPORT_DECODE_THREADS_ENV] = str(2 if n_work >= 6 else max(2, min(4, cpu // n_work)))
         # Q181：GPU 像素运算服务地址（没有就不设 → 子进程走 CPU）
         from cutora.fx.gpu import ENV_ADDR as _GPU_ADDR_ENV
         env.pop(_GPU_ADDR_ENV, None)

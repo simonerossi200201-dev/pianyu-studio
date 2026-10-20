@@ -206,7 +206,8 @@ def encode_args(profile: dict | None, use_gpu: bool):
         from cutora.render.encoder_probe import pick_hevc
         enc, _reason = pick_hevc(bool(use_gpu))
         if enc == "hevc_nvenc":
-            return "hevc_nvenc", "p4", ["-rc", "vbr", "-cq", "18", "-b:v", "0"], pix
+            nv_preset = os.environ.get("CUTORA_NVENC_PRESET") or "p2"
+            return "hevc_nvenc", nv_preset, ["-rc", "vbr", "-cq", "18", "-b:v", "0"], pix
         return "libx265", "medium", ["-crf", "20"], pix
     if kind == "prores":
         return "prores_ks", None, ["-profile:v", "3"], pix or "yuv422p10le"
@@ -216,7 +217,8 @@ def encode_args(profile: dict | None, use_gpu: bool):
         from cutora.render.encoder_probe import pick_h264
         enc, _reason = pick_h264(bool(use_gpu))
         if enc == "h264_nvenc":
-            return "h264_nvenc", "p4", ["-rc", "vbr", "-cq", "15", "-b:v", "0"], pix
+            nv_preset = os.environ.get("CUTORA_NVENC_PRESET") or "p2"
+            return "h264_nvenc", nv_preset, ["-rc", "vbr", "-cq", "15", "-b:v", "0"], pix
         return "libx264", "medium", ["-crf", "15"], pix
     from cutora.render.export_params import vcodec_quality_args
     vcodec, preset, extra = vcodec_quality_args(use_gpu, "compressed")

@@ -2143,6 +2143,16 @@ class DailyWorkflowConductor:
             img_code_list = image_codes or task_codes[:len(image_links)] if image_links else (image_codes or task_codes)
             vid_code_list = video_codes or task_codes[:len(video_links)] if video_links else (video_codes or task_codes)
 
+            # Step 0: 下载前预检视频链接（正常应为单个视频直链 /file/d/...，若出现文件夹或异常链接立即告警）
+            video_link_warnings: List[Dict[str, str]] = []
+            for idx, v_lnk in enumerate(video_links):
+                v_code = vid_code_list[idx] if idx < len(vid_code_list) else f"v{idx + 1:02d}"
+                v_kind, v_ident = self._parse_drive_link(v_lnk)
+                if v_kind == "folder":
+                    w_msg = f"⚠️ {v_code} 的视频链接是网盘文件夹而非单个视频直链: {v_lnk}"
+                    video_link_warnings.append({"code": v_code, "type": "folder_link", "link": v_lnk, "message": w_msg})
+                    _report(w_msg, 3)
+
             # Step 1: 创建当期『1016图片』与『1016视频』文件夹
             _report(f"正在准备『{img_dest_dir.name}』与『{vid_dest_dir.name}』下载目录 ({day_dir})…", 5)
             self.swarm.update_clone("beta", "RUNNING", f"准备 {img_dest_dir.name}/{vid_dest_dir.name} ({day_str})", 20)
@@ -2284,6 +2294,11 @@ class DailyWorkflowConductor:
             # Step 4: 最终检查图片与视频文件夹完整性
             _report(f"正在核对『{img_dest_dir.name}』与『{vid_dest_dir.name}』文件完整性…", 96)
             self.swarm.update_clone("gamma", "RUNNING", "核对图片与视频文件完整性", 96)
+            if vid_dest_dir.is_dir():
+                for vf in sorted(vid_dest_dir.iterdir(), key=lambda p: p.name.lower()):
+                    if vf.is_file() and vf.suffix.lower() in img_exts:
+                        w_msg = f"⚠️ 视频目录中发现图片文件『{vf.name}』（对应网盘视频链接实际为静态图片而非视频）"
+                        video_link_warnings.append({"code": vf.stem, "type": "image_in_video_slot", "file": vf.name, "message": w_msg})
             threats = self.sentinel.scan_directory_for_threats(raw_dl_dir)
             final_stats = self.get_live_workspace_stats(target_day=day_str)
             total_files = final_stats["downloaded_files_count"]
@@ -2316,6 +2331,7 @@ class DailyWorkflowConductor:
                 "img_count": final_stats["img_count"],
                 "vid_count": final_stats["vid_count"],
                 "missing_vid_rows": final_stats.get("missing_vid_rows", []),
+                "video_link_warnings": video_link_warnings,
                 "orante_batch_id": orante_reg.get("batch_id", ""),
                 "orante_task_id": orante_reg.get("task_id", ""),
                 "orante_task_dir": orante_reg.get("task_dir", ""),
@@ -2461,7 +2477,7 @@ class DailyWorkflowConductor:
         )
         return True
 
-    def launch_cutora_room(self, room: str = "stitch", project_path: str = "") -> bool:
+    def launch_cutora_room(self, room: str = "", project_path: str = "") -> bool:
         """打开《CUTORA》并直接加载指定工程或进入目标房间（单实例限制：若已在运行则绝不重复启动进程）。"""
         cutora_dir = STUDIO_ROOT / "modules" / "cutora_editor"
         if not cutora_dir.is_dir():
@@ -2469,10 +2485,19 @@ class DailyWorkflowConductor:
         stats = self.get_live_workspace_stats()
         proj_str = (project_path or "").strip()
         if not proj_str:
+            raw_dl_dir = Path(stats["raw_dl_dir"])
             day_dir = Path(stats["day_dir"])
-            cand_proj = day_dir / f"{day_dir.name}.cutora"
-            if cand_proj.is_file():
-                proj_str = str(cand_proj)
+            for search_d in (raw_dl_dir, day_dir):
+                if not search_d.is_dir():
+                    continue
+                cands = sorted(
+                    [p for p in search_d.glob("*.cutora") if not p.name.endswith(".backup.cutora")],
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                if cands:
+                    proj_str = str(cands[0])
+                    break
 
         # 单实例内核互斥锁检查：若 CUTORA 已在运行，绝不再启动第二个进程
         if os.name == "nt":
@@ -2505,11 +2530,12 @@ class DailyWorkflowConductor:
             env["CUTORA_OPEN_PROJECT"] = str(Path(proj_str).resolve())
         env["CUTORA_BATCH_DIR"] = stats["raw_dl_dir"]
         env["PATH"] = f"{STUDIO_ROOT / 'runtime' / 'bin'};{STUDIO_ROOT / 'runtime' / 'ffmpeg'};{env.get('PATH', '')}"
-        subprocess.Popen(
+        proc = subprocess.Popen(
             [self._python_gui_exe(), "-m", "cutora"],
             cwd=str(cutora_dir),
             env=env,
         )
+        self._last_cutora_proc = proc
         return True
 
     def run_safe_background_command(self, command_str: str, cwd: Optional[Path] = None) -> Dict[str, Any]:
@@ -3419,6 +3445,153 @@ class DailyWorkflowConductor:
             }
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    def cutora_auto_project_face_safe(
+        self,
+        batch_dir: str,
+        videos_dir: str,
+        clips_manifest: str,
+        table_path: str = "",
+        phone_img: str = "",
+        parts: int = 2,
+        project_name: str = "",
+    ) -> Dict[str, Any]:
+        """
+        全自动端到端创建 CUTORA 分屏工程（含 ASR 标题定位、电话贴纸、AI 署名、YuNet 人脸零穿帮校准与实景抽帧核验图）。
+        """
+        cutora_dir = STUDIO_ROOT / "modules" / "cutora_editor"
+        cmd = [
+            self._python_exe(),
+            "-m",
+            "cutora.batch.auto_project",
+            "--batch-dir", str(batch_dir),
+            "--videos", str(videos_dir),
+            "--clips-manifest", str(clips_manifest),
+            "--parts", str(max(1, int(parts or 2))),
+        ]
+        if table_path:
+            cmd += ["--table", str(table_path)]
+        if phone_img:
+            cmd += ["--phone-img", str(phone_img)]
+        if project_name:
+            cmd += ["--project-name", str(project_name)]
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cutora_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            **_hidden_popen_kwargs(),
+        )
+        lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+        if lines:
+            try:
+                return json.loads(lines[-1])
+            except Exception:
+                pass
+        return {
+            "ok": proc.returncode == 0,
+            "returncode": proc.returncode,
+            "stdout": (proc.stdout or "")[-2000:],
+            "stderr": (proc.stderr or "")[-2000:],
+        }
+
+    def cutora_batch_export(
+        self,
+        project_path: str,
+        out_dir: str,
+        workers: int = 10,
+        gpu_workers: int = 10,
+        skip_existing: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        调用 cutora.batch.export_cli 执行 250–350 fps 高速并行批量导出。
+        """
+        cutora_dir = STUDIO_ROOT / "modules" / "cutora_editor"
+        cmd = [
+            self._python_exe(),
+            "-m",
+            "cutora.batch.export_cli",
+            "--project", str(project_path),
+            "--out", str(out_dir),
+            "--workers", str(max(1, int(workers or 10))),
+            "--gpu-workers", str(max(0, int(gpu_workers or 10))),
+            "--skip-existing" if skip_existing else "--no-skip-existing",
+        ]
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cutora_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            **_hidden_popen_kwargs(),
+        )
+        lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+        if lines:
+            try:
+                return json.loads(lines[-1])
+            except Exception:
+                pass
+        return {
+            "ok": proc.returncode == 0,
+            "returncode": proc.returncode,
+            "stdout": (proc.stdout or "")[-2000:],
+            "stderr": (proc.stderr or "")[-2000:],
+        }
+
+    def drive_upload_and_verify(
+        self,
+        local_dir: str,
+        drive_folder_link_or_id: str,
+        transfers: int = 6,
+    ) -> Dict[str, Any]:
+        """
+        上传本地成品目录至指定的 Google Drive 文件夹，并执行 rclone check --one-way MD5 校验。
+        """
+        m = re.search(r"/folders/([a-zA-Z0-9_-]{15,})", drive_folder_link_or_id or "")
+        if not m:
+            m = re.search(r"[?&]id=([a-zA-Z0-9_-]{15,})", drive_folder_link_or_id or "")
+        folder_id = m.group(1) if m else (drive_folder_link_or_id or "").strip()
+        if not folder_id:
+            return {"ok": False, "error": "缺少有效的 Google Drive 文件夹链接或 ID"}
+        rclone_exe = STUDIO_ROOT / "runtime" / "bin" / "rclone.exe"
+        if not rclone_exe.is_file():
+            rclone_exe = STUDIO_ROOT / "modules" / "table_tool" / "app" / "rclone.exe"
+        copy_cmd = [
+            str(rclone_exe),
+            "copy",
+            str(local_dir),
+            "gdrive:",
+            "--drive-root-folder-id", folder_id,
+            f"--transfers={max(1, int(transfers))}",
+            "--checkers=8",
+        ]
+        p_copy = subprocess.run(copy_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", **_hidden_popen_kwargs())
+        chk_cmd = [
+            str(rclone_exe),
+            "check",
+            str(local_dir),
+            "gdrive:",
+            "--drive-root-folder-id", folder_id,
+            "--one-way",
+        ]
+        p_chk = subprocess.run(chk_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", **_hidden_popen_kwargs())
+        chk_out = (p_chk.stdout or "") + "\n" + (p_chk.stderr or "")
+        verified = (p_chk.returncode == 0) and ("0 differences found" in chk_out)
+        return {
+            "ok": p_copy.returncode == 0 and verified,
+            "folder_id": folder_id,
+            "verified": verified,
+            "check_output": chk_out[-1200:],
+        }
 
     def search_studio_knowledge(self, query: str = "", top_k: int = 4) -> Dict[str, Any]:
         """

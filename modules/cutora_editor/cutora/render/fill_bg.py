@@ -19,7 +19,14 @@ import threading
 from collections import OrderedDict
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QImage, QPainter
+from PySide6.QtGui import QColor, QImage, QPainter, QRegion
+
+try:
+    import cv2 as _cv2
+    import numpy as _np
+except ImportError:
+    _cv2 = None
+    _np = None
 
 FILL_MODES = ("none", "blur", "mirror", "tile", "stretch")
 
@@ -131,9 +138,36 @@ def covers(target_rect, dest_w, dest_h, eps: float = 0.5) -> bool:
             and target_rect.bottom() >= float(dest_h) - eps)
 
 
-def needs_fill(spec, target_rect, dest_w, dest_h) -> bool:
+def needs_fill(spec, target_rect, dest_w, dest_h, split_rect=None) -> bool:
     if not spec or str(spec.get("mode") or "none") == "none":
         return False
+    if split_rect is not None:
+        if target_rect is None:
+            return True
+        sx, sy, sw, sh = float(split_rect[0]), float(split_rect[1]), float(split_rect[2]), float(split_rect[3])
+        if sw <= 0 or sh <= 0:
+            return False
+        eps = 0.5
+        if (
+            target_rect.left() <= sx + eps
+            and target_rect.top() <= sy + eps
+            and target_rect.right() >= sx + sw - eps
+            and target_rect.bottom() >= sy + sh - eps
+        ):
+            return False
+        # 若前景已完整铺满格子内容区 (0, 0, dest_w, dest_h)，且 split_rect 仅外扩了羽化边（≤ 4px），
+        # 由 split_screen._extend_edges 极速复制边缘填满，无需在 _draw_video_overlay 内重算整幅镜头模糊。
+        if (
+            dest_w > 0
+            and dest_h > 0
+            and abs(sx) <= 4.5
+            and abs(sy) <= 4.5
+            and sw <= dest_w + 9.0
+            and sh <= dest_h + 9.0
+            and covers(target_rect, dest_w, dest_h, eps=eps)
+        ):
+            return False
+        return True
     if dest_w <= 0 or dest_h <= 0:
         return False
     return not covers(target_rect, dest_w, dest_h)
@@ -173,7 +207,7 @@ def contain_rect(src_w, src_h, dest_w, dest_h, scale=1.0):
 
 _BLUR_MEMO: OrderedDict = OrderedDict()
 _BLUR_MEMO_LOCK = threading.Lock()
-_BLUR_MEMO_MAX = 64
+_BLUR_MEMO_MAX = 1024
 
 
 def blur_image(frame: QImage, amount: float, style: str = "legacy",
@@ -438,32 +472,31 @@ def lens_blur(frame: QImage, amount: float, highlights: float = DEFAULT_HIGHLIGH
         sw = max(2, int(round(w * s)))
         sh = max(2, int(round(h * s)))
         if (sw, sh) != (w, h):
-            if w >= sw * 2 and h >= sh * 2 and w * h > 300000:
-                arr_s = cv2.resize(arr, (sw * 2, sh * 2), interpolation=cv2.INTER_LINEAR)
-                small = cv2.resize(arr_s, (sw, sh), interpolation=cv2.INTER_AREA)
+            if w >= sw * 2 and h >= sh * 2:
+                small = cv2.resize(arr, (sw, sh), interpolation=cv2.INTER_LINEAR)
             else:
-                while arr.shape[0] >= sh * 4 and arr.shape[1] >= sw * 4 and min(arr.shape[:2]) > 8:
-                    arr = cv2.pyrDown(arr)
                 small = cv2.resize(arr, (sw, sh), interpolation=cv2.INTER_AREA)
         else:
             small = np.array(arr)
         rw = radius * (sw / float(w))
         kern = hex_kernel(rw)
-        col = np.ascontiguousarray(small[..., :3])
+        col = cv2.cvtColor(small, cv2.COLOR_BGRA2BGR) if ch == 4 else np.ascontiguousarray(small[..., :3])
         lin_lut, wt_lut = _lens_luts(highlights)
         lin = cv2.LUT(col, lin_lut)
         if float(highlights or 0.0) > 0.0:
             # 高光从原图取：缩图会把一盏小灯平均成灰点，光斑就没了。原图先按
             # 一个工作像素的大小取最大值（膨胀 + 最近邻），亮点在小图里还是亮点。
             if (sw, sh) != (w, h):
-                if w >= sw * 3 and h >= sh * 3 and w * h > 300000:
-                    sub_hi = cv2.resize(full, (sw * 2, sh * 2), interpolation=cv2.INTER_NEAREST)
-                    hi = cv2.dilate(sub_hi, np.ones((2, 2), np.uint8))
+                if w >= sw * 2 and h >= sh * 2:
+                    hi_2x = cv2.resize(full, (sw * 2, sh * 2), interpolation=cv2.INTER_NEAREST)
+                    hi = cv2.resize(
+                        cv2.dilate(hi_2x, np.ones((2, 2), np.uint8)),
+                        (sw, sh),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
                 else:
-                    k = max(2, int(math.ceil(w / float(sw))))
-                    hi = cv2.dilate(full, np.ones((k, k), np.uint8))   # 4 通道也直接膨胀，不先拆
-                hi = cv2.resize(hi, (sw, sh), interpolation=cv2.INTER_NEAREST)
-                hi = np.ascontiguousarray(hi[..., :3])
+                    hi = cv2.resize(full, (sw, sh), interpolation=cv2.INTER_NEAREST)
+                hi = cv2.cvtColor(hi, cv2.COLOR_BGRA2BGR) if ch == 4 else np.ascontiguousarray(hi[..., :3])
             else:
                 hi = col
             extra = cv2.LUT(cv2.cvtColor(hi, cv2.COLOR_BGR2GRAY), wt_lut) - 1.0
@@ -475,11 +508,13 @@ def lens_blur(frame: QImage, amount: float, highlights: float = DEFAULT_HIGHLIGH
             num = cv2.filter2D(hot, -1, kern, borderType=cv2.BORDER_REFLECT)
             extra += 1.0
             den = cv2.filter2D(extra, -1, kern, borderType=cv2.BORDER_REFLECT)
-            out = num / den[..., None]
+            np.multiply(num, np.reciprocal(den, out=den)[..., None], out=num)
+            out = num
         else:
             out = cv2.filter2D(lin, -1, kern, borderType=cv2.BORDER_REFLECT)
         # 回到 γ 空间（开平方），convertScaleAbs 顺带饱和到 0–255
-        bgr_u8 = cv2.convertScaleAbs(cv2.sqrt(out), alpha=255.0)
+        cv2.sqrt(out, dst=out)
+        bgr_u8 = cv2.convertScaleAbs(out, alpha=255.0)
         if not as_array and (ch == 3 or fmt == QImage.Format.Format_RGB32 or int(small[..., 3].min()) >= 255):
             out_fmt = QImage.Format.Format_RGB32 if ch == 3 else fmt
             qout = QImage(sw, sh, out_fmt)
@@ -513,7 +548,7 @@ def lens_blur(frame: QImage, amount: float, highlights: float = DEFAULT_HIGHLIGH
 # ----------------------------------------------------------------- 绘制
 
 def paint_fill(painter: QPainter, frame: QImage, spec, dest_w, dest_h,
-               target_rect=None) -> bool:
+               target_rect=None, *, pre_blurred: QImage | None = None) -> bool:
     """在 (0,0,dest_w,dest_h) 里画背景。画了返回 True。
 
     调用方必须在画前景之前调用，并且自己不要提前 save/restore —— 这里管好了。
@@ -521,9 +556,9 @@ def paint_fill(painter: QPainter, frame: QImage, spec, dest_w, dest_h,
     if painter is None or frame is None or frame.isNull():
         return False
     spec = fill_spec({"bg_fill": spec})
-    if not needs_fill(spec, target_rect, dest_w, dest_h):
-        return False
     split_rect = getattr(painter, "_split_layer_rect", None)
+    if not needs_fill(spec, target_rect, dest_w, dest_h, split_rect=split_rect):
+        return False
     mode = spec["mode"]
     if split_rect is not None and mode == "stretch":
         mode = "blur"
@@ -533,9 +568,61 @@ def paint_fill(painter: QPainter, frame: QImage, spec, dest_w, dest_h,
     else:
         dest = QRectF(0.0, 0.0, float(dest_w), float(dest_h))
     fill_w, fill_h = float(dest.width()), float(dest.height())
+    target_layer = getattr(painter, "_split_target_layer", None) if split_rect is not None else None
+    cov = None
     painter.save()
     try:
-        painter.setClipRect(dest)
+        clipped_region = False
+        if (
+            target_rect is not None
+            and getattr(painter, "_fg_axis_opaque", False)
+            and painter.opacity() >= 0.999
+        ):
+            cov = target_rect.toAlignedRect().adjusted(1, 1, -1, -1)
+            if cov.width() > 4 and cov.height() > 4:
+                reg = QRegion(dest.toAlignedRect()) - QRegion(cov)
+                if reg.isEmpty():
+                    painter.restore()
+                    if split_rect is not None:
+                        try:
+                            painter._split_filled = True
+                        except Exception:
+                            pass
+                    return True
+                painter.setClipRegion(reg)
+                clipped_region = True
+        if not clipped_region:
+            painter.setClipRect(dest)
+        img = None
+        fill_state = None
+        if mode == "blur":
+            img = (
+                pre_blurred
+                if (pre_blurred is not None and not pre_blurred.isNull())
+                else blur_image(frame, spec["blur"], spec["blur_style"], spec["highlights"])
+            )
+            if clipped_region and target_layer is not None and cov is not None and img is not None:
+                fill_state = (
+                    int(img.cacheKey()),
+                    round(fill_w, 1),
+                    round(fill_h, 1),
+                    round(float(spec["scale"]), 3),
+                    round(float(spec["x"]), 2),
+                    round(float(spec["y"]), 2),
+                    round(float(spec["rotation"]), 2),
+                    round(float(spec["dim"]), 3),
+                    cov.x(),
+                    cov.y(),
+                    cov.width(),
+                    cov.height(),
+                )
+                if getattr(target_layer, "_last_fill_state", None) == fill_state:
+                    if split_rect is not None:
+                        try:
+                            painter._split_filled = True
+                        except Exception:
+                            pass
+                    return True
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         painter.save()
         painter.translate(dest.center())
@@ -552,9 +639,8 @@ def paint_fill(painter: QPainter, frame: QImage, spec, dest_w, dest_h,
             # Q130：模糊图不再先放大回 1080×1920 再画（那一步每帧 8–9 ms），
             # 直接让 painter 用双线性把小图铺满目标框 —— 同样是双线性放大，
             # 结果肉眼无差，省掉一整张全画布的中间图。
-            img = blur_image(frame, spec["blur"], spec["blur_style"], spec["highlights"])
             painter.drawImage(
-                cover_rect(frame.width(), frame.height(), fill_w, fill_h,
+                cover_rect(img.width(), img.height(), fill_w, fill_h,
                            spec["scale"], spec["rotation"]),
                 img)
         elif mode in ("mirror", "tile"):
@@ -569,6 +655,11 @@ def paint_fill(painter: QPainter, frame: QImage, spec, dest_w, dest_h,
         dim = float(spec["dim"])
         if dim > 0.001:
             painter.fillRect(dest, QColor(0, 0, 0, int(round(255 * dim))))
+        if target_layer is not None:
+            try:
+                target_layer._last_fill_state = fill_state
+            except Exception:
+                pass
     finally:
         painter.restore()
     if split_rect is not None:

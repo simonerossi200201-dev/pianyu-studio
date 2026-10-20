@@ -16,7 +16,7 @@ import anyio
 from mcp.server.mcpserver import MCPServer
 
 from robota import memory
-from robota.tools import gpu, notify, orante, projects, queue_api, rclone, shell, studio, watch
+from robota.tools import gpu, notify, orante, projects, queue_api, rclone, shell, studio, studio_pipeline, watch
 
 logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
 
@@ -42,6 +42,10 @@ TOOLS = [
     studio.studio_health, studio.studio_submit, studio.studio_status, studio.studio_fetch, studio.comfy_queue,
     orante.orante_health, orante.orante_batches, orante.orante_batch, orante.orante_check,
     orante.orante_worklist, orante.orante_jobs,
+    studio_pipeline.parse_studio_table,
+    studio_pipeline.cutora_auto_project,
+    studio_pipeline.cutora_batch_export,
+    studio_pipeline.drive_upload_and_verify,
     watch.watch_file,
     memory.memory_topics, memory.memory_read, memory.memory_append,
 ]

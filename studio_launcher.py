@@ -70,8 +70,14 @@ def _python_exe(gui: bool = False) -> str:
     return sys.executable
 
 
+import time
+
 _CUTORA_LAUNCH_ACCEPTED = False
 _MODULE_CLICK_ACCEPTED: set[str] = set()
+_CUTORA_PROC: subprocess.Popen | None = None
+_CUTORA_START_TS: float = 0.0
+_MODULE_PROCS: dict[str, subprocess.Popen] = {}
+_MODULE_START_TS: dict[str, float] = {}
 
 
 def is_cutora_running() -> bool:
@@ -89,36 +95,84 @@ def is_cutora_running() -> bool:
     return False
 
 
+def is_cutora_active() -> bool:
+    """判断 CUTORA 是否正在启动中或正在运行中。若进程已退出且超过启动防抖窗口，自动解锁。"""
+    global _CUTORA_LAUNCH_ACCEPTED
+    if is_cutora_running():
+        return True
+    if _CUTORA_PROC is not None and _CUTORA_PROC.poll() is None:
+        return True
+    if _CUTORA_START_TS > 0.0 and (time.monotonic() - _CUTORA_START_TS) < 8.0:
+        return True
+    _CUTORA_LAUNCH_ACCEPTED = False
+    _MODULE_CLICK_ACCEPTED.discard("cutora")
+    return False
+
+
+def is_module_active(mod_id: str) -> bool:
+    """判断模块是否处于启动防抖窗口或进程仍在运行。"""
+    if mod_id == "cutora":
+        return is_cutora_active()
+    proc = _MODULE_PROCS.get(mod_id)
+    if proc is not None and proc.poll() is None:
+        return True
+    ts = _MODULE_START_TS.get(mod_id, 0.0)
+    if ts > 0.0 and (time.monotonic() - ts) < 6.0:
+        return True
+    _MODULE_CLICK_ACCEPTED.discard(mod_id)
+    return False
+
+
+ORANTE_RELAUNCH_COOLDOWN_SEC = 5.0
+_ORANTE_PROCS: list[subprocess.Popen] = []
+
+
+def orante_cooldown_left() -> float:
+    """Orante 允许多开：仅在上次启动后的 5 秒内忽略重复点击（防止一次手抖连开）。"""
+    ts = _MODULE_START_TS.get("orante", 0.0)
+    if ts <= 0.0:
+        return 0.0
+    return max(0.0, ORANTE_RELAUNCH_COOLDOWN_SEC - (time.monotonic() - ts))
+
+
+def orante_instance_count() -> int:
+    alive = [p for p in _ORANTE_PROCS if p.poll() is None]
+    _ORANTE_PROCS[:] = alive
+    return len(alive)
+
+
 def launch_orante() -> bool:
-    """启动 Orante 2.0（单次点击防误触保护）。"""
-    if "orante" in _MODULE_CLICK_ACCEPTED:
+    """启动 Orante 2.0。不限制多开数量；仅在两次启动间隔小于 5 秒时忽略（防误触只对 CUTORA 做单实例锁定）。"""
+    if orante_cooldown_left() > 0.0:
         return False
-    _MODULE_CLICK_ACCEPTED.add("orante")
-    try:
-        from core.robota_guide import DailyWorkflowConductor
-        DailyWorkflowConductor().launch_orante_room()
-    except Exception:
-        orante_dir = LTX_ROOT / "modules" / "orante_desk"
-        env = os.environ.copy()
-        env["PYTHONUTF8"] = "1"
-        env["PATH"] = f"{LTX_ROOT / 'runtime' / 'bin'};{env.get('PATH', '')}"
-        subprocess.Popen([_python_exe(gui=True), "-m", "orante"], cwd=str(orante_dir), env=env)
+    _MODULE_START_TS["orante"] = time.monotonic()
+    orante_dir = LTX_ROOT / "modules" / "orante_desk"
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PATH"] = f"{LTX_ROOT / 'runtime' / 'bin'};{LTX_ROOT / 'runtime' / 'ffmpeg'};{env.get('PATH', '')}"
+    proc = subprocess.Popen([_python_exe(gui=True), "-m", "orante"], cwd=str(orante_dir), env=env)
+    _MODULE_PROCS["orante"] = proc
+    _ORANTE_PROCS.append(proc)
     get_spine_db().emit_event("launcher.orante_started", "launcher", "orante", {})
     return True
 
 
 def launch_cutora(room: str = "") -> bool:
-    """启动 CUTORA（仅接受一次点击、且全局限制只能运行一个 CUTORA 实例）。"""
-    global _CUTORA_LAUNCH_ACCEPTED
-    if _CUTORA_LAUNCH_ACCEPTED or "cutora" in _MODULE_CLICK_ACCEPTED or is_cutora_running():
+    """启动 CUTORA（防误触单次点击保护 + 全局单实例限制；当 CUTORA 退出或关闭后可重新启动）。"""
+    global _CUTORA_LAUNCH_ACCEPTED, _CUTORA_PROC, _CUTORA_START_TS
+    if is_cutora_active():
         _CUTORA_LAUNCH_ACCEPTED = True
         _MODULE_CLICK_ACCEPTED.add("cutora")
         return False
     _CUTORA_LAUNCH_ACCEPTED = True
     _MODULE_CLICK_ACCEPTED.add("cutora")
+    _CUTORA_START_TS = time.monotonic()
     try:
         from core.robota_guide import DailyWorkflowConductor
-        DailyWorkflowConductor().launch_cutora_room(room or "stitch")
+        cond = DailyWorkflowConductor()
+        cond.launch_cutora_room(room)
+        if getattr(cond, "_last_cutora_proc", None) is not None:
+            _CUTORA_PROC = cond._last_cutora_proc
     except Exception:
         if is_cutora_running():
             return False
@@ -130,16 +184,17 @@ def launch_cutora(room: str = "") -> bool:
         args = [_python_exe(gui=True), "-m", "cutora"]
         if room:
             env["CUTORA_START_ROOM"] = room
-        subprocess.Popen(args, cwd=str(cutora_dir), env=env)
+        _CUTORA_PROC = subprocess.Popen(args, cwd=str(cutora_dir), env=env)
     get_spine_db().emit_event("launcher.cutora_started", "launcher", "cutora", {"room": room})
     return True
 
 
 def launch_table_tool(target_dir: str | None = None) -> bool:
-    """启动右键表格工具（单次点击防误触保护）。"""
-    if "table" in _MODULE_CLICK_ACCEPTED:
+    """启动右键表格工具（防误触保护，关闭后可再次打开）。"""
+    if is_module_active("table"):
         return False
     _MODULE_CLICK_ACCEPTED.add("table")
+    _MODULE_START_TS["table"] = time.monotonic()
     try:
         from core.robota_guide import DailyWorkflowConductor
         DailyWorkflowConductor().launch_table_tool_in_dir(Path(target_dir) if target_dir else None)
@@ -148,18 +203,21 @@ def launch_table_tool(target_dir: str | None = None) -> bool:
         cmd = [_python_exe(gui=True), str(script)]
         if target_dir:
             cmd.append(target_dir)
-        subprocess.Popen(cmd, cwd=str(script.parent))
+        proc = subprocess.Popen(cmd, cwd=str(script.parent))
+        _MODULE_PROCS["table"] = proc
     get_spine_db().emit_event("launcher.table_tool_started", "launcher", "table_tool", {})
     return True
 
 
 def launch_studio_gateway() -> bool:
     """启动本地算力网关（单次点击防误触保护）。"""
-    if "gateway" in _MODULE_CLICK_ACCEPTED:
+    if is_module_active("gateway"):
         return False
     _MODULE_CLICK_ACCEPTED.add("gateway")
+    _MODULE_START_TS["gateway"] = time.monotonic()
     bat = LTX_ROOT / "启动本地算力网关.bat"
-    subprocess.Popen(["cmd.exe", "/c", "start", "", str(bat)], cwd=str(LTX_ROOT))
+    proc = subprocess.Popen(["cmd.exe", "/c", "start", "", str(bat)], cwd=str(LTX_ROOT))
+    _MODULE_PROCS["gateway"] = proc
     get_spine_db().emit_event("launcher.gateway_started", "launcher", "gateway", {"port": 7870})
     return True
 
@@ -331,6 +389,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
         ) -> None:
             super().__init__(parent)
             self._text = text
+            self._orig_text = text
             self._primary = primary
             self._compact = compact
             self._locked = False
@@ -360,8 +419,12 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
         def set_locked(self, locked: bool, text: str | None = None) -> None:
             self._locked = locked
-            if text is not None:
-                self._text = text
+            if locked:
+                if text is not None:
+                    self._text = text
+                    self._recalc_size()
+            else:
+                self._text = text if text is not None else self._orig_text
                 self._recalc_size()
             self._anim.stop()
             self._hover_t = 0.0
@@ -473,6 +536,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._pixmap = load_smooth_pixmap(icon_path, 58)
             self._title = title
             self._badge_text = badge_text
+            self._orig_badge_text = badge_text
             self._desc = desc
             self._locked = False
             self._hover_t = 0.0
@@ -508,7 +572,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._anim.stop()
             self._hover_t = 0.0
             self.setCursor(Qt.CursorShape.ArrowCursor if locked else Qt.CursorShape.PointingHandCursor)
-            self._badge_text = "已接受启动 · 防误触锁定"
+            self._badge_text = "已接受启动 · 防误触锁定" if locked else self._orig_badge_text
             for idx, btn in enumerate(self._buttons):
                 is_last = idx == len(self._buttons) - 1
                 if is_last:
@@ -994,9 +1058,36 @@ def run_gui(screenshot_path: str | None = None) -> None:
             root.addWidget(self._footer_card)
             root.addStretch(1)
 
+        def _sync_module_locks(self) -> None:
+            """同步模块运行与防误触状态：正在启动或运行中保持锁定，关闭或退出后自动恢复可点击。"""
+            if is_cutora_active():
+                if "cutora" not in self._accepted_clicks or not self._card_cutora._locked:
+                    self._accepted_clicks.add("cutora")
+                    self._card_cutora.set_locked(True, "✓ 已在运行 · 再次点击无效")
+            else:
+                if "cutora" in self._accepted_clicks or self._card_cutora._locked:
+                    self._accepted_clicks.discard("cutora")
+                    self._card_cutora.set_locked(False)
+
+            # Orante 允许多开：5 秒冷却结束后自动解锁卡片
+            if orante_cooldown_left() <= 0.0 and ("orante" in self._accepted_clicks or self._card_orante._locked):
+                self._accepted_clicks.discard("orante")
+                self._card_orante.set_locked(False)
+
+            for mod_id, card in (
+                ("table", self._card_table),
+            ):
+                if not is_module_active(mod_id):
+                    if mod_id in self._accepted_clicks or card._locked:
+                        self._accepted_clicks.discard(mod_id)
+                        card.set_locked(False)
+
         def _tick_pulse(self) -> None:
             self._pulse_phase = (self._pulse_phase + 0.09) % (math.pi * 2.0)
             self._footer_card.set_pulse(self._pulse_phase)
+            self._pulse_ticks = getattr(self, "_pulse_ticks", 0) + 1
+            if self._pulse_ticks % 20 == 0:
+                self._sync_module_locks()
             # 仅重绘顶部英雄区光环
             self.update(0, 0, WIN_W, 255)
 
@@ -1023,21 +1114,27 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 self._toast.show_toast(f"启动异常：{e}")
 
         def _on_open_orante(self) -> None:
-            if "orante" in self._accepted_clicks:
-                self._toast.show_toast("Orante 2.0 已接受过启动点击，第二次点击不再被接受（防误触锁定）")
+            self._sync_module_locks()
+            left = orante_cooldown_left()
+            if left > 0.0:
+                self._toast.show_toast(f"Orante 2.0 刚刚启动，{left:.0f} 秒后可再开一个窗口（支持多开）")
                 return
             from core.pack_manager import is_module_installed
             if not is_module_installed("pack-app-orante"):
                 self._toast.show_toast("当前版本尚未安装 Orante 2.0 制片台扩展包，可一键无缝安装！")
                 self._on_open_pack_manager(highlight_pack_id="pack-app-orante")
                 return
+            if not launch_orante():
+                return
             self._accepted_clicks.add("orante")
-            self._card_orante.set_locked(True, "✓ 已启动 · 再次点击无效")
-            launch_orante()
-            self._toast.show_toast("已接受点击并启动 Orante 2.0 制片台（后续重复点击已锁定忽略）")
+            self._card_orante.set_locked(True, "✓ 已启动 · 5 秒后可再开")
+            QTimer.singleShot(int(ORANTE_RELAUNCH_COOLDOWN_SEC * 1000) + 100, self._sync_module_locks)
+            n = orante_instance_count()
+            self._toast.show_toast(f"已启动 Orante 2.0 制片台（当前 {n} 个窗口，5 秒后可继续多开）")
             self.refresh_status(silent=True)
 
         def _on_open_cutora(self, room: str = "") -> None:
+            self._sync_module_locks()
             if "cutora" in self._accepted_clicks:
                 self._toast.show_toast("CUTORA 已接受过启动点击，第二次误点不被接受（防误触锁定）")
                 return
@@ -1057,7 +1154,8 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self.refresh_status(silent=True)
 
         def _on_open_table(self) -> None:
-            if "table" in self._accepted_clicks:
+            self._sync_module_locks()
+            if "table" in self._accepted_clicks or is_module_active("table"):
                 self._toast.show_toast("右键表格工具已接受过启动点击，第二次点击不再被接受（防误触锁定）")
                 return
             self._accepted_clicks.add("table")
@@ -1067,6 +1165,9 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self.refresh_status(silent=True)
 
         def _on_open_gateway(self) -> None:
+            if not is_module_active("gateway"):
+                self._accepted_clicks.discard("gateway")
+                self._card_gateway.set_locked(False, lock_all_buttons=False)
             if "gateway" in self._accepted_clicks:
                 self._toast.show_toast("算力网关已接受过唤醒点击，第二次点击不再被接受（防误触锁定）")
                 return
@@ -1183,6 +1284,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._toast.show_toast("已在桌面与开始菜单生成『片语工作室』快捷方式")
 
         def refresh_status(self, silent: bool = False) -> None:
+            self._sync_module_locks()
             st = self._spine.get_dashboard_summary()
             ev = self._spine.get_latest_event()
             active_day = st.get("active_day", "")

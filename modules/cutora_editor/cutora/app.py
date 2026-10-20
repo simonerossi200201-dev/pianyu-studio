@@ -248,6 +248,11 @@ def run_render_job_entry(argv=None):
         sys.argv = [sys.argv[0]] + list(argv)
     from cutora.core.flags import mark_render_child
     mark_render_child()
+    try:
+        from cutora.core.runtime import pin_cv2_num_threads
+        pin_cv2_num_threads(1)
+    except Exception:
+        pass
 
     _ji = sys.argv.index("--render-job")
     if _ji + 1 >= len(sys.argv):

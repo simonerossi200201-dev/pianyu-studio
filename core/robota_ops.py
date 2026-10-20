@@ -54,14 +54,32 @@ def main() -> None:
     p_orante.add_argument("action", choices=["health", "batches", "check", "worklist", "replenish", "reset"])
     p_orante.add_argument("--task-id", default="", help="Task ID (e.g. T0127)")
 
-    p_cutora = sub.add_parser("cutora", help="Inspect, create-link, add-credit, split, auto-subtitle, stitch-sync, or control CUTORA project")
+    p_cutora = sub.add_parser("cutora", help="Inspect, create-link, auto-project, batch-export, add-credit, split, auto-subtitle, stitch-sync, or control CUTORA project")
     p_cutora.add_argument(
         "action",
-        choices=["inspect", "create-link", "add-credit", "split", "auto-subtitle", "stitch-sync", "api", "launch_stitch", "launch_edit"],
+        choices=[
+            "inspect",
+            "create-link",
+            "auto-project",
+            "batch-export",
+            "upload-verify",
+            "add-credit",
+            "split",
+            "auto-subtitle",
+            "stitch-sync",
+            "api",
+            "launch_stitch",
+            "launch_edit",
+        ],
     )
     p_cutora.add_argument("--path", default="", help="Path to .cutora file or day hint")
     p_cutora.add_argument("--main-dir", default="", help="Main videos folder (e.g. D:\\1_PROJECT\\2026-10-16\\1016视频)")
-    p_cutora.add_argument("--clips-dir", default="", help="External clips folder for 1:1 batch link-import")
+    p_cutora.add_argument("--clips-dir", default="", help="External clips folder or manifest.json path")
+    p_cutora.add_argument("--table", default="", help="Path to 5-column TSV table file for auto-project")
+    p_cutora.add_argument("--phone-img", default="", help="Phone sticker PNG path for auto-project")
+    p_cutora.add_argument("--parts", type=int, default=2, help="Number of project parts for auto-project (default: 2)")
+    p_cutora.add_argument("--workers", type=int, default=10, help="Parallel workers for batch-export (default: 10)")
+    p_cutora.add_argument("--drive-folder", default="", help="Google Drive folder link or ID for upload-verify")
     p_cutora.add_argument("--split", default="top_bottom", help="Split layout (default: top_bottom)")
     p_cutora.add_argument("--force-auto-link", action="store_true", help="Force auto-link even if counts differ")
     p_cutora.add_argument("--preset", default="credit.default", help="Text preset ID for add-credit (default: credit.default)")
@@ -152,6 +170,27 @@ def main() -> None:
                 mute=True,
                 open_in_cutora=True,
                 force_auto_link=bool(args.force_auto_link),
+            )
+        elif args.action == "auto-project":
+            res = conductor.cutora_auto_project_face_safe(
+                batch_dir=args.path,
+                videos_dir=args.main_dir,
+                clips_manifest=args.clips_dir,
+                table_path=args.table,
+                phone_img=args.phone_img,
+                parts=args.parts,
+            )
+        elif args.action == "batch-export":
+            res = conductor.cutora_batch_export(
+                project_path=args.path,
+                out_dir=args.outdir,
+                workers=args.workers,
+                gpu_workers=args.workers,
+            )
+        elif args.action == "upload-verify":
+            res = conductor.drive_upload_and_verify(
+                local_dir=args.path,
+                drive_folder_link_or_id=args.drive_folder,
             )
         elif args.action == "add-credit":
             res = conductor.cutora_add_ai_credit(

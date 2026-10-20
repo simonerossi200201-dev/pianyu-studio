@@ -3676,6 +3676,13 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
                 set_divider_on_task(task, handle["id"], patch)
             self._split_drag.update(patch)
             self._split_drag["last_patch"] = dict(patch)
+            win = self.window()
+            fn = getattr(win, "_present_preview_frame", None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:
+                    pass
             self.update()
             self._last_mouse_pos = QPointF(video_x, video_y)
             return

@@ -209,7 +209,7 @@ def pick_split_layout(layout, n_groups: int, auto_three: bool = True) -> str:
 def apply_plan(plan, tasks, *, host=None, loop=False, match_duration=True,
                mute=False, split_b=False, log=None, split_layout=None,
                split_border=None, split_feather=None, split_backdrop=None,
-               split_cells=None, auto_three=True) -> dict:
+               split_cells=None, auto_three=True, face_safe=True) -> dict:
     """按计划建轨道、放片段。
 
     计划的每一行 {"task_index": i, "groups": [[path, …], …]}（老格式 {"paths": [...]} 也认）：
@@ -267,14 +267,18 @@ def apply_plan(plan, tasks, *, host=None, loop=False, match_duration=True,
             res = assign_split(task, lay, [main_tr] + new_tracks,
                                border=split_border, feather_px=split_feather,
                                cells=cells, backdrop=split_backdrop,
-                               used_history=used_split_history)
+                               used_history=used_split_history,
+                               face_safe=bool(face_safe))
             n_split_skipped += int(res["skipped"])
             if log:
                 style_desc = res.get("style_label") or layout_label(res["layout"])
-                log("  %s  分屏（%s）：%s" % (
+                fs_rep = res.get("face_safe") or {}
+                fs_tag = " · 🛡️人脸零穿帮已校准" if fs_rep.get("ok") else ""
+                log("  %s  分屏（%s）：%s%s" % (
                     os.path.basename(task.get("video") or "?"),
                     style_desc,
-                    "、".join("%s 屏" % c for c in res["assigned"])))
+                    "、".join("%s 屏" % c for c in res["assigned"]),
+                    fs_tag))
     return {"tasks": n_tasks, "tracks": n_tracks, "clips": n_clips, "groups": n_groups,
             "split_skipped": n_split_skipped}
 

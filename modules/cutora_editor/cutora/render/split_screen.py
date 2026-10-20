@@ -42,27 +42,113 @@ def reset_cache():
     _CACHE_SMALL.clear()
 
 
-def _cache_key(split, canvas_w, canvas_h) -> str:
-    payload = {
-        "cells": split.get("cells"),
-        "dividers": split.get("dividers"),
-        "border": split.get("border"),
-        "w": int(canvas_w),
-        "h": int(canvas_h),
-    }
-    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha1(blob.encode("utf-8")).hexdigest()
+def _cache_key(split, canvas_w, canvas_h, cell_order=None) -> str:
+    base = split.get("_ckey_base") if isinstance(split, dict) else None
+    if not base:
+        payload = {
+            "cells": split.get("cells"),
+            "dividers": split.get("dividers"),
+            "border": split.get("border"),
+        }
+        base = hashlib.sha1(
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        ).hexdigest()
+        if isinstance(split, dict):
+            split["_ckey_base"] = base
+    co = ",".join(cell_order) if cell_order else ""
+    return f"{base}:{int(canvas_w)}x{int(canvas_h)}:{co}"
 
 
-def _divider_span(split, divider) -> tuple[float, float]:
+def _divider_curve(split, divider, fallback_curve: str = "straight") -> str:
+    """获取单条分界线的曲线类型：
+    - 若 divider 显式指定了 curve，优先使用；
+    - 否则在一对多 / L 形 / 横向夹心布局中，副屏内部次级分割线默认保持 straight，主分界线跟随 border.curve。
+    """
+    if isinstance(divider, dict) and divider.get("curve"):
+        return str(divider.get("curve"))
+    base_curve = str(fallback_curve or ((split or {}).get("border") or {}).get("curve") or "straight")
+    if not isinstance(divider, dict) or not isinstance(split, dict):
+        return base_curve
+    ch_role = str(divider.get("ch_role") or "")
+    if ch_role in ("top_sub", "bottom_sub", "top_sub_v", "bottom_sub_v"):
+        return "straight"
+    if divider.get("l_role"):
+        return "straight" if str(divider.get("l_role")) not in ("main_v", "main_h", "left_v", "bottom_h") else base_curve
+    did = str(divider.get("id") or "")
+    lay = str(split.get("layout") or "")
+    if did not in ("", "d1") and (
+        lay.startswith("top1_bottom")
+        or lay.startswith("bottom1_top")
+        or lay.startswith("left1_right")
+        or lay.startswith("right1_left")
+    ):
+        return "straight"
+    return base_curve
+
+
+def _eval_divider_hit_norm(d_main: dict, ortho_pos: float, split: dict, w: float = 1080.0, h: float = 1920.0) -> float:
+    """计算主分界线 d_main 在正交位置 ortho_pos ∈ [0,1] 处的归一化坐标（用于副屏分界线精确 T 型交汇）。"""
+    axis_m = "v" if str(d_main.get("axis")) == "v" else "h"
+    pos_m = max(0.0, min(1.0, float(d_main.get("pos", 0.5))))
+    rot_m = float(d_main.get("rotation_deg") or 0.0)
+    c_m = _divider_curve(split, d_main)
+    if abs(rot_m) <= 1e-4 and c_m == "straight":
+        return pos_m
+    pts = divider_polyline(d_main, w, h, curve=c_m, n=65, span=(0.0, 1.0))
+    if not pts:
+        return pos_m
+    if axis_m == "h":
+        target_x = ortho_pos * w
+        best_y = min(pts, key=lambda p: abs(p[0] - target_x))[1]
+        return max(0.0, min(1.0, best_y / max(1.0, h)))
+    target_y = ortho_pos * h
+    best_x = min(pts, key=lambda p: abs(p[1] - target_y))[0]
+    return max(0.0, min(1.0, best_x / max(1.0, w)))
+
+
+def _divider_span(split, divider, canvas_w: float = 1080.0, canvas_h: float = 1920.0) -> tuple[float, float]:
     """返回分界线有效绘制区间 [t0, t1]：
-    - 若分界线显式指定了 span=[t0, t1]（如 L 形分屏、横向夹心副屏分界线），直接采用；
-    - 一对多布局（top1_bottomN / left1_rightN 或 custom 一主多副）中，副屏分界线 d2..dN 只画在副屏半区 [p1, 1.0]。
+    - 若为横向夹心副屏分界线（top_sub / bottom_sub），动态交汇到上下主分界线 d1 / d2（支持斜切与弧线）；
+    - 一对多布局（top1_bottomN / bottom1_topN / left1_rightN / right1_leftN）中，副屏分界线 d2..dN 动态交汇到 d1；
+    - 其余若分界线显式指定了 span=[t0, t1]（如 L 形分屏），直接采用。
     """
     if not isinstance(split, dict) or not isinstance(divider, dict):
         return 0.0, 1.0
     if str(divider.get("axis")) in ("circle", "blade"):
         return 0.0, 1.0
+    w = float(canvas_w or 1080.0)
+    h = float(canvas_h or 1920.0)
+    ch_role = str(divider.get("ch_role") or "")
+    if ch_role in ("top_sub", "bottom_sub", "top_sub_v", "bottom_sub_v"):
+        is_top = ch_role in ("top_sub", "top_sub_v")
+        pos_sub = max(0.0, min(1.0, float(divider.get("pos", 0.5))))
+        target_id = "d1" if is_top else "d2"
+        target_role = "top_h" if is_top else "bottom_h"
+        for d in split.get("dividers") or []:
+            if str(d.get("id") or "") == target_id or str(d.get("ch_role") or "") == target_role:
+                hit = _eval_divider_hit_norm(d, pos_sub, split, w, h)
+                return (0.0, hit) if is_top else (hit, 1.0)
+    did = str(divider.get("id") or "")
+    lay = str(split.get("layout") or "")
+    is_1_to_n = did not in ("", "d1") and (
+        lay.startswith("top1_bottom")
+        or lay.startswith("bottom1_top")
+        or lay.startswith("left1_right")
+        or lay.startswith("right1_left")
+        or (lay == "custom" and len(split.get("cells") or []) >= 3 and not divider.get("l_role") and not ch_role)
+    )
+    if is_1_to_n:
+        pos_sub = max(0.0, min(1.0, float(divider.get("pos", 0.5))))
+        for d in split.get("dividers") or []:
+            if str(d.get("id") or "") == "d1":
+                try:
+                    p1 = _eval_divider_hit_norm(d, pos_sub, split, w, h)
+                    r1n = str(d.get("role_1n") or "")
+                    if lay.startswith("bottom1_top") or lay.startswith("right1_left") or r1n in ("bottom1_top", "right1_left"):
+                        return 0.0, p1
+                    return p1, 1.0
+                except (TypeError, ValueError):
+                    break
     raw_span = divider.get("span")
     if isinstance(raw_span, (list, tuple)) and len(raw_span) >= 2:
         try:
@@ -71,22 +157,6 @@ def _divider_span(split, divider) -> tuple[float, float]:
             return t0, t1
         except (TypeError, ValueError):
             pass
-    did = str(divider.get("id") or "")
-    if did == "d1":
-        return 0.0, 1.0
-    lay = str(split.get("layout") or "")
-    is_1_to_n = lay.startswith("top1_bottom") or lay.startswith("left1_right") or (
-        lay == "custom" and len(split.get("cells") or []) >= 3
-    )
-    if not is_1_to_n:
-        return 0.0, 1.0
-    for d in split.get("dividers") or []:
-        if str(d.get("id") or "") == "d1":
-            try:
-                p1 = max(0.0, min(1.0, float(d.get("pos", 0.5))))
-                return p1, 1.0
-            except (TypeError, ValueError):
-                break
     return 0.0, 1.0
 
 
@@ -99,17 +169,14 @@ def _ellipse_radii_px(r, aspect, w, h):
 
 
 def _shape_polar_radius(theta, shape: str = "circle", sides: int = 6):
-    """计算异形/多边形在极角 theta 处的归一化半径 R(theta)（支持标量 float 或 numpy 数组）。
-    - polygon / hexagon / pentagon / octagon / diamond：支持 sides 从 3 到 64 连续可调，64 时平滑过渡为光滑圆形；
-    - heart（心形）、clover（幸运草）、dove（鸽子形）、olive（橄榄叶）、star（五角星）、flower（海棠花）、shield（盾牌）、butterfly（蝴蝶）。
+    """计算圆 / 正多边形孔径在极角 theta 处的归一化半径 R(theta)（支持标量 float 或 numpy 数组）。
+    - circle：标准光滑圆；
+    - polygon / hexagon / octagon / diamond：支持 sides 从 3 到 64 连续可调，64 时平滑过渡为光滑圆形。
+    （注：原碎边异形已统一平滑收敛为标准圆形，保证人物与画面完整优雅。）
     """
     sh = str(shape or "circle").lower()
     is_scalar = np.ndim(theta) == 0
     th = np.asarray(theta, dtype=np.float32)
-    if sh == "circle":
-        res = np.ones_like(th)
-        return float(res) if is_scalar else res
-
     if sh in ("polygon", "hexagon", "pentagon", "octagon", "diamond"):
         default_n = {"hexagon": 6, "pentagon": 5, "octagon": 8, "diamond": 4}.get(sh, 6)
         try:
@@ -124,62 +191,9 @@ def _shape_polar_radius(theta, shape: str = "circle", sides: int = 6):
         if n_sides >= 32:
             blend = min(1.0, (float(n_sides) - 32.0) / 32.0)
             r_poly = r_poly * (1.0 - blend) + 1.0 * blend
-        return float(r_poly) if is_scalar else r_poly
+        return float(r_poly) if is_scalar else r_poly.astype(np.float32)
 
-    # u in [0, pi]: 0 = 顶部 (-pi/2)，pi = 底部 (+pi/2)，左右严格对称
-    u = np.arccos(np.clip(-np.sin(th), -1.0, 1.0))
-
-    if sh == "heart":
-        t = u / math.pi
-        res = (
-            0.46
-            + 0.62 * np.sin(u)
-            + 0.28 * np.sin(2.0 * u)
-            + 0.58 * np.power(t, 2.2) * (1.0 - 0.55 * np.sin(u))
-        )
-    elif sh == "clover":
-        s2 = np.abs(np.sin(2.0 * th))
-        c4 = np.maximum(0.0, -np.cos(4.0 * th))
-        res = 0.36 + 0.74 * np.power(s2 + 1e-4, 0.68) - 0.10 * (c4 * c4)
-    elif sh == "dove":
-        head = 0.68 * np.exp(-((u / 0.30) ** 2))
-        wings = (
-            1.18 * np.exp(-(((u - 1.15) / 0.55) ** 2))
-            + 0.08 * np.sin(5.0 * u) * np.exp(-(((u - 1.35) / 0.45) ** 2))
-        )
-        tail = 0.88 * np.exp(-(((u - math.pi) / 0.46) ** 2)) * (1.0 + 0.05 * np.cos(10.0 * u))
-        res = np.maximum(0.36, head + wings + tail - 0.12)
-    elif sh == "olive":
-        phi = th + math.pi * 0.22
-        ca = np.cos(phi)
-        sa = np.sin(phi)
-        base_leaf = 1.0 / np.sqrt((ca / 0.62) ** 2 + (sa / 1.16) ** 2)
-        tip_pinch = 1.0 + 0.16 * np.power(np.abs(sa), 1.6) - 0.08 * np.power(np.abs(ca), 1.4)
-        res = base_leaf * tip_pinch
-    elif sh == "star":
-        n_pts = 5
-        sec = 2.0 * math.pi / float(n_pts)
-        half = math.pi / float(n_pts)
-        a5 = np.mod(th + math.pi * 0.5 + half, sec) - half
-        t5 = np.abs(a5) / half
-        res = 1.14 * (1.0 - t5) + 0.46 * t5
-    elif sh == "flower":
-        c5 = np.abs(np.cos(2.5 * (th + math.pi * 0.5)))
-        notch = np.maximum(0.0, np.cos(5.0 * (th + math.pi * 0.5)))
-        res = 0.48 + 0.62 * np.power(c5 + 1e-4, 0.65) - 0.08 * (notch * notch)
-    elif sh == "shield":
-        shoulder = 0.32 * np.exp(-(((u - 0.82) / 0.34) ** 2))
-        waist = 0.82 + 0.16 * np.sin(u) - 0.10 * np.cos(2.0 * u)
-        point = 0.22 * np.exp(-(((u - math.pi) / 0.28) ** 2))
-        res = waist + shoulder + point - 0.06
-    elif sh == "butterfly":
-        forewing = 0.82 * np.exp(-(((u - 1.02) / 0.52) ** 2))
-        hindwing = 0.56 * np.exp(-(((u - 2.28) / 0.42) ** 2))
-        res = 0.32 + forewing + hindwing
-    else:
-        res = np.ones_like(th)
-
-    res = np.clip(res, 0.18, 1.45)
+    res = np.ones_like(th)
     return float(res) if is_scalar else res.astype(np.float32)
 
 
@@ -209,12 +223,26 @@ def _blade_geometry_params(divider, canvas_w, canvas_h):
     return cx, cy, r0_px, r_max, theta0, twist_rad
 
 
+def _curve_amp(curve: str, w: float, h: float) -> float:
+    c = str(curve or "straight")
+    base = min(float(w), float(h))
+    if c == "wave":
+        return base * 0.028
+    if c == "s_wave":
+        return base * 0.062
+    if c in ("arc", "arch_up"):
+        return base * 0.078
+    return 0.0
+
+
 def divider_polyline(divider, canvas_w, canvas_h, curve="straight", n=48, span=(0.0, 1.0)):
     """Same path for mask edge and stroke. n samples along the divider."""
     n = max(2, int(n))
     raw_axis = str(divider.get("axis") or "h")
     w = float(canvas_w)
     h = float(canvas_h)
+    if isinstance(divider, dict) and divider.get("curve"):
+        curve = str(divider.get("curve"))
     if raw_axis == "circle":
         cx = float(divider.get("cx", 0.75)) * w
         cy = float(divider.get("cy", divider.get("pos", 0.75))) * h
@@ -250,7 +278,9 @@ def divider_polyline(divider, canvas_w, canvas_h, curve="straight", n=48, span=(
             c_off = 0.0
             if curve == "arc":
                 c_off = 0.14 * math.sin(math.pi * s)
-            elif curve == "wave":
+            elif curve == "arch_up":
+                c_off = -0.14 * math.sin(math.pi * s)
+            elif curve in ("wave", "s_wave"):
                 c_off = 0.055 * math.sin(2.0 * math.pi * s)
             ang = theta0 + twist_rad * s + c_off
             pts.append((cx + rho * math.cos(ang), cy + rho * math.sin(ang)))
@@ -272,17 +302,29 @@ def divider_polyline(divider, canvas_w, canvas_h, curve="straight", n=48, span=(
         origin = (x, (y0 + y1) * 0.5)
         normal = (1.0, 0.0)
     curve = str(curve or "straight")
-    amp = min(w, h) * (0.028 if curve == "wave" else 0.055)
+    amp = _curve_amp(curve, w, h)
     if curve == "wave":
         pts = [
             (p[0] + normal[0] * amp * math.sin(2.0 * math.pi * 2.0 * i / (n - 1)),
              p[1] + normal[1] * amp * math.sin(2.0 * math.pi * 2.0 * i / (n - 1)))
             for i, p in enumerate(pts)
         ]
+    elif curve == "s_wave":
+        pts = [
+            (p[0] + normal[0] * amp * math.sin(2.0 * math.pi * i / (n - 1)),
+             p[1] + normal[1] * amp * math.sin(2.0 * math.pi * i / (n - 1)))
+            for i, p in enumerate(pts)
+        ]
     elif curve == "arc":
         pts = [
             (p[0] + normal[0] * amp * math.sin(math.pi * i / (n - 1)),
              p[1] + normal[1] * amp * math.sin(math.pi * i / (n - 1)))
+            for i, p in enumerate(pts)
+        ]
+    elif curve == "arch_up":
+        pts = [
+            (p[0] - normal[0] * amp * math.sin(math.pi * i / (n - 1)),
+             p[1] - normal[1] * amp * math.sin(math.pi * i / (n - 1)))
             for i, p in enumerate(pts)
         ]
     if abs(rot) > 1e-9:
@@ -314,7 +356,8 @@ def mask_edge_points(split, divider_id, canvas, n=20):
     curve = str((sp.get("border") or {}).get("curve") or "straight")
     for d in sp.get("dividers") or []:
         if str(d.get("id")) == str(divider_id):
-            return divider_polyline(d, w, h, curve=curve, n=n, span=_divider_span(sp, d))
+            c_use = _divider_curve(sp, d, curve)
+            return divider_polyline(d, w, h, curve=c_use, n=n, span=_divider_span(sp, d, w, h))
     return []
 
 
@@ -384,18 +427,26 @@ def _curve_offset(curve, s_unit, amp):
     if curve == "wave":
         k = 2.0 * math.pi * 2.0
         return amp * np.sin(k * s_unit), amp * k * np.cos(k * s_unit)
+    if curve == "s_wave":
+        k = 2.0 * math.pi
+        return amp * np.sin(k * s_unit), amp * k * np.cos(k * s_unit)
     if curve == "arc":
         k = math.pi
         return amp * np.sin(k * s_unit), amp * k * np.cos(k * s_unit)
+    if curve == "arch_up":
+        k = math.pi
+        return -amp * np.sin(k * s_unit), -amp * k * np.cos(k * s_unit)
     z = np.zeros_like(s_unit)
     return z, z
 
 
-def _divider_sd(xx, yy, divider, canvas_w, canvas_h, curve):
+def _divider_sd(xx, yy, divider, canvas_w, canvas_h, curve, for_neg: bool = False):
     """Signed distance to the divider curve; positive on the +normal side."""
     raw_axis = str(divider.get("axis") or "h")
     w = float(canvas_w)
     h = float(canvas_h)
+    if isinstance(divider, dict) and divider.get("curve"):
+        curve = str(divider.get("curve"))
     if raw_axis == "circle":
         cx = float(divider.get("cx", 0.75)) * w
         cy = float(divider.get("cy", divider.get("pos", 0.75))) * h
@@ -443,14 +494,22 @@ def _divider_sd(xx, yy, divider, canvas_w, canvas_h, curve):
         if curve == "arc":
             c_off = 0.14 * np.sin(math.pi * s_clamp)
             dc_ds = 0.14 * math.pi * np.cos(math.pi * s_clamp)
-        elif curve == "wave":
+        elif curve == "arch_up":
+            c_off = -0.14 * np.sin(math.pi * s_clamp)
+            dc_ds = -0.14 * math.pi * np.cos(math.pi * s_clamp)
+        elif curve in ("wave", "s_wave"):
             c_off = 0.055 * np.sin(2.0 * math.pi * s_clamp)
             dc_ds = 0.055 * 2.0 * math.pi * np.cos(2.0 * math.pi * s_clamp)
         else:
             c_off = 0.0
             dc_ds = 0.0
         ang_blade = theta0 + twist_rad * s + c_off
-        d_th = np.mod(th - ang_blade + math.pi, 2.0 * math.pi) - math.pi
+        m = max(2, int(divider.get("blade_count") or 4))
+        cut = math.pi - (math.pi / float(m))
+        if for_neg:
+            d_th = -(np.mod(ang_blade - th + cut, 2.0 * math.pi) - cut)
+        else:
+            d_th = np.mod(th - ang_blade + cut, 2.0 * math.pi) - cut
         dphi_drho = (twist_rad + dc_ds) / span_r
         sec_factor = np.sqrt(1.0 + (rho * dphi_drho) ** 2)
         sd = (rho * d_th) / np.maximum(sec_factor, 1.0)
@@ -483,9 +542,9 @@ def _divider_sd(xx, yy, divider, canvas_w, canvas_h, curve):
     along = dx + length * 0.5 if axis == "h" else dy + length * 0.5
     normal = dy if axis == "h" else dx
     curve = str(curve or "straight")
-    if curve not in ("wave", "arc"):
+    if curve not in ("wave", "s_wave", "arc", "arch_up"):
         return normal
-    amp = min(w, h) * (0.028 if curve == "wave" else 0.055)
+    amp = _curve_amp(curve, w, h)
     s_unit = np.clip(along / max(1.0, length), 0.0, 1.0)
     off, d_ds = _curve_offset(curve, s_unit, amp)
     slope = d_ds / max(1.0, length)
@@ -529,9 +588,10 @@ def _cell_feather_px(dividers, cid):
 def _quantize_partition(weights, hard):
     """Float weights → uint8 that sum to 255 on every covered pixel.
 
-    Hard edges (feather 0) are exclusive: the later cell owns a tied pixel,
-    matching SourceOver of opaque layers. Soft edges are normalized so
-    complementary ramps stay a convex combination.
+    Hard edges (feather 0) are exclusive: the later cell (higher track on timeline)
+    owns a tied/overlapping pixel, matching SourceOver of opaque layers.
+    Soft edges use top-down SourceOver occlusion so overlapping cells never
+    interpenetrate semi-transparently while 2-cell ramps stay a convex combination.
     """
     if not weights:
         return []
@@ -540,7 +600,15 @@ def _quantize_partition(weights, hard):
         for i, wgt in enumerate(weights):
             owner[wgt >= 0.5] = np.int16(i)
         weights = [(owner == i).astype(np.float32) for i in range(len(weights))]
-    stack = np.stack(weights, axis=0)
+        stack = np.stack(weights, axis=0)
+    else:
+        raw_stack = np.clip(np.stack(weights, axis=0), 0.0, 1.0)
+        stack = np.zeros_like(raw_stack)
+        rem = np.ones(raw_stack.shape[1:], dtype=np.float32)
+        for i in range(raw_stack.shape[0] - 1, -1, -1):
+            take = np.minimum(rem, raw_stack[i])
+            stack[i] = take
+            rem = np.maximum(0.0, rem - take)
     total = stack.sum(axis=0)
     covered = total > 1e-6
     norm = np.zeros_like(stack)
@@ -559,17 +627,25 @@ def _quantize_partition(weights, hard):
     return [q[i].astype(np.uint8) for i in range(q.shape[0])]
 
 
-def _build_masks(split, canvas_w, canvas_h):
+def _build_masks(split, canvas_w, canvas_h, cell_order=None):
     w, h = int(canvas_w), int(canvas_h)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     xx = xx + 0.5
     yy = yy + 0.5
     curve = str((split.get("border") or {}).get("curve") or "straight")
     dividers = list(split.get("dividers") or [])
+    raw_cells = list(split.get("cells") or [])
+    if cell_order:
+        rank = {str(cid): idx for idx, cid in enumerate(cell_order)}
+        raw_cells = sorted(
+            enumerate(raw_cells),
+            key=lambda it: (rank.get(str(it[1].get("id")), len(rank) + it[0]), it[0]),
+        )
+        raw_cells = [c for _idx, c in raw_cells]
     order = []
     weights = []
     feathers = []
-    for cell in split.get("cells") or []:
+    for cell in raw_cells:
         cid = str(cell.get("id"))
         sd = np.full((h, w), 1e6, dtype=np.float32)
         used = False
@@ -578,8 +654,10 @@ def _build_masks(split, canvas_w, canvas_h):
             pos = _cell_ids(d.get("pos_cell"))
             if cid not in neg and cid not in pos:
                 continue
-            dist = _divider_sd(xx, yy, d, w, h, curve)
-            if cid in neg:
+            is_neg = cid in neg
+            d_curve = _divider_curve(split, d, curve)
+            dist = _divider_sd(xx, yy, d, w, h, d_curve, for_neg=is_neg)
+            if is_neg:
                 dist = -dist
             sd = np.minimum(sd, dist.astype(np.float32))
             used = True
@@ -592,7 +670,7 @@ def _build_masks(split, canvas_w, canvas_h):
             x1 = x0 + cw * w
             y1 = y0 + ch * h
             sd = np.minimum(np.minimum(xx - x0, x1 - xx), np.minimum(yy - y0, y1 - yy))
-            feather = 24.0
+            feather = 0.0
         order.append(cid)
         weights.append(_feather_weight(sd, feather))
         feathers.append(feather)
@@ -683,11 +761,17 @@ def _cell_buffers(split, raw_masks, canvas_w, canvas_h):
         alpha = raw_masks.get(cid)
         feather = _cell_feather_px(dividers, cid)
         has_rot_or_circle = any(
-            abs(float(d.get("rotation_deg") or 0.0)) > 1e-4 or str(d.get("axis")) in ("circle", "blade")
+            abs(float(d.get("rotation_deg") or 0.0)) > 1e-4
+            or str(d.get("axis")) in ("circle", "blade")
             for d in dividers
             if cid in _cell_ids(d.get("neg_cell")) or cid in _cell_ids(d.get("pos_cell"))
         )
-        clip_rect = feather < 1e-6 and curve == "straight" and not has_rot_or_circle
+        has_curved_div = any(
+            _divider_curve(split, d, curve) != "straight"
+            for d in dividers
+            if cid in _cell_ids(d.get("neg_cell")) or cid in _cell_ids(d.get("pos_cell"))
+        )
+        clip_rect = feather < 1e-6 and not has_curved_div and not has_rot_or_circle
         if alpha is None or clip_rect:
             x0, y0 = max(0, x), max(0, y)
             x1 = min(int(canvas_w), x + cw)
@@ -718,14 +802,19 @@ def _cell_buffers(split, raw_masks, canvas_w, canvas_h):
             mask_edge_yx = np.nonzero(pos_m & ~inner)
         else:
             mask_edge_yx = None
+        is_circ_cell = isinstance(cell.get("circle"), (list, tuple))
+        if feather < 1e-6 and not clip_rect and not is_circ_cell:
+            content_box = (0, 0, int(lw), int(lh))
+        else:
+            content_box = (int(x - x0), int(y - y0), int(cw), int(ch))
         out[cid] = {
             "origin": (int(x0), int(y0)),
-            "content": (int(x - x0), int(y - y0), int(cw), int(ch)),
+            "content": content_box,
             "mask": _alpha_qimage(local),
             "layer": layer,
             "scratch": scratch,
-            "extend": not (x0 == x and y0 == y and (x1 - x0) == cw and (y1 - y0) == ch),
-            "tilted": bool(has_rot_or_circle),
+            "extend": content_box != (0, 0, int(lw), int(lh)) and not (x0 == x and y0 == y and (x1 - x0) == cw and (y1 - y0) == ch),
+            "tilted": bool(has_rot_or_circle or has_curved_div),
             "spans": _mask_spans(local),
             "mask_edge_yx": mask_edge_yx,
         }
@@ -733,16 +822,63 @@ def _cell_buffers(split, raw_masks, canvas_w, canvas_h):
 
 
 def _mask_spans(alpha_u8):
-    """Q130：把 mask 切成「整段 255」和「有羽化」的条带，直拷前者、只对后者过 mask。
-
-    mask==255 的像素走 DestinationIn 等于原样（x*255/255），再 Plus 到全 0 的底上
-    也等于原样 —— 所以直拷的结果和过 mask 逐字节相同，只是省掉两次全幅合成。
-    行方向和列方向都算一遍，取羽化面积小的那种切法（横分屏按行、竖分屏按列）。
-    返回 {"axis": "y"|"x", "solid": [(a, b)], "band": [(a, b)]}；全 255 时 band 为空。
+    """Q130 / 2D Interior Solid Rect：把 mask 切成「整块 255 内部矩形」和「边缘羽化条带」，
+    直拷前者（90%~98% 面积）、只对后者过 mask，逐字节等价。
     """
+    from PySide6.QtCore import QRect
     if alpha_u8 is None or alpha_u8.size == 0:
-        return {"axis": "y", "solid": [], "band": []}
+        return {"rects": True, "solid": [], "band": []}
     h, w = alpha_u8.shape
+    not_full = (alpha_u8 != 255)
+    if not not_full.any():
+        return {"rects": True, "solid": [QRect(0, 0, int(w), int(h))], "band": []}
+
+    y0, y1, x0, x1 = 0, int(h), 0, int(w)
+    while y0 < y1 and x0 < x1:
+        top_bad = int(not_full[y0, x0:x1].sum())
+        bot_bad = int(not_full[y1 - 1, x0:x1].sum())
+        left_bad = int(not_full[y0:y1, x0].sum())
+        right_bad = int(not_full[y0:y1, x1 - 1].sum())
+        if top_bad == 0 and bot_bad == 0 and left_bad == 0 and right_bad == 0:
+            break
+        hw = max(1, x1 - x0)
+        hh = max(1, y1 - y0)
+        scores = (
+            (top_bad / hw, 0),
+            (bot_bad / hw, 1),
+            (left_bad / hh, 2),
+            (right_bad / hh, 3),
+        )
+        _, side = max(scores)
+        if side == 0:
+            y0 += 1
+        elif side == 1:
+            y1 -= 1
+        elif side == 2:
+            x0 += 1
+        else:
+            x1 -= 1
+
+    if y0 < y1 and x0 < x1 and not not_full[y0:y1, x0:x1].any():
+        candidates = [
+            (0, 0, w, y0),
+            (0, y1, w, h - y1),
+            (0, y0, x0, y1 - y0),
+            (x1, y0, w - x1, y1 - y0),
+            (x0, y0, x1 - x0, y1 - y0),
+        ]
+        solid, band = [], []
+        for rx, ry, rw, rh in candidates:
+            if rw <= 0 or rh <= 0:
+                continue
+            sub = alpha_u8[ry:ry + rh, rx:rx + rw]
+            if not sub.any():
+                continue
+            if (sub == 255).all():
+                solid.append(QRect(int(rx), int(ry), int(rw), int(rh)))
+            else:
+                band.append(QRect(int(rx), int(ry), int(rw), int(rh)))
+        return {"rects": True, "solid": solid, "band": band}
 
     def _plan(axis):
         full = (alpha_u8 == 255).all(axis=1 if axis == "y" else 0)
@@ -825,7 +961,7 @@ def _replicate_into(region, edge):
 
 _EXT_BLUR_LOCK = threading.Lock()
 _EXT_BLUR_CACHE: OrderedDict = OrderedDict()
-_EXT_BLUR_MAX = 48
+_EXT_BLUR_MAX = 1024
 
 
 def _extend_edges(layer, cx, cy, cw, ch, tilted=False, src_qimg=None, mask_edge_yx=None):
@@ -980,26 +1116,25 @@ def _extend_edges(layer, cx, cy, cw, ch, tilted=False, src_qimg=None, mask_edge_
 
 class _SplitCache:
     __slots__ = (
-        "key", "masks", "mask_u8", "paths", "polylines", "scratch", "w", "h",
+        "key", "masks", "mask_u8", "polylines", "scratch", "w", "h",
         "glass_band", "glass_width", "glass_sigma", "cells", "off", "border_overlay",
     )
 
-    def __init__(self, key, split, w, h):
+    def __init__(self, key, split, w, h, cell_order=None):
         from PySide6.QtGui import QImage
         self.key = key
         self.w = int(w)
         self.h = int(h)
         t0 = time.perf_counter()
-        self.masks, self.mask_u8 = _build_masks(split, w, h)
+        self.masks, self.mask_u8 = _build_masks(split, w, h, cell_order=cell_order)
         self.cells = _cell_buffers(split, self.mask_u8, self.w, self.h)
         curve = str((split.get("border") or {}).get("curve") or "straight")
         self.polylines = {}
-        self.paths = {}
         for d in split.get("dividers") or []:
             did = str(d.get("id"))
-            pts = divider_polyline(d, w, h, curve=curve, n=_dense_n(d, w, h), span=_divider_span(split, d))
+            c_use = _divider_curve(split, d, curve)
+            pts = divider_polyline(d, w, h, curve=c_use, n=_dense_n(d, w, h), span=_divider_span(split, d, w, h))
             self.polylines[did] = pts
-            self.paths[did] = _path_from_pts(pts)
         # Full-frame scratch is gone: each cell blits its own layer-sized buffer.
         self.scratch = None
         self.off = QImage(self.w, self.h, QImage.Format.Format_ARGB32_Premultiplied)
@@ -1016,6 +1151,10 @@ class _SplitCache:
             self.border_overlay = _build_border_overlay(split, self)
         ms = (time.perf_counter() - t0) * 1000.0
         logger.info("split cache build %sx%s in %.2f ms", w, h, ms)
+
+    @property
+    def paths(self):
+        return {did: _path_from_pts(pts) for did, pts in (self.polylines or {}).items()}
 
 
 _OFF_TLS = threading.local()
@@ -1050,9 +1189,9 @@ def _thread_scratch(cache):
     return off, cells
 
 
-def get_cache(split, canvas_w, canvas_h, _normed: bool = False) -> _SplitCache:
+def get_cache(split, canvas_w, canvas_h, _normed: bool = False, cell_order=None) -> _SplitCache:
     sp = split if (_normed and isinstance(split, dict) and "cells" in split) else normalize_split(split)
-    key = _cache_key(sp, canvas_w, canvas_h)
+    key = _cache_key(sp, canvas_w, canvas_h, cell_order=cell_order)
     # Q144：中央监视器按缩略图尺寸画几十个分屏；小图单独一个 LRU，
     # 不把主画布那几份大遮罩（一份 300 ms）挤出去。
     small = int(canvas_w) * int(canvas_h) <= _SMALL_PX
@@ -1065,7 +1204,7 @@ def get_cache(split, canvas_w, canvas_h, _normed: bool = False) -> _SplitCache:
             except KeyError:
                 pass
             return hit
-        built = _SplitCache(key, sp, canvas_w, canvas_h)
+        built = _SplitCache(key, sp, canvas_w, canvas_h, cell_order=cell_order)
         store[key] = built
         while len(store) > cap or (small and len(store) > 1 and sum(
                 int(c.w) * int(c.h) for c in list(store.values())) > _SMALL_BUDGET_PX):
@@ -1123,7 +1262,7 @@ def _build_border_overlay(split, cache):
 
     border = split.get("border") or {}
     style = str(border.get("style") or "none")
-    if style in ("none", "glass") or not cache.paths:
+    if style in ("none", "glass") or not cache.polylines:
         return None
     width = max(1.0, float(border.get("width_px") or 6))
     color = _parse_color(border.get("color"))
@@ -1148,7 +1287,8 @@ def _build_border_overlay(split, cache):
         bp.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         if bx0 or by0:
             bp.translate(-bx0, -by0)
-        for did, path in cache.paths.items():
+        for did, pts in (cache.polylines or {}).items():
+            path = _path_from_pts(pts)
             if path is None or path.isEmpty():
                 continue
             bp.save()
@@ -1162,7 +1302,6 @@ def _build_border_overlay(split, cache):
                     bp.setBrush(Qt.BrushStyle.NoBrush)
                     bp.drawPath(path)
                 if style == "gradient":
-                    pts = cache.polylines.get(did) or []
                     if len(pts) >= 2:
                         g = QLinearGradient(QPointF(*pts[0]), QPointF(*pts[-1]))
                         g.setColorAt(0.0, color)
@@ -1181,7 +1320,7 @@ def _build_border_overlay(split, cache):
                 bp.restore()
     finally:
         bp.end()
-    return (bkey, bx0, by0, bimg)
+    return (bkey, bx0, by0, bimg.copy())
 
 
 def _draw_borders(painter, split, cache, composed):
@@ -1214,8 +1353,10 @@ def _draw_borders(painter, split, cache, composed):
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     if style == "glass" and composed is not None and not composed.isNull():
         _draw_glass_band(painter, composed, cache, width, sigma, color)
+        return
 
-    for did, path in cache.paths.items():
+    for did, pts in (cache.polylines or {}).items():
+        path = _path_from_pts(pts)
         if path is None or path.isEmpty():
             continue
         painter.save()
@@ -1229,7 +1370,6 @@ def _draw_borders(painter, split, cache, composed):
                 painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.drawPath(path)
             if style == "gradient":
-                pts = cache.polylines.get(did) or []
                 if len(pts) >= 2:
                     g = QLinearGradient(QPointF(*pts[0]), QPointF(*pts[-1]))
                     g.setColorAt(0.0, color)
@@ -1273,7 +1413,8 @@ def _glass_band_mask(polylines, w, h, width, sigma):
     """Soft frosted strip, distance field only inside each divider's bbox.
 
     Polylines are already sampled at ≤4px, so every segment is used — no
-    16-point corners. Cached once with the split geometry.
+    16-point corners. Cached once with the split geometry (plain Python tuples,
+    never QPainterPath objects across threads).
     """
     core = max(0.75, float(width) * 0.5)
     soft = max(1.25, min(4.0, core * 0.35))
@@ -1304,15 +1445,15 @@ def _glass_band_mask(polylines, w, h, width, sigma):
             d = np.sqrt((xx - (xa + t * vx)) ** 2 + (yy - (ya + t * vy)) ** 2)
             dmin = np.minimum(dmin, d)
         mask = np.clip((core + soft - dmin) / (2.0 * soft), 0.0, 1.0).astype(np.float32)
-        hi, lo = [], []
+        hi_pts, lo_pts = [], []
         for sign in (-1.0, 1.0):
-            hi.append(_path_from_pts(_offset_polyline(pts, sign * max(0.4, core - 0.5))))
-            lo.append(_path_from_pts(_offset_polyline(pts, sign * (core + 0.5))))
+            hi_pts.append(_offset_polyline(pts, sign * max(0.4, core - 0.5)))
+            lo_pts.append(_offset_polyline(pts, sign * (core + 0.5)))
         bands.append({
             "rect": (x0, y0, x1, y1),
             "mask": mask,
-            "hi": hi,
-            "lo": lo,
+            "hi_pts": hi_pts,
+            "lo_pts": lo_pts,
         })
     return bands
 
@@ -1383,18 +1524,20 @@ def _draw_glass_band(painter, composed, cache, width, sigma, color):
             pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         for entry in bands:
             painter.setPen(hi_pen)
-            for path in entry["hi"]:
+            for pts in entry.get("hi_pts") or ():
+                path = _path_from_pts(pts)
                 if path is not None and not path.isEmpty():
                     painter.drawPath(path)
             painter.setPen(lo_pen)
-            for path in entry["lo"]:
+            for pts in entry.get("lo_pts") or ():
+                path = _path_from_pts(pts)
                 if path is not None and not path.isEmpty():
                     painter.drawPath(path)
     finally:
         painter.restore()
 
 
-def _blit_masked(painter, img, origin, mask, scratch, spans=None):
+def _blit_masked(painter, img, origin, mask, scratch, spans=None, img_opaque=False):
     """Mask a layer-sized image, then add it at origin. Weights sum to 255.
 
     Q130：给了 ``spans`` 就只让羽化条带过 mask，整段 255 的部分直接 Plus 上去
@@ -1405,7 +1548,11 @@ def _blit_masked(painter, img, origin, mask, scratch, spans=None):
 
     ox, oy = int(origin[0]), int(origin[1])
     if mask is None or mask.isNull():
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        painter.setCompositionMode(
+            QPainter.CompositionMode.CompositionMode_Source
+            if img_opaque
+            else QPainter.CompositionMode.CompositionMode_Plus
+        )
         painter.drawImage(QPoint(ox, oy), img)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         return
@@ -1425,33 +1572,46 @@ def _blit_masked(painter, img, origin, mask, scratch, spans=None):
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         return
 
-    axis = spans.get("axis") or "y"
+    if spans.get("rects"):
+        solid_rects = spans.get("solid") or ()
+        band_rects = spans.get("band") or ()
+    else:
+        axis = spans.get("axis") or "y"
 
-    def _rect(a, b):
-        if axis == "y":
-            return QRect(0, int(a), w, int(b - a))
-        return QRect(int(a), 0, int(b - a), h)
+        def _rect(a, b):
+            if axis == "y":
+                return QRect(0, int(a), w, int(b - a))
+            return QRect(int(a), 0, int(b - a), h)
 
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
-    for a, b in spans.get("solid") or ():
-        r = _rect(a, b)
-        painter.drawImage(QPoint(ox + r.x(), oy + r.y()), img, r)
-    band = spans.get("band") or ()
-    if band:
-        sp = QPainter(scratch)
-        try:
-            sp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
-            for a, b in band:
-                r = _rect(a, b)
-                sp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-                sp.drawImage(r.topLeft(), img, r)
-                sp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-                sp.drawImage(r.topLeft(), mask, r)
-        finally:
-            sp.end()
-        for a, b in band:
-            r = _rect(a, b)
-            painter.drawImage(QPoint(ox + r.x(), oy + r.y()), scratch, r)
+        solid_rects = [_rect(a, b) for a, b in (spans.get("solid") or ())]
+        band_rects = [_rect(a, b) for a, b in (spans.get("band") or ())]
+
+    if solid_rects:
+        painter.setCompositionMode(
+            QPainter.CompositionMode.CompositionMode_Source
+            if img_opaque
+            else QPainter.CompositionMode.CompositionMode_Plus
+        )
+        for r in solid_rects:
+            painter.drawImage(QPoint(ox + r.x(), oy + r.y()), img, r)
+    if band_rects:
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        if getattr(img, "_is_premasked_cell", False):
+            for r in band_rects:
+                painter.drawImage(QPoint(ox + r.x(), oy + r.y()), img, r)
+        else:
+            sp = QPainter(scratch)
+            try:
+                sp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+                for r in band_rects:
+                    sp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+                    sp.drawImage(r.topLeft(), img, r)
+                    sp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+                    sp.drawImage(r.topLeft(), mask, r)
+            finally:
+                sp.end()
+            for r in band_rects:
+                painter.drawImage(QPoint(ox + r.x(), oy + r.y()), scratch, r)
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
 
@@ -1635,7 +1795,9 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
     except Exception:
         is_record_only = False
 
-    sp = normalize_split((task or {}).get("split"))
+    sp = (task or {}).get("_export_normed_split") if isinstance(task, dict) else None
+    if sp is None:
+        sp = normalize_split((task or {}).get("split"))
     w, h = int(canvas_w), int(canvas_h)
     participating = []
     overlay = []
@@ -1770,12 +1932,30 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
         return
 
     from PySide6.QtCore import QPoint
-    cache = get_cache(sp, w, h, _normed=True)
+    from PySide6.QtGui import QImage
+    cell_order = tuple(cid for cid, _tr in cell_renders)
+    cache = get_cache(sp, w, h, _normed=True, cell_order=cell_order)
     off, cells = _thread_scratch(cache)
     want_plate = bool((bottom and full and active_tracks) or (bottom and contain and active_tracks and not per_cell and not ext))
     direct_band = bool(later_cids and len(cell_renders) == 1 and not want_plate)
+    dev = painter.device()
+    direct_canvas = bool(
+        not direct_band
+        and not ext
+        and not later_cids
+        and not want_plate
+        and str(border_style(sp)) != "glass"
+        and getattr(painter, "_canvas_cleared_black", False)
+        and len(cell_renders) == len(all_cell_ids)
+        and isinstance(dev, QImage)
+        and dev.width() == w
+        and dev.height() == h
+        and painter.worldTransform().isIdentity()
+    )
     op = None
-    if not direct_band:
+    if direct_canvas:
+        op = painter
+    elif not direct_band:
         off.fill(0)
         op = QPainter(off)
     # 整幅背景生效时，格子里片段自己的背景填充不画（留白露出整幅底）
@@ -1784,13 +1964,12 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
         quiet.__enter__()
     lazy_clear = bool(getattr(paint_one, "_supports_lazy_clear", False))
     try:
-        if op is not None:
+        if op is not None and not direct_canvas:
             op.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
             op.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         plate_img = None
         if bottom and full and active_tracks:
             # Q155 单个视频撑满：整幅垫「一格」那条视频的模糊，任何布局都行
-            from PySide6.QtGui import QImage
             src_tr = _full_source_track(sp, bd, active_tracks)
             try:
                 plate_img = _blur_plate(src_tr, w, h, paint_one, bd)
@@ -1799,7 +1978,6 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                 plate_img = None
         elif bottom and contain and active_tracks and not per_cell and not ext:
             # 整幅底单独画一张，格子都拼完了再垫到后面（DestinationOver）。
-            from PySide6.QtGui import QImage
             plate_img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
             plate_img.fill(0)
             pp = QPainter(plate_img)
@@ -1820,6 +1998,7 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
             use_lazy = bool(lazy_clear and not per_cell)
             if not use_lazy and geom.get("_dirty", True):
                 layer.fill(0)
+                layer._last_fill_state = None
                 geom["_dirty"] = False
             cx, cy, cw, ch = geom["content"]
             lw, lh = layer.width(), layer.height()
@@ -1829,11 +2008,15 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                 if cx or cy:
                     lp.translate(cx, cy)
                 lp._split_layer_rect = (-float(cx), -float(cy), float(lw), float(lh))
+                lp._split_target_layer = layer
                 lp._split_layer_img = layer if (use_lazy and geom.get("_dirty", True)) else None
                 lp._split_covered_all = False
                 lp._split_drew = None
                 lp._split_filled = False
                 lp._split_qimg = None
+                lp._split_direct_img = None
+                lp._split_loop_bake = None
+                lp._accepts_direct_cell_img = not per_cell
                 if per_cell:
                     try:
                         lp.drawImage(0, 0, _blur_plate(tr, cw, ch, paint_one, bd))
@@ -1851,17 +2034,53 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                 lp.end()
             if getattr(lp, "_split_drew", None) is False and not per_cell:
                 continue
-            if getattr(lp, "_split_layer_img", None) is not None:
-                layer.fill(0)
-                lp._split_layer_img = None
-            geom["_dirty"] = True
-            if geom["extend"] and not getattr(lp, "_split_filled", False) and not getattr(lp, "_split_covered_all", False):
-                _extend_edges(layer, cx, cy, cw, ch, tilted=geom.get("tilted", False),
-                              src_qimg=getattr(lp, "_split_qimg", None),
-                              mask_edge_yx=geom.get("mask_edge_yx"))
+            direct_img = getattr(lp, "_split_direct_img", None)
+            cell_opaque = bool(getattr(lp, "_split_covered_all", False) or getattr(lp, "_split_filled", False))
+            if direct_img is not None:
+                src_layer = direct_img
+            else:
+                if getattr(lp, "_split_layer_img", None) is not None:
+                    layer.fill(0)
+                    layer._last_fill_state = None
+                    lp._split_layer_img = None
+                if not getattr(lp, "_split_filled", False):
+                    layer._last_fill_state = None
+                geom["_dirty"] = True
+                if geom["extend"] and not getattr(lp, "_split_filled", False) and not getattr(lp, "_split_covered_all", False):
+                    _extend_edges(layer, cx, cy, cw, ch, tilted=geom.get("tilted", False),
+                                  src_qimg=getattr(lp, "_split_qimg", None),
+                                  mask_edge_yx=geom.get("mask_edge_yx"))
+                src_layer = layer
+            bake_req = getattr(lp, "_split_loop_bake", None)
+            if bake_req is not None:
+                try:
+                    lcache, lkey, lrect = bake_req
+                    if len(lcache) < 4096 or lkey in lcache:
+                        baked = QImage(
+                            src_layer.width(),
+                            src_layer.height(),
+                            QImage.Format.Format_ARGB32_Premultiplied,
+                        )
+                        bmp = QPainter(baked)
+                        try:
+                            bmp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+                            bmp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+                            bmp.drawImage(0, 0, src_layer)
+                            m_img = geom.get("mask")
+                            if m_img is not None and not m_img.isNull():
+                                bmp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+                                bmp.drawImage(0, 0, m_img)
+                        finally:
+                            bmp.end()
+                        baked._is_premasked_cell = True
+                        lcache[lkey] = (baked, lrect)
+                        src_layer = baked
+                        cell_opaque = True
+                except Exception:
+                    pass
             if direct_band:
                 ox, oy = int(geom["origin"][0]), int(geom["origin"][1])
-                painter.drawImage(QPoint(ox, oy), layer)
+                painter.drawImage(QPoint(ox, oy), src_layer)
                 continue
             # 若当前是下层分屏带（later_cids 非空），且与 cid 相邻的分界线另一侧全在上层分屏带里，
             # 则不在下层提前挖空，避免中间的调整图层把挖空的黑底模糊进画面，由上层分屏带自然覆盖。
@@ -1879,10 +2098,10 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                 if not shared_with_band:
                     skip_mask = True
             if skip_mask:
-                _blit_masked(op, layer, geom["origin"], None, geom["scratch"], spans=None)
+                _blit_masked(op, src_layer, geom["origin"], None, geom["scratch"], spans=None, img_opaque=cell_opaque)
             else:
-                _blit_masked(op, layer, geom["origin"], geom["mask"], geom["scratch"],
-                             spans=geom.get("spans"))
+                _blit_masked(op, src_layer, geom["origin"], geom["mask"], geom["scratch"],
+                             spans=geom.get("spans"), img_opaque=cell_opaque)
         if op is not None:
             if plate_img is not None:
                 op.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOver)
@@ -1894,12 +2113,18 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                     composed = off.copy()
                 _draw_borders(op, sp, cache, composed)
     finally:
-        if op is not None:
+        if op is not None and not direct_canvas:
             op.end()
         if quiet is not None:
             quiet.__exit__(None, None, None)
-    if op is not None:
-        painter.drawImage(0, 0, off)
+    if op is not None and not direct_canvas:
+        if not ext and not later_cids:
+            painter.save()
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+            painter.drawImage(0, 0, off)
+            painter.restore()
+        else:
+            painter.drawImage(0, 0, off)
     for tr in fullscreen_overlays:
         paint_one(painter, tr, w, h)
 
@@ -1915,7 +2140,8 @@ def handle_centers(split, canvas_w, canvas_h):
     curve = str((sp.get("border") or {}).get("curve") or "straight")
     out = []
     for d in sp.get("dividers") or []:
-        pts = divider_polyline(d, canvas_w, canvas_h, curve=curve, n=48, span=_divider_span(sp, d))
+        c_use = _divider_curve(sp, d, curve)
+        pts = divider_polyline(d, canvas_w, canvas_h, curve=c_use, n=48, span=_divider_span(sp, d, canvas_w, canvas_h))
         if not pts:
             continue
         if str(d.get("axis")) == "circle":

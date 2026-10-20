@@ -790,12 +790,27 @@ async def task_images_copy_desc(tid: str, req: Request):
 def images_batch_desc_index():
     """每个已准备任务自己的图片。批量填描述语打开时用，不跟当前任务走。"""
     from .services import images as imgmod
-    return ok(tasks=imgmod.batch_image_index())
+    return ok(tasks=imgmod.batch_image_index(), nodes=imgmod.get_prompt_nodes())
+
+
+@app.get("/api/prompt-nodes")
+def prompt_nodes_get():
+    """获取带编号的文字描述语节点列表（如 D01~D08）。"""
+    from .services import images as imgmod
+    return ok(nodes=imgmod.get_prompt_nodes())
+
+
+@app.post("/api/prompt-nodes")
+async def prompt_nodes_save(req: Request):
+    """保存或重置带编号的文字描述语节点列表。"""
+    from .services import images as imgmod
+    d = await body(req) or {}
+    return ok(nodes=imgmod.save_prompt_nodes(d.get("nodes")))
 
 
 @app.post("/api/images/batch-desc")
 async def images_batch_desc(req: Request):
-    """跨任务批量填描述语（规格 85）。body.restore=changed 列表则撤销。"""
+    """跨任务批量填描述语（规格 85 + 节点连线模式支持）。body.restore=changed 列表则撤销。"""
     from .services import images as imgmod
     d = await body(req) or {}
     rest = d.get("restore")
@@ -806,6 +821,9 @@ async def images_batch_desc(req: Request):
         d.get("desc") or "",
         voice=d["voice"] if "voice" in d else None,
         mode=d.get("mode") or "fill_empty",
+        node_id=d.get("node_id"),
+        node_name=d.get("node_name"),
+        connections=d.get("connections"),
     ))
 
 

@@ -22,27 +22,36 @@ SPLIT_DEFAULT_LAYOUT = "top_bottom"
 SPLIT_CHOICES = (SPLIT_RANDOM_BY_COUNT,) + tuple(l for l in LAYOUTS if l != "custom")
 # 右键批量改布局时挂在菜单项上。左右铺满会裁切；左右完整是整幅进画面。
 LAYOUT_HINTS = {
-    SPLIT_RANDOM_BY_COUNT: "根据每条视频实际对应的轨道数量（1 主 + N 副），从 20+ 种对应格子数的分屏样式库中不重复地随机分配，并打乱副屏顺序，最大程度避免视频形式雷同！",
+    SPLIT_RANDOM_BY_COUNT: "根据每条视频实际对应的轨道数量（1 主 + N 副），从 20+ 种对应格子数的分层弧线、多方位一主多副、L形与画中画样式库中不重复地随机分配，并打乱副屏顺序，最大程度避免视频形式雷同！",
     "left_right": "左右各一半，铺满格子，超出画面的部分会被裁掉",
     "left_right_fit": "左右各一条，两条都完整放进画面（等大并排），空处垫镜头模糊背景",
     "center_h": "主视频居中占最大横向画面，上方 1 条、下方 1 条外部视频夹心分屏",
+    "center_h_arc": "主视频居中，上下采用优美的双层同向穹顶弧线分割，层次感极强",
+    "center_h_embrace": "主视频居中，上下采用对称怀抱式双弧线分割，聚焦中央主画面",
+    "center_h_swave": "主视频居中，上下采用柔美 S 流线弧分割，富有设计感",
     "center_h_tilt": "主视频居中，上下两条横向分割线带倾斜旋转角度，更具动感",
     "top1_bottom2": "主视频在上占最大画面，下方并排 2 个外部加载视频",
     "top1_bottom3": "主视频在上占最大画面，下方并排 3 个外部加载视频",
     "top1_bottom4": "主视频在上占最大画面，下方并排 4 个外部加载视频",
+    "bottom1_top2": "主视频在下占最大画面，上方并排 2 个外部加载视频",
+    "bottom1_top3": "主视频在下占最大画面，上方并排 3 个外部加载视频",
+    "bottom1_top4": "主视频在下占最大画面，上方并排 4 个外部加载视频",
     "left1_right2": "主视频在左占最大画面，右侧纵向排 2 个外部加载视频",
     "left1_right3": "主视频在左占最大画面，右侧纵向排 3 个外部加载视频",
     "left1_right4": "主视频在左占最大画面，右侧纵向排 4 个外部加载视频",
+    "right1_left2": "主视频在右占最大画面，左侧纵向排 2 个外部加载视频",
+    "right1_left3": "主视频在右占最大画面，左侧纵向排 3 个外部加载视频",
+    "right1_left4": "主视频在右占最大画面，左侧纵向排 4 个外部加载视频",
     "l_left2_bottom3": "L 形分屏：主视频在右上方，左侧 2 个外部视频、底部 3 个外部视频",
     "l_left1_bottom2": "L 形分屏：主视频在右上方，左侧 1 个外部视频、底部 2 个外部视频",
+    "l_right1_bottom2": "反 L 形分屏：主视频在左上方，右侧 1 个外部视频、底部 2 个外部视频",
+    "l_left1_top2": "倒 L 形分屏：主视频在右下方，左侧 1 个外部视频、顶部 2 个外部视频",
     "hex_center_4": "主视频在中央六角形（可调节分段数平滑变圆），四角各放 1 个外部加载视频",
-    "shutter_4": "相机快门穿插式分屏：主视频在中央孔径，外部视频呈快门叶片穿插环绕",
-    "shape_heart_3": "心形气泡分屏：主视频铺底，外部视频呈心形画中画",
-    "shape_dove_3": "和平鸽形分屏：主视频铺底，外部视频呈展翅鸽子形画中画",
-    "shape_clover_3": "四叶幸运草形分屏：主视频铺底，外部视频呈幸运草画中画",
-    "shape_olive_3": "橄榄叶形分屏：主视频铺底，外部视频呈橄榄叶画中画",
+    "shutter_4": "相机快门穿插式分屏：主视频在中央孔径，外部视频呈快门叶片环绕",
     "top1_bottom_auto": "按该视频实际连接的外部视频数量自动分屏：主视频在上方占最大比例，其余外部视频在下方等分",
+    "bottom1_top_auto": "按该视频实际连接的外部视频数量自动分屏：主视频在下方占最大比例，其余外部视频在上方等分",
     "left1_right_auto": "按该视频实际连接的外部视频数量自动分屏：主视频在左侧占最大比例，其余外部视频在右侧等分",
+    "right1_left_auto": "按该视频实际连接的外部视频数量自动分屏：主视频在右侧占最大比例，其余外部视频在左侧等分",
 }
 BORDER_LABELS = {
     "none": "无", "solid": "实线", "gradient": "渐变", "glass": "毛玻璃", "shadow": "投影",
@@ -55,8 +64,12 @@ def resolve_auto_layout(layout: str | None, n_secondary: int) -> str:
     lay = str(layout or SPLIT_DEFAULT_LAYOUT).strip()
     if lay == "top1_bottom_auto":
         return "top_bottom" if n <= 1 else ("top1_bottom%d" % n)
+    if lay == "bottom1_top_auto":
+        return "top_bottom" if n <= 1 else ("bottom1_top%d" % n)
     if lay == "left1_right_auto":
         return "left_right" if n <= 1 else ("left1_right%d" % n)
+    if lay == "right1_left_auto":
+        return "left_right" if n <= 1 else ("right1_left%d" % n)
     if lay in ("l_shape_auto", "l_left2_bottom3", "l_left1_bottom2"):
         if lay == "l_shape_auto" or n != (5 if lay == "l_left2_bottom3" else 3):
             nl = max(1, n // 2)
@@ -66,17 +79,15 @@ def resolve_auto_layout(layout: str | None, n_secondary: int) -> str:
         return "hex_center_%d" % max(2, n)
     if lay in ("shutter_auto", "shutter_4") and n >= 1:
         return "shutter_%d" % max(2, n)
-    if lay.startswith("shape_") and "_" in lay[6:]:
-        parts = lay.split("_")
-        if len(parts) == 3 and parts[2].isdigit():
-            return "shape_%s_%d" % (parts[1], n)
+    if lay.startswith("shape_"):
+        return "circle_bottom%d" % min(6, n) if n >= 2 else "circle_right1"
     return lay if is_valid_layout(lay) else SPLIT_DEFAULT_LAYOUT
 
 
 def layout_cells(layout: str) -> list[str]:
     lay = str(layout or SPLIT_DEFAULT_LAYOUT)
-    if lay in ("top1_bottom_auto", "left1_right_auto", SPLIT_RANDOM_BY_COUNT):
-        lay = "top_bottom" if lay != "left1_right_auto" else "left_right"
+    if lay in ("top1_bottom_auto", "bottom1_top_auto", "left1_right_auto", "right1_left_auto", SPLIT_RANDOM_BY_COUNT):
+        lay = "left_right" if lay in ("left1_right_auto", "right1_left_auto") else "top_bottom"
     elif lay == "l_shape_auto":
         lay = "l_left2_bottom3"
     elif lay == "hex_center_auto":
@@ -103,190 +114,216 @@ def _free_cell(tl, cell_id, keep=None) -> None:
 
 def _candidate_specs_for_count(n_sec: int) -> list[dict]:
     """根据副视频轨道数 n_sec（即总视频数 = 1 主 + n_sec 副）生成严格匹配格子数的多样化分屏样式池。
-    每一项包含:
-      - key: 唯一样式标识（用于跨任务防雷同去重）
-      - label: 中文样式名
-      - layout: 基础布局名
-      - rot_deg / pos / curve / border / sides / twist_deg: 可选几何与边框修饰
+    全部采用完整、优美、有设计感、适合人观看的分层弧线、S流线、多方位一主多副、四角L形与圆润画中画布局。
     """
     n = max(1, int(n_sec))
     if n == 1:
         return [
-            {"key": "tb_classic", "label": "上下分屏", "layout": "top_bottom",
+            {"key": "arc_dome_tb", "label": "🌈 穹顶下弧分屏（上主下副）", "layout": "top_bottom",
+             "pos": 0.56, "d1_curve": "arc",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "arch_up_tb", "label": "🌈 苍穹上弧分屏（上主下副）", "layout": "top_bottom",
+             "pos": 0.56, "d1_curve": "arch_up",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
+            {"key": "swave_tb", "label": "🌊 丝绸 S 弧线上下分屏", "layout": "top_bottom",
+             "pos": 0.55, "d1_curve": "s_wave",
+             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "s_wave"}},
+            {"key": "arc_lr_left", "label": "🌈 侧翼右弧分屏（左主右副）", "layout": "left_right",
+             "pos": 0.56, "d1_curve": "arc",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "arch_lr_left", "label": "🌈 侧翼左弧分屏（左主右副）", "layout": "left_right",
+             "pos": 0.56, "d1_curve": "arch_up",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
+            {"key": "slash_tb_pos", "label": "🔪 10° 黄金斜切上下分屏", "layout": "top_bottom",
+             "pos": 0.56, "rot_deg": 10.0,
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
+            {"key": "slash_tb_neg", "label": "🔪 -10° 反斜切上下分屏", "layout": "top_bottom",
+             "pos": 0.56, "rot_deg": -10.0,
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
+            {"key": "tb_classic", "label": "经典上下分屏", "layout": "top_bottom",
+             "pos": 0.55,
              "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "lr_classic", "label": "左右分屏（铺满）", "layout": "left_right",
+            {"key": "lr_classic", "label": "经典左右分屏（铺满）", "layout": "left_right",
              "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
             {"key": "lr_fit", "label": "左右分屏（完整+镜头模糊）", "layout": "left_right_fit",
              "border": {"style": "none", "width_px": 0, "color": "#FFFFFF", "curve": "straight"}},
-            {"key": "slash_tb_pos", "label": "🔪 11° 黄金斜切上下分屏", "layout": "top_bottom",
-             "pos": 0.56, "rot_deg": 11.0,
-             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
-            {"key": "slash_tb_neg", "label": "🔪 -11° 反斜切上下分屏", "layout": "top_bottom",
-             "pos": 0.56, "rot_deg": -11.0,
-             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "slash_lr_pos", "label": "🔪 12° 斜切左右分屏", "layout": "left_right",
-             "pos": 0.55, "rot_deg": 12.0,
-             "border": {"style": "shadow", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "wave_tb", "label": "🌊 波浪流线上下分屏", "layout": "top_bottom",
-             "pos": 0.55, "rot_deg": -5.0,
-             "border": {"style": "solid", "width_px": 6, "color": "#88E0EF", "curve": "wave"}},
-            {"key": "arc_tb", "label": "🌈 电影弧线上下分屏", "layout": "top_bottom",
-             "pos": 0.56, "rot_deg": 6.0,
-             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
-            {"key": "heart_1", "label": "❤️ 心形画中画分屏", "layout": "shape_heart_1",
-             "border": {"style": "solid", "width_px": 6, "color": "#FF6B8B", "curve": "straight"}},
-            {"key": "dove_1", "label": "🕊️ 和平鸽画中画分屏", "layout": "shape_dove_1",
-             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
-            {"key": "clover_1", "label": "🍀 幸运草画中画分屏", "layout": "shape_clover_1",
-             "border": {"style": "solid", "width_px": 6, "color": "#59CE8F", "curve": "straight"}},
-            {"key": "circle_r1", "label": "⭕ 右侧圆圈画中画", "layout": "circle_right1",
+            {"key": "circle_r1", "label": "⭕ 右下圆润画中画", "layout": "circle_right1",
              "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
         ]
     if n == 2:
         return [
+            {"key": "arc_t1b2", "label": "🌈 穹顶弧线上 1 下 2（主视频在上）", "layout": "top1_bottom2",
+             "pos": 0.58, "d1_curve": "arc",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "arch_b1t2", "label": "🌈 苍穹弧线下 1 上 2（主视频在下）", "layout": "bottom1_top2",
+             "pos": 0.42, "d1_curve": "arch_up",
+             "border": {"style": "gradient", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
+            {"key": "swave_t1b2", "label": "🌊 S 流线弧上 1 下 2", "layout": "top1_bottom2",
+             "pos": 0.58, "d1_curve": "s_wave",
+             "border": {"style": "solid", "width_px": 6, "color": "#88E0EF", "curve": "s_wave"}},
+            {"key": "center_h_embrace", "label": "🌈 双层怀抱弧夹心（上1·中主·下1）", "layout": "center_h_embrace",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "center_h_arc", "label": "🌈 双层同向弧夹心（上1·中主·下1）", "layout": "center_h_arc",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arc"}},
+            {"key": "center_h_swave", "label": "🌊 双层 S 流线夹心（上1·中主·下1）", "layout": "center_h_swave",
+             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "s_wave"}},
+            {"key": "arc_l1r2", "label": "🌈 侧翼弧线左 1 右 2（主视频在左）", "layout": "left1_right2",
+             "pos": 0.58, "d1_curve": "arc",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "arch_r1l2", "label": "🌈 侧翼弧线右 1 左 2（主视频在右）", "layout": "right1_left2",
+             "pos": 0.42, "d1_curve": "arch_up",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
             {"key": "t1b2", "label": "上 1 下 2（主视频在上）", "layout": "top1_bottom2",
              "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+            {"key": "b1t2", "label": "下 1 上 2（主视频在下）", "layout": "bottom1_top2",
+             "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
             {"key": "l1r2", "label": "左 1 右 2（主视频在左）", "layout": "left1_right2",
              "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+            {"key": "r1l2", "label": "右 1 左 2（主视频在右）", "layout": "right1_left2",
+             "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
             {"key": "center_h", "label": "横向夹心（上1·中主·下1）", "layout": "center_h",
              "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
-            {"key": "center_h_tilt_pos", "label": "🎞️ 动感斜夹心 (+9°)", "layout": "center_h_tilt",
-             "rot_deg": 9.0,
+            {"key": "center_h_tilt_pos", "label": "🎞️ 动感斜夹心 (+8°)", "layout": "center_h_tilt",
+             "rot_deg": 8.0,
              "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
-            {"key": "center_h_tilt_neg", "label": "🎞️ 动感反斜夹心 (-9°)", "layout": "center_h_tilt",
-             "rot_deg": -9.0,
-             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "center_h_wave", "label": "🌊 斜波浪横向夹心", "layout": "center_h_tilt",
-             "rot_deg": -7.0,
-             "border": {"style": "solid", "width_px": 6, "color": "#88E0EF", "curve": "wave"}},
-            {"key": "slash_t1b2", "label": "🔪 10° 斜切上 1 下 2", "layout": "top1_bottom2",
-             "pos": 0.58, "rot_deg": 10.0,
+            {"key": "slash_t1b2", "label": "🔪 9° 斜切上 1 下 2", "layout": "top1_bottom2",
+             "pos": 0.58, "rot_deg": 9.0,
              "border": {"style": "gradient", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "slash_l1r2", "label": "🔪 -11° 斜切左 1 右 2", "layout": "left1_right2",
-             "pos": 0.58, "rot_deg": -11.0,
-             "border": {"style": "shadow", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "heart_2", "label": "❤️ 双心形气泡分屏", "layout": "shape_heart_2",
-             "border": {"style": "solid", "width_px": 6, "color": "#FF6B8B", "curve": "straight"}},
-            {"key": "dove_2", "label": "🕊️ 双和平鸽异形分屏", "layout": "shape_dove_2",
-             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
-            {"key": "clover_2", "label": "🍀 双幸运草创意分屏", "layout": "shape_clover_2",
-             "border": {"style": "solid", "width_px": 6, "color": "#59CE8F", "curve": "straight"}},
-            {"key": "olive_2", "label": "🌿 双橄榄叶流线分屏", "layout": "shape_olive_2",
-             "border": {"style": "gradient", "width_px": 6, "color": "#A6E3E9", "curve": "straight"}},
-            {"key": "circle_b2", "label": "⭕ 底部双圆圈画中画", "layout": "circle_bottom2",
+            {"key": "circle_b2", "label": "⭕ 底部双圆画中画", "layout": "circle_bottom2",
              "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
-            {"key": "circle_r2", "label": "⭕ 右侧双圆圈画中画", "layout": "circle_right2",
+            {"key": "circle_r2", "label": "⭕ 右侧双圆画中画", "layout": "circle_right2",
              "border": {"style": "gradient", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "hex_center_2", "label": "⬢ 六角中主+双副屏", "layout": "hex_center_2",
-             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "shutter_2", "label": "📷 双叶快门穿插分屏", "layout": "shutter_2",
-             "border": {"style": "gradient", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
         ]
     if n == 3:
         return [
+            {"key": "arc_t1b3", "label": "🌈 穹顶下弧·上 1 下 3（主视频在上）", "layout": "top1_bottom3",
+             "pos": 0.58, "d1_curve": "arc",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "arch_t1b3", "label": "🌈 苍穹上弧·上 1 下 3（主视频在上）", "layout": "top1_bottom3",
+             "pos": 0.58, "d1_curve": "arch_up",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
+            {"key": "swave_t1b3", "label": "🌊 S 流线弧·上 1 下 3（主视频在上）", "layout": "top1_bottom3",
+             "pos": 0.58, "d1_curve": "s_wave",
+             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "s_wave"}},
+            {"key": "arch_b1t3", "label": "🌈 苍穹弧线·下 1 上 3（主视频在下）", "layout": "bottom1_top3",
+             "pos": 0.42, "d1_curve": "arch_up",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arch_up"}},
+            {"key": "arc_b1t3", "label": "🌈 穹顶弧线·下 1 上 3（主视频在下）", "layout": "bottom1_top3",
+             "pos": 0.42, "d1_curve": "arc",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arc"}},
+            {"key": "arc_l1r3", "label": "🌈 侧翼右弧·左 1 右 3（主视频在左）", "layout": "left1_right3",
+             "pos": 0.58, "d1_curve": "arc",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "arch_r1l3", "label": "🌈 侧翼左弧·右 1 左 3（主视频在右）", "layout": "right1_left3",
+             "pos": 0.42, "d1_curve": "arch_up",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
+            {"key": "ch_embrace_1_2", "label": "🌈 双层怀抱弧夹心（上1·中主·下2）", "layout": "center_h_embrace_1_2",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "ch_embrace_2_1", "label": "🌈 双层怀抱弧夹心（上2·中主·下1）", "layout": "center_h_embrace_2_1",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arc"}},
+            {"key": "ch_arc_1_2", "label": "🌈 双层同向弧夹心（上1·中主·下2）", "layout": "center_h_arc_1_2",
+             "border": {"style": "gradient", "width_px": 7, "color": "#88E0EF", "curve": "arc"}},
+            {"key": "ch_arc_2_1", "label": "🌈 双层同向弧夹心（上2·中主·下1）", "layout": "center_h_arc_2_1",
+             "border": {"style": "solid", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "ch_swave_1_2", "label": "🌊 双层 S 流线夹心（上1·中主·下2）", "layout": "center_h_swave_1_2",
+             "border": {"style": "gradient", "width_px": 6, "color": "#A6E3E9", "curve": "s_wave"}},
+            {"key": "l_left1_bottom2", "label": "📐 L形黄金分屏（右上主+左1下2）", "layout": "l_left1_bottom2",
+             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+            {"key": "l_right1_bottom2", "label": "📐 反L形黄金分屏（左上主+右1下2）", "layout": "l_right1_bottom2",
+             "border": {"style": "gradient", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
+            {"key": "l_left1_top2", "label": "📐 倒L形黄金分屏（右下主+左1上2）", "layout": "l_left1_top2",
+             "border": {"style": "solid", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
+            {"key": "l_right1_top2", "label": "📐 右上L形分屏（左下主+右1上2）", "layout": "l_right1_top2",
+             "border": {"style": "gradient", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
             {"key": "t1b3", "label": "上 1 下 3（主视频在上）", "layout": "top1_bottom3",
              "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+            {"key": "b1t3", "label": "下 1 上 3（主视频在下）", "layout": "bottom1_top3",
+             "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
             {"key": "l1r3", "label": "左 1 右 3（主视频在左）", "layout": "left1_right3",
              "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "l_1_2", "label": "📐 L形黄金分屏（右上主+左1下2）", "layout": "l_left1_bottom2",
-             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "grid_2x2", "label": "四宫格 2×2", "layout": "grid_2x2",
+            {"key": "r1l3", "label": "右 1 左 3（主视频在右）", "layout": "right1_left3",
              "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
             {"key": "ch_tilt_1_2", "label": "🎞️ 动感斜夹心（上1·中主·下2）", "layout": "center_h_tilt_1_2",
-             "rot_deg": 9.0,
+             "rot_deg": 8.0,
              "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
             {"key": "ch_tilt_2_1", "label": "🎞️ 反斜切夹心（上2·中主·下1）", "layout": "center_h_tilt_2_1",
-             "rot_deg": -9.0,
+             "rot_deg": -8.0,
              "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "ch_1_2", "label": "横向夹心（上1·中主·下2）", "layout": "center_h_1_2",
-             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "ch_wave_1_2", "label": "🌊 波浪横向夹心（上1·中主·下2）", "layout": "center_h_tilt_1_2",
-             "rot_deg": -7.0,
-             "border": {"style": "solid", "width_px": 6, "color": "#88E0EF", "curve": "wave"}},
-            {"key": "hex_center_3", "label": "⬢ 六角中主+三副屏", "layout": "hex_center_3",
-             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "circle_center_3", "label": "⭕ 光滑圆中主+三副毛玻璃分屏", "layout": "hex_center_3",
-             "sides": 64,
-             "border": {"style": "glass", "width_px": 9, "color": "#F5D082", "curve": "straight"}},
-            {"key": "shutter_3", "label": "📷 相机快门穿插（三叶六角孔径）", "layout": "shutter_3",
-             "twist_deg": 38.0,
-             "border": {"style": "gradient", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
-            {"key": "shutter_iris_3", "label": "📷 旋风弧叶快门（八角虹膜三叶）", "layout": "shutter_3",
-             "sides": 8, "twist_deg": 42.0,
-             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "arc"}},
-            {"key": "heart_3", "label": "❤️ 浪漫三心形气泡分屏", "layout": "shape_heart_3",
-             "border": {"style": "solid", "width_px": 6, "color": "#FF6B8B", "curve": "straight"}},
-            {"key": "dove_3", "label": "🕊️ 灵动三和平鸽异形分屏", "layout": "shape_dove_3",
-             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
-            {"key": "clover_3", "label": "🍀 四叶幸运草三副分屏", "layout": "shape_clover_3",
-             "border": {"style": "solid", "width_px": 6, "color": "#59CE8F", "curve": "straight"}},
-            {"key": "olive_3", "label": "🌿 橄榄叶流线三副分屏", "layout": "shape_olive_3",
-             "border": {"style": "gradient", "width_px": 6, "color": "#A6E3E9", "curve": "straight"}},
-            {"key": "pentagon_3", "label": "⬠ 五边形几何三副分屏", "layout": "shape_pentagon_3",
-             "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
-            {"key": "star_3", "label": "⭐ 璀璨五角星三副分屏", "layout": "shape_star_3",
-             "border": {"style": "solid", "width_px": 6, "color": "#FFD966", "curve": "straight"}},
-            {"key": "flower_3", "label": "🌸 国风海棠花窗三副分屏", "layout": "shape_flower_3",
-             "border": {"style": "gradient", "width_px": 6, "color": "#F9B5D0", "curve": "straight"}},
-            {"key": "butterfly_3", "label": "🦋 灵动蝴蝶三副分屏", "layout": "shape_butterfly_3",
-             "border": {"style": "gradient", "width_px": 6, "color": "#D4ADFC", "curve": "straight"}},
+            {"key": "slash_t1b3", "label": "🔪 9° 黄金斜切上 1 下 3", "layout": "top1_bottom3",
+             "pos": 0.58, "rot_deg": 9.0,
+             "border": {"style": "gradient", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
+            {"key": "slash_b1t3", "label": "🔪 -9° 反斜切下 1 上 3", "layout": "bottom1_top3",
+             "pos": 0.42, "rot_deg": -9.0,
+             "border": {"style": "solid", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
             {"key": "circle_b3", "label": "⭕ 底部三圆圈画中画", "layout": "circle_bottom3",
              "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
             {"key": "circle_r3", "label": "⭕ 右侧三圆圈画中画", "layout": "circle_right3",
              "border": {"style": "gradient", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
             {"key": "circle_s3", "label": "⭕ 错落三圆圈画中画", "layout": "circle_scatter3",
              "border": {"style": "solid", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
-            {"key": "slash_t1b3", "label": "🔪 11° 黄金斜切上 1 下 3", "layout": "top1_bottom3",
-             "pos": 0.58, "rot_deg": 11.0,
-             "border": {"style": "gradient", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "slash_l1r3", "label": "🔪 -12° 反斜切左 1 右 3", "layout": "left1_right3",
-             "pos": 0.58, "rot_deg": -12.0,
-             "border": {"style": "shadow", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
+            {"key": "circle_center_3", "label": "⭕ 中央圆窗+三副屏环绕", "layout": "hex_center_3",
+             "sides": 64,
+             "border": {"style": "solid", "width_px": 7, "color": "#F5D082", "curve": "straight"}},
+            {"key": "grid_2x2", "label": "四宫格 2×2", "layout": "grid_2x2",
+             "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
         ]
     if n == 4:
         return [
+            {"key": "arc_t1b4", "label": "🌈 穹顶下弧·上 1 下 4（主视频在上）", "layout": "top1_bottom4",
+             "pos": 0.58, "d1_curve": "arc",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "arch_t1b4", "label": "🌈 苍穹上弧·上 1 下 4（主视频在上）", "layout": "top1_bottom4",
+             "pos": 0.58, "d1_curve": "arch_up",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
+            {"key": "swave_t1b4", "label": "🌊 S 流线弧·上 1 下 4（主视频在上）", "layout": "top1_bottom4",
+             "pos": 0.58, "d1_curve": "s_wave",
+             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "s_wave"}},
+            {"key": "arch_b1t4", "label": "🌈 苍穹弧线·下 1 上 4（主视频在下）", "layout": "bottom1_top4",
+             "pos": 0.42, "d1_curve": "arch_up",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arch_up"}},
+            {"key": "arc_b1t4", "label": "🌈 穹顶弧线·下 1 上 4（主视频在下）", "layout": "bottom1_top4",
+             "pos": 0.42, "d1_curve": "arc",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arc"}},
+            {"key": "arc_l1r4", "label": "🌈 侧翼右弧·左 1 右 4（主视频在左）", "layout": "left1_right4",
+             "pos": 0.58, "d1_curve": "arc",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "arch_r1l4", "label": "🌈 侧翼左弧·右 1 左 4（主视频在右）", "layout": "right1_left4",
+             "pos": 0.42, "d1_curve": "arch_up",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
+            {"key": "ch_embrace_2_2", "label": "🌈 双层怀抱弧夹心（上2·中主·下2）", "layout": "center_h_embrace_2_2",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+            {"key": "ch_arc_2_2", "label": "🌈 双层同向弧夹心（上2·中主·下2）", "layout": "center_h_arc_2_2",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arc"}},
+            {"key": "ch_swave_2_2", "label": "🌊 双层 S 流线夹心（上2·中主·下2）", "layout": "center_h_swave_2_2",
+             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "s_wave"}},
+            {"key": "l_left2_bottom2", "label": "📐 L形黄金分屏（右上主+左2下2）", "layout": "l_left2_bottom2",
+             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+            {"key": "l_right2_bottom2", "label": "📐 反L形黄金分屏（左上主+右2下2）", "layout": "l_right2_bottom2",
+             "border": {"style": "gradient", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
+            {"key": "l_left2_top2", "label": "📐 倒L形黄金分屏（右下主+左2上2）", "layout": "l_left2_top2",
+             "border": {"style": "solid", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
+            {"key": "l_right2_top2", "label": "📐 右上L形分屏（左下主+右2上2）", "layout": "l_right2_top2",
+             "border": {"style": "gradient", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
             {"key": "t1b4", "label": "上 1 下 4（主视频在上）", "layout": "top1_bottom4",
              "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+            {"key": "b1t4", "label": "下 1 上 4（主视频在下）", "layout": "bottom1_top4",
+             "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
             {"key": "l1r4", "label": "左 1 右 4（主视频在左）", "layout": "left1_right4",
              "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "l_2_2", "label": "📐 L形黄金分屏（右上主+左2下2）", "layout": "l_left2_bottom2",
-             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "l_1_3", "label": "📐 L形黄金分屏（右上主+左1下3）", "layout": "l_left1_bottom3",
-             "border": {"style": "gradient", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
+            {"key": "r1l4", "label": "右 1 左 4（主视频在右）", "layout": "right1_left4",
+             "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
+            {"key": "ch_tilt_2_2", "label": "🎞️ 动感斜夹心（上2·中主·下2）", "layout": "center_h_tilt_2_2",
+             "rot_deg": 8.0,
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
+            {"key": "circle_center_4", "label": "⭕ 中央圆窗+四角副屏", "layout": "hex_center_4",
+             "sides": 64,
+             "border": {"style": "solid", "width_px": 7, "color": "#F5D082", "curve": "straight"}},
             {"key": "hex_center_4", "label": "⬢ 六角中主+四角副屏", "layout": "hex_center_4",
              "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "circle_center_4", "label": "⭕ 光滑圆中主+四角毛玻璃分屏", "layout": "hex_center_4",
-             "sides": 64,
-             "border": {"style": "glass", "width_px": 9, "color": "#F5D082", "curve": "straight"}},
-            {"key": "shutter_4", "label": "📷 相机快门穿插（四叶六角孔径）", "layout": "shutter_4",
-             "twist_deg": 38.0,
-             "border": {"style": "gradient", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
-            {"key": "shutter_iris_4", "label": "📷 旋风弧叶快门（八角四叶虹膜）", "layout": "shutter_4",
-             "sides": 8, "twist_deg": 42.0,
-             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "arc"}},
-            {"key": "shutter_diamond_4", "label": "📷 菱形反向快门穿插分屏", "layout": "shutter_4",
-             "sides": 4, "twist_deg": -36.0,
-             "border": {"style": "shadow", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "ch_tilt_2_2", "label": "🎞️ 动感斜夹心（上2·中主·下2）", "layout": "center_h_tilt_2_2",
-             "rot_deg": 9.0,
-             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
-            {"key": "ch_2_2", "label": "横向夹心（上2·中主·下2）", "layout": "center_h_2_2",
-             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-            {"key": "heart_4", "label": "❤️ 四心形气泡分屏", "layout": "shape_heart_4",
-             "border": {"style": "solid", "width_px": 6, "color": "#FF6B8B", "curve": "straight"}},
-            {"key": "dove_4", "label": "🕊️ 四和平鸽异形分屏", "layout": "shape_dove_4",
-             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
-            {"key": "clover_4", "label": "🍀 四幸运草创意分屏", "layout": "shape_clover_4",
-             "border": {"style": "solid", "width_px": 6, "color": "#59CE8F", "curve": "straight"}},
-            {"key": "olive_4", "label": "🌿 四橄榄叶流线分屏", "layout": "shape_olive_4",
-             "border": {"style": "gradient", "width_px": 6, "color": "#A6E3E9", "curve": "straight"}},
             {"key": "circle_b4", "label": "⭕ 底部四圆圈画中画", "layout": "circle_bottom4",
              "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
             {"key": "circle_s4", "label": "⭕ 错落四圆圈画中画", "layout": "circle_scatter4",
              "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
-            {"key": "slash_t1b4", "label": "🔪 10° 斜切上 1 下 4", "layout": "top1_bottom4",
-             "pos": 0.58, "rot_deg": 10.0,
-             "border": {"style": "gradient", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
         ]
     # n >= 5 (6 条及以上视频轨道)
     nl = max(2, n // 2)
@@ -294,37 +331,45 @@ def _candidate_specs_for_count(n_sec: int) -> list[dict]:
     nt = max(2, n // 2)
     nb_ch = max(2, n - nt)
     return [
-        {"key": "l_%d_%d" % (nl, nb), "label": "📐 L形黄金分屏（左%d+下%d）" % (nl, nb),
+        {"key": "arc_t1b%d" % n, "label": "🌈 穹顶下弧·上 1 下 %d" % n, "layout": "top1_bottom%d" % n,
+         "pos": 0.58, "d1_curve": "arc",
+         "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+        {"key": "arch_b1t%d" % n, "label": "🌈 苍穹弧线·下 1 上 %d" % n, "layout": "bottom1_top%d" % n,
+         "pos": 0.42, "d1_curve": "arch_up",
+         "border": {"style": "gradient", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
+        {"key": "swave_t1b%d" % n, "label": "🌊 S 流线弧·上 1 下 %d" % n, "layout": "top1_bottom%d" % n,
+         "pos": 0.58, "d1_curve": "s_wave",
+         "border": {"style": "solid", "width_px": 6, "color": "#88E0EF", "curve": "s_wave"}},
+        {"key": "ch_embrace_%d_%d" % (nt, nb_ch), "label": "🌈 双层怀抱弧夹心（上%d·中主·下%d）" % (nt, nb_ch),
+         "layout": "center_h_embrace_%d_%d" % (nt, nb_ch),
+         "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
+        {"key": "ch_arc_%d_%d" % (nt, nb_ch), "label": "🌈 双层同向弧夹心（上%d·中主·下%d）" % (nt, nb_ch),
+         "layout": "center_h_arc_%d_%d" % (nt, nb_ch),
+         "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arc"}},
+        {"key": "l_left%d_bottom%d" % (nl, nb), "label": "📐 L形黄金分屏（右上主+左%d下%d）" % (nl, nb),
          "layout": "l_left%d_bottom%d" % (nl, nb),
          "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-        {"key": "t1b%d" % n, "label": "上 1 下 %d" % n, "layout": "top1_bottom%d" % n,
-         "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-        {"key": "l1r%d" % n, "label": "左 1 右 %d" % n, "layout": "left1_right%d" % n,
-         "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-        {"key": "ch_tilt_%d_%d" % (nt, nb_ch), "label": "🎞️ 动感斜夹心（上%d·中主·下%d）" % (nt, nb_ch),
-         "layout": "center_h_tilt_%d_%d" % (nt, nb_ch), "rot_deg": 9.0,
-         "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
-        {"key": "ch_%d_%d" % (nt, nb_ch), "label": "横向夹心（上%d·中主·下%d）" % (nt, nb_ch),
-         "layout": "center_h_%d_%d" % (nt, nb_ch),
-         "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-        {"key": "hex_center_%d" % n, "label": "⬢ 六角中主+%d副屏" % n, "layout": "hex_center_%d" % n,
-         "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-        {"key": "shutter_%d" % n, "label": "📷 相机快门穿插（%d叶）" % n, "layout": "shutter_%d" % n,
-         "twist_deg": 38.0,
+        {"key": "l_right%d_bottom%d" % (nl, nb), "label": "📐 反L形黄金分屏（左上主+右%d下%d）" % (nl, nb),
+         "layout": "l_right%d_bottom%d" % (nl, nb),
          "border": {"style": "gradient", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
-        {"key": "heart_%d" % n, "label": "❤️ %d心形气泡分屏" % n, "layout": "shape_heart_%d" % n,
-         "border": {"style": "solid", "width_px": 6, "color": "#FF6B8B", "curve": "straight"}},
-        {"key": "dove_%d" % n, "label": "🕊️ %d和平鸽异形分屏" % n, "layout": "shape_dove_%d" % n,
-         "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
-        {"key": "clover_%d" % n, "label": "🍀 %d幸运草分屏" % n, "layout": "shape_clover_%d" % n,
-         "border": {"style": "solid", "width_px": 6, "color": "#59CE8F", "curve": "straight"}},
+        {"key": "l_left%d_top%d" % (nl, nb), "label": "📐 倒L形黄金分屏（右下主+左%d上%d）" % (nl, nb),
+         "layout": "l_left%d_top%d" % (nl, nb),
+         "border": {"style": "solid", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
+        {"key": "t1b%d" % n, "label": "上 1 下 %d（主视频在上）" % n, "layout": "top1_bottom%d" % n,
+         "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+        {"key": "b1t%d" % n, "label": "下 1 上 %d（主视频在下）" % n, "layout": "bottom1_top%d" % n,
+         "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
+        {"key": "l1r%d" % n, "label": "左 1 右 %d（主视频在左）" % n, "layout": "left1_right%d" % n,
+         "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+        {"key": "r1l%d" % n, "label": "右 1 左 %d（主视频在右）" % n, "layout": "right1_left%d" % n,
+         "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
+        {"key": "ch_tilt_%d_%d" % (nt, nb_ch), "label": "🎞️ 动感斜夹心（上%d·中主·下%d）" % (nt, nb_ch),
+         "layout": "center_h_tilt_%d_%d" % (nt, nb_ch), "rot_deg": 8.0,
+         "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
         {"key": "circle_b%d" % n, "label": "⭕ 底部%d圆圈画中画" % n, "layout": "circle_bottom%d" % n,
          "border": {"style": "solid", "width_px": 6, "color": "#F3C668", "curve": "straight"}},
         {"key": "circle_s%d" % n, "label": "⭕ 错落%d圆圈画中画" % n, "layout": "circle_scatter%d" % n,
          "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
-        {"key": "slash_t1b%d" % n, "label": "🔪 10° 斜切上 1 下 %d" % n, "layout": "top1_bottom%d" % n,
-         "pos": 0.58, "rot_deg": 10.0,
-         "border": {"style": "gradient", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
     ]
 
 
@@ -337,6 +382,7 @@ def assign_random_split_for_task(
     feather_px: float | None = None,
     backdrop: dict | None = None,
     shuffle_cells: bool = True,
+    face_safe: bool = True,
     rng=None,
 ) -> dict:
     """根据当前任务的视频轨道数量（1 主 + N 副），随机分配一种严格对应视频数的分屏样式，
@@ -387,7 +433,7 @@ def assign_random_split_for_task(
     sp["random_style_key"] = spec["key"]
     sp["custom_kind"] = spec["label"]
 
-    # 应用样式专属的几何微调（斜切角度、孔径边数、快门穿插角等）
+    # 应用样式专属的几何微调（斜切角度、孔径边数、快门穿插角、主分割线弧线等）
     divs = sp.get("dividers") or []
     if divs:
         d1 = divs[0]
@@ -397,14 +443,18 @@ def assign_random_split_for_task(
             d1["rotation_deg"] = float(spec["rot_deg"])
             if len(divs) >= 2 and str(d1.get("ch_role") or "") == "top_h":
                 divs[1]["rotation_deg"] = float(spec["rot_deg"])
+        if "d1_curve" in spec:
+            d1["curve"] = str(spec["d1_curve"])
+        if "d2_curve" in spec and len(divs) >= 2:
+            divs[1]["curve"] = str(spec["d2_curve"])
         if "sides" in spec and str(d1.get("axis")) == "circle":
             d1["sides"] = int(spec["sides"])
         if "twist_deg" in spec and str(d1.get("axis")) == "circle":
             d1["twist_deg"] = float(spec["twist_deg"])
 
-    if feather_px is not None and float(feather_px) > 0:
-        for d in divs:
-            d["feather_px"] = float(feather_px)
+    f_val = float(feather_px) if (feather_px is not None and float(feather_px) > 0) else 0.0
+    for d in divs:
+        d["feather_px"] = f_val
 
     # 边框：若调用方显式指定了非 none 边框则用调用方的，否则使用该样式的推荐精致边框
     user_bstyle = str((border or {}).get("style") or "none")
@@ -464,19 +514,31 @@ def assign_random_split_for_task(
         if isinstance(sp2.get("backdrop"), dict) and not sp2["backdrop"].get("cell"):
             sp2["backdrop"]["cell"] = order[0]
 
+    face_rep = None
+    if face_safe:
+        try:
+            from cutora.batch.face_safe import calibrate_task_face_safe
+            face_rep = calibrate_task_face_safe(task)
+            sp_after = task.get("split") or {}
+            lay = str(sp_after.get("layout") or lay)
+        except Exception:
+            pass
+
     return {
         "layout": lay,
-        "style_key": spec["key"],
-        "style_label": spec["label"],
+        "style_key": str((task.get("split") or {}).get("random_style_key") or spec["key"]),
+        "style_label": str((task.get("split") or {}).get("custom_kind") or spec["label"]),
         "assigned": assigned,
         "skipped": skipped,
         "n_videos": n_total,
+        "face_safe": face_rep,
     }
 
 
 def assign_split(task: dict, layout: str, tracks: list, *, border: dict | None = None,
                  feather_px: float | None = None, cells: list[str] | None = None,
-                 backdrop: dict | None = None, used_history: list[str] | None = None) -> dict:
+                 backdrop: dict | None = None, used_history: list[str] | None = None,
+                 face_safe: bool = True) -> dict:
     """开分屏并按顺序分格子。
 
     tracks  依次放进 cells（默认是布局里的 A、B、C…）；None 跳过那一格。
@@ -491,6 +553,7 @@ def assign_split(task: dict, layout: str, tracks: list, *, border: dict | None =
             feather_px=feather_px,
             backdrop=backdrop,
             shuffle_cells=True,
+            face_safe=face_safe,
         )
     from cutora.render.split_layout import apply_split_to_task, set_track_cell
     valid_tracks = [t for t in (tracks or []) if t is not None]
@@ -534,5 +597,12 @@ def assign_split(task: dict, layout: str, tracks: list, *, border: dict | None =
         sp2 = task.get("split") or {}
         if isinstance(sp2.get("backdrop"), dict):
             sp2["backdrop"]["cell"] = order[0]
-    return {"layout": actual_lay, "assigned": assigned, "skipped": skipped}
+    face_rep = None
+    if face_safe:
+        try:
+            from cutora.batch.face_safe import calibrate_task_face_safe
+            face_rep = calibrate_task_face_safe(task)
+        except Exception:
+            pass
+    return {"layout": actual_lay, "assigned": assigned, "skipped": skipped, "face_safe": face_rep}
 

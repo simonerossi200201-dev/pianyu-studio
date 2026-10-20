@@ -22,9 +22,10 @@ def vcodec_quality_args(use_gpu, export_mode="compressed"):
     vcodec, _reason = pick_h264(bool(use_gpu))
     gpu = vcodec == "h264_nvenc"
     if gpu:
+        nv_preset = os.environ.get("CUTORA_NVENC_PRESET") or "p2"
         if export_mode == "original":
-            return "h264_nvenc", "p4", ["-rc", "constqp", "-qp", "0"]
-        return "h264_nvenc", "p4", ["-rc", "vbr", "-cq", "18", "-b:v", "0"]
+            return "h264_nvenc", nv_preset, ["-rc", "constqp", "-qp", "0"]
+        return "h264_nvenc", nv_preset, ["-rc", "vbr", "-cq", "18", "-b:v", "0"]
     if export_mode == "original":
         return "libx264", "ultrafast", ["-crf", "0"]
     return "libx264", "veryfast", ["-crf", "18"]

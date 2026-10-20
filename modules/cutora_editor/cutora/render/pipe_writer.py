@@ -131,6 +131,34 @@ class FfmpegPipeWriter:
             return
         self._thread.start()
 
+    def ensure_canvas_pool(self, min_count: int):
+        """Grow the free canvas pool so parallel compose threads + handoff never starve."""
+        if self._free is None or self._expected_bytes is None:
+            return
+        from PySide6.QtGui import QImage
+        need = max(0, int(min_count) - self._free.maxsize)
+        if need <= 0:
+            return
+        # Measure w, h from an existing canvas or expected_bytes
+        sample = None
+        try:
+            sample = self._free.get_nowait()
+            self._free.put_nowait(sample)
+        except Exception:
+            sample = None
+        if sample is None:
+            return
+        w, h, fmt = sample.width(), sample.height(), sample.format()
+        new_q = queue.Queue(maxsize=int(min_count))
+        while True:
+            try:
+                new_q.put_nowait(self._free.get_nowait())
+            except queue.Empty:
+                break
+        for _ in range(need):
+            new_q.put_nowait(QImage(w, h, fmt))
+        self._free = new_q
+
     def acquire_canvas(self):
         """Take a free QImage. Blocks while 8 frames are in flight, unless stopped."""
         if self._free is None:
@@ -226,6 +254,37 @@ class FfmpegPipeWriter:
                     continue
                 if item is _SENTINEL:
                     break
+                if (
+                    not isinstance(item, (bytes, bytearray, memoryview))
+                    and hasattr(item, "constBits")
+                    and item.bytesPerLine() == item.width() * 4
+                ):
+                    mv = memoryview(item.constBits())
+                    want_len = item.height() * item.width() * 4
+                    if len(mv) != want_len:
+                        mv = mv[:want_len]
+                    if self._expected_bytes is not None and len(mv) != int(self._expected_bytes):
+                        mv_len = len(mv)
+                        del mv
+                        raise FrameSizeMismatch(
+                            "帧 %s 字节数不符：写出 %d，应为 %d。" % (
+                                self._written, mv_len, int(self._expected_bytes))
+                        )
+                    n = self._stdin.write(mv)
+                    mv_len = len(mv)
+                    del mv
+                    if n is not None and n != mv_len:
+                        raise FrameSizeMismatch(
+                            "帧 %d 短写：只写进 %s/%d 字节，后续帧会整体错位，已中止。"
+                            % (self._written, n, mv_len))
+                    self._written += 1
+                    try:
+                        self._stdin.flush()
+                    except Exception:
+                        _LOG.exception("ffmpeg stdin flush 失败")
+                        raise
+                    self._recycle(item)
+                    continue
                 payload = _as_payload(
                     item, self._expected_bytes, self._written)
                 n = self._stdin.write(payload)
