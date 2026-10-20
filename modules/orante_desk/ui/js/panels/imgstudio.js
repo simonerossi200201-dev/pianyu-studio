@@ -104,7 +104,7 @@ window.Panel_imgstudio = {
     let lastPt = null;
     let dragHandle = null; // 'title' | 'sig' | 'sticker' | null
 
-    const currentTid = computed(() => (ui.panelTid || '').trim());
+    const currentTid = computed(() => '');
 
     const filteredItems = computed(() => {
       const list = state.items || [];
@@ -894,23 +894,14 @@ window.Panel_imgstudio = {
       <div class="spacer"></div>
 
       <div class="ims-top-actions">
-        <button type="button" class="btn sm" @click="importFromTask('images')" title="把当前排片任务里的图片导入制图工坊进行精修/排版/抠图">
-          📥 导入任务图片
-        </button>
-        <button type="button" class="btn sm" @click="importFromTask('prompts')" title="把当前排片任务的描述语/分镜导入制图队列">
-          📝 导入任务分镜词
-        </button>
+        <span class="muted mono" style="font-size:12px" v-if="state.project_dir" :title="state.project_dir">
+          独立制图空间
+        </span>
         <button type="button" class="btn sm" @click="batchForm.showFolderDlg = true">
-          📂 导入本地文件夹…
+          📂 导入本地图片/文件夹…
         </button>
-        <label class="ims-inline-chk" title="送入排片任务时使用带文字署名的成品图，不勾则送入纯净原图">
-          <input type="checkbox" v-model="batchForm.sendUseComposed"> 含排版字入片
-        </label>
-        <button type="button" class="btn sm primary" @click="sendToOranteTask" :disabled="!state.items.length">
-          🎬 一键送入排片任务 ({{ selectedIds.size || state.counts.selected || state.counts.ready }})
-        </button>
-        <button type="button" class="btn sm" @click="openOutputFolder" title="在资源管理器中打开制图工坊输出目录">
-          📁 打开目录
+        <button type="button" class="btn sm primary" @click="openOutputFolder" title="在资源管理器中打开独立制图工坊输出目录">
+          📁 打开成片目录
         </button>
       </div>
     </header>
@@ -1139,8 +1130,8 @@ window.Panel_imgstudio = {
         </div>
 
         <div class="ims-empty" v-else>
-          <h3>🎨 制图工坊队列为空</h3>
-          <p>在左侧输入提示词多尺寸批量出图，或点击顶部「📥 导入任务图片 / 📝 导入任务分镜词」直接开始精修与排版。</p>
+          <h3>🎨 独立制图工坊队列为空</h3>
+          <p>在左侧输入提示词多尺寸批量出图，或点击右上角「📂 导入本地图片/文件夹…」直接开始批量精修、抠图、扩图与排版。</p>
           <p class="muted">快捷键：方向键切换卡片 · Enter/1 标记入选 · X 淘汰 · 双击或按 Tab 进入单图精修画布</p>
         </div>
       </div>

@@ -15,7 +15,7 @@
   <header class="top">
     <div class="brand"><img src="/ui/assets/png/icon-64.png" width="22" height="22" alt="" style="width:22px;height:22px;vertical-align:-5px;margin-right:8px;border-radius:5px">Orante <small>{{ t('app.version') }} {{ store.version }}</small><small class="top-port" v-if="portLabel">{{ portLabel }}</small></div>
     <button class="tb" type="button" :title="t('top.new_window_tip')" @click="newWindow">＋ {{ t('top.new_window') }}</button>
-    <task-pick class="tp-cap" variant="capsule" v-model="capTid" min-status="draft" :tasks="capTasks"></task-pick>
+    <task-pick v-if="ui.node !== 'imgstudio'" class="tp-cap" variant="capsule" v-model="capTid" min-status="draft" :tasks="capTasks"></task-pick>
     <div class="spacer"></div>
     <button class="tb" v-if="descQueue && descQueue.on" @click="goNode('gemini')" :title="t('gemini.queue')">
       <span class="dot on" :class="{pause: descQueue.paused}"></span>{{ t('top.descq') }}

@@ -5,13 +5,13 @@ window.NodeBar = {
   setup() {
     const nodes = [
       { id: 'tasks', k: 'node.tasks', sub: 'node.tasks.sub' },
-      { id: 'imgstudio', k: 'node.imgstudio', sub: 'node.imgstudio.sub' },
       { id: 'gemini', k: 'node.gemini', sub: 'node.gemini.sub' },
       { id: 'track', k: 'node.track', sub: 'node.track.sub' },
       { id: 'generate', k: 'node.generate', sub: 'node.generate.sub' },
       { id: 'review', k: 'node.review', sub: 'node.review.sub' },
     ];
-    return { nodes, t };
+    const standalone = { id: 'imgstudio', k: 'node.imgstudio', sub: 'node.imgstudio.sub' };
+    return { nodes, standalone, t };
   },
   template: `
   <nav class="nodebar">
@@ -24,5 +24,12 @@ window.NodeBar = {
         <span class="txt"><b>{{ t(n.k) }}</b><small>{{ (subs && subs[n.id]) || t(n.sub) }}</small></span>
       </button>
     </template>
+    <div class="nodebar-sep" title="独立模块（不参与 1–5 视频排片流程）"></div>
+    <button class="node standalone" :class="{active: node===standalone.id}" @click="$emit('go', standalone.id)"
+            :title="(tips && tips[standalone.id]) || t(standalone.sub)">
+      <span class="idx standalone-ico">🎨</span>
+      <span class="lamp" :class="lamps[standalone.id]||'idle'"></span>
+      <span class="txt"><b>{{ t(standalone.k) }}</b><small>{{ (subs && subs[standalone.id]) || t(standalone.sub) }}</small></span>
+    </button>
   </nav>`
 };

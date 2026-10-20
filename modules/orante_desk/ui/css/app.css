@@ -99,6 +99,11 @@ nav.nodebar{display:flex;align-items:center;justify-content:center;gap:0;backgro
 .link{width:34px;height:2px;background:var(--rule-2);position:relative}
 .link::after{content:"";position:absolute;right:-1px;top:-3px;border:4px solid transparent;border-left-color:var(--rule-2)}
 .link.done{background:var(--ok)}.link.done::after{border-left-color:var(--ok)}
+.nodebar-sep{width:1px;height:28px;background:var(--rule-2);margin:0 22px;flex:0 0 auto}
+.node.standalone{border:1px dashed var(--rule-2);background:rgba(217,163,79,.04)}
+.node.standalone:hover{background:var(--raise);border-color:var(--accent)}
+.node.standalone.active{background:var(--panel-2);border-style:solid;border-color:var(--accent);box-shadow:0 0 0 1px rgba(217,163,79,.28)}
+.node .idx.standalone-ico{font-family:var(--ui);font-size:14px;width:18px;text-align:center}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 
 /* ---- 通用组件 ---- */
