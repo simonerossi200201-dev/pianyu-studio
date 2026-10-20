@@ -149,6 +149,37 @@ def studio_direction(prompt: str, line: str = "") -> str:
     line = (line or "").strip()
     if line and s.rstrip().endswith(line):
         s = s.rstrip()[: -len(line)]
+    if line:
+        # 1) 静态首帧识图常把照片里的闭嘴状态写成“双唇微抿/紧闭双唇/保持动作不变”，
+        #    同时原提示词里的“强烈的面部微表情/悲恸/颤抖”在本地 LTX-2.5 蒸馏模型上会导致五官夸张扭曲与张大嘴咆哮；
+        #    统一替换为克制、自然、真实的说话口型描述。
+        for closed_kw in ("双唇微抿", "紧闭双唇", "嘴唇紧闭", "双唇紧闭", "嘴唇闭合", "嘴巴闭合"):
+            s = s.replace(closed_kw, "双唇随温和说话自然轻柔开合")
+        s = s.replace("保持动作不变", "双手与身体姿势保持端庄稳定，双唇随说话自然轻柔开合")
+        s = s.replace("强烈的面部微表情", "自然平和的真实面部神态")
+        s = s.replace("神情悲恸而虔诚", "神情平静温和而虔诚")
+        s = s.replace("悲恸", "平和虔诚")
+        s = s.replace("下颌绷紧，", "")
+        s = s.replace("颤抖仍在，", "")
+        s = s.replace(
+            "只有祷告时自然的轻微起伏和手部的细微动作",
+            "画面正中央的主角全程以平静自然的口型温和说话，双唇随台词音节自然轻柔开合（绝不夸张张大嘴、绝非画外音旁白）",
+        )
+    if "人物始终留在画面中间" in s:
+        # 2) LTX-2.5 遇到“平移”会把主角甩出画外，遇到“微推”会直接推成怼脸大特写；
+        #    改为稳固保持起始图原画幅景别（中景/全景），不推近特写、不横移、不切镜头。
+        for pan_kw in (
+            "镜头轻微明显地向画面左侧平移。",
+            "镜头轻微明显地向画面右侧平移。",
+            "镜头向画面左侧平移。",
+            "镜头向画面右侧平移。",
+            "镜头始终留在人群外围，",
+        ):
+            s = s.replace(pan_kw, "")
+        s = s.replace(
+            "运动要轻微柔和、明显，不要完全不动的固定镜头。人物始终留在画面中间。",
+            "镜头全程平稳固定在起始图的原景别构图，保持主角稳居画面正中央，绝不推近成面部特写、绝不切镜头、绝不把主角移出画面外。",
+        )
     kept_lines = []
     for ln in s.splitlines():
         parts = re.split(r"(?<=[。！？!?])", ln)
@@ -174,13 +205,16 @@ def normalize_cmd(ffmpeg: str, raw: Path, dest: Path, seconds: float, aspect: st
     cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw), "-t", f"{float(seconds):.3f}"]
     if match_spec:
         w, h = target_size(aspect)
-        cmd += ["-vf", f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                       f"crop={w}:{h},setsar=1,fps=24"]
-    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"]
-    if match_spec:
-        cmd += ["-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "160k"]
+        cmd += ["-vf", f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos+accurate_rnd+full_chroma_int,"
+                       f"crop={w}:{h},unsharp=5:5:0.48:3:3:0.18,setsar=1,fps=24"]
     else:
-        cmd += ["-c:a", "aac"]
+        cmd += ["-vf", "unsharp=5:5:0.45:3:3:0.15"]
+    cmd += ["-c:v", "libx264", "-preset", "fast", "-crf", "15", "-pix_fmt", "yuv420p"]
+    cmd += ["-af", "adeclip,highpass=f=70,lowpass=f=15500,afftdn=nf=-25,equalizer=f=3200:t=q:w=1.2:g=1.8,alimiter=limit=0.92:level=disabled"]
+    if match_spec:
+        cmd += ["-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "192k"]
+    else:
+        cmd += ["-c:a", "aac", "-b:a", "192k"]
     cmd += ["-movflags", "+faststart", str(dest)]
     return cmd
 
@@ -203,36 +237,74 @@ class StudioEngine(Engine):
         if not bool(config.get("engine.studio.enabled", False)):
             config.set("engine.studio.enabled", True)
         h = health()
-        if h.get("ok") and h.get("comfy"):
-            return
-        launcher = str(config.get("engine.studio.launcher", "") or "").strip()
-        if launcher.lower() in ("off", "none", "no", "0"):
-            launcher = ""
-        elif not launcher:
-            launcher = DEFAULT_LAUNCHER
-        if launcher and Path(launcher).is_file():
-            self.log(f"  · 本地模型没开，正在启动：{launcher}")
-            try:
-                kw = {}
-                if sys.platform == "win32":
-                    kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-                    subprocess.Popen(["cmd", "/c", launcher], cwd=str(Path(launcher).parent),
-                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL, **kw)
-                else:
-                    subprocess.Popen([launcher], cwd=str(Path(launcher).parent))
-            except Exception as e:  # noqa: BLE001
-                self.log(f"  · 启动失败：{e}")
-            t0 = time.time()
-            while time.time() - t0 < LAUNCH_WAIT:
-                time.sleep(3)
+        if not h.get("ok"):
+            # 优先直接拉起本地算力网关进程（无窗口、2 秒就绪），再兜底启动脚本
+            ltx_root = Path(r"D:\0_LTX")
+            ltx_py = ltx_root / "runtime" / "venv" / "Scripts" / "python.exe"
+            gw_script = ltx_root / "modules" / "studio_gateway" / "server.py"
+            launched = False
+            if ltx_py.is_file() and gw_script.is_file():
+                self.log("  · 正在唤醒本地视频模型网关 (127.0.0.1:7870)…")
+                try:
+                    kw = {}
+                    if sys.platform == "win32":
+                        kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                    env = os.environ.copy()
+                    env["PYTHONIOENCODING"] = "utf-8"
+                    env["PYTHONUTF8"] = "1"
+                    subprocess.Popen(
+                        [str(ltx_py), str(gw_script)],
+                        cwd=str(ltx_root),
+                        env=env,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        **kw,
+                    )
+                    launched = True
+                except Exception as e:  # noqa: BLE001
+                    self.log(f"  · 直接拉起网关失败：{e}")
+            if not launched:
+                launcher = str(config.get("engine.studio.launcher", "") or "").strip()
+                if launcher.lower() in ("off", "none", "no", "0"):
+                    launcher = ""
+                elif not launcher:
+                    launcher = DEFAULT_LAUNCHER
+                if launcher and Path(launcher).is_file():
+                    self.log(f"  · 本地模型没开，正在启动：{launcher}")
+                    try:
+                        kw = {}
+                        if sys.platform == "win32":
+                            kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                            subprocess.Popen(["cmd", "/c", launcher], cwd=str(Path(launcher).parent),
+                                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                             stderr=subprocess.DEVNULL, **kw)
+                        else:
+                            subprocess.Popen([launcher], cwd=str(Path(launcher).parent))
+                        launched = True
+                    except Exception as e:  # noqa: BLE001
+                        self.log(f"  · 启动失败：{e}")
+            if launched:
+                t0 = time.time()
+                while time.time() - t0 < LAUNCH_WAIT:
+                    time.sleep(2)
+                    h = health()
+                    if h.get("ok"):
+                        break
+        if h.get("ok"):
+            if not h.get("comfy_reachable", h.get("comfy")):
+                self.log("  · 正在唤醒本地视频模型 LTX 推理引擎 (ComfyUI 127.0.0.1:8188)…")
+                try:
+                    http_json("POST", "/v1/warmup", payload={}, timeout=95.0)
+                except Exception:  # noqa: BLE001
+                    pass
                 h = health()
-                if h.get("ok") and h.get("comfy"):
-                    self.log("  · 本地模型已就绪")
-                    return
+            if h.get("ok") and h.get("comfy"):
+                self.log("  · 本地视频模型 LTX 已就绪")
+                return
         if h.get("ok") and not h.get("comfy"):
-            raise EngineUnavailable("本地模型的接口开着，但 ComfyUI 没开（127.0.0.1:8188）：双击 D:\\0_LLM\\启动Studio API.bat")
-        raise EngineUnavailable(f"本地模型（Studio Zero）没开（{base_url()} 连不上）：双击 D:\\0_LLM\\启动Studio API.bat")
+            raise EngineUnavailable("本地模型的接口开着，但 ComfyUI 没开（127.0.0.1:8188）：双击 D:\\0_LTX\\启动本地算力网关.bat")
+        raise EngineUnavailable(f"本地模型（Studio Zero）没开（{base_url()} 连不上）：双击 D:\\0_LTX\\启动本地算力网关.bat")
 
     def close(self) -> None:
         """Job 结束 / 取消：Studio 那边还没出完的就取消掉，免得显卡白跑。"""
@@ -257,8 +329,26 @@ class StudioEngine(Engine):
         image = Path(image)
         if not image.is_file():
             raise OranteError(f"找不到起始图 {image}", "先把图下好。")
-        line = "" if silent else str((seg or {}).get("text") or "").strip()
+        signals = dict((seg or {}).get("_orante_signals") or {}) if isinstance(seg, dict) else {}
+        if not signals.get("suite_name"):
+            try:
+                from ..services import suites as _suites_mod
+                _sid = _suites_mod.current_id()
+                if _sid:
+                    signals["suite_id"] = _sid
+                    signals["suite_name"] = str((_suites_mod.get(_sid) or {}).get("name") or "")
+            except Exception:  # noqa: BLE001
+                pass
+        suite_name = str(signals.get("suite_name") or "")
+        is_silent = bool(silent or signals.get("silent") or ("静音" in suite_name and not str((seg or {}).get("text") or "").strip()))
+        line = "" if is_silent else str((seg or {}).get("text") or "").strip()
+        if not line:
+            is_silent = True
+        signals["silent"] = is_silent
+        voice_tag = str(signals.get("voice") or "").strip()
         direction = studio_direction(prompt, line)
+        if not is_silent and voice_tag and voice_tag not in direction:
+            direction = f"{voice_tag}\n{direction}".strip()
         aspect = caps.aspect_for_image(image, "flow")   # 和 Flow 同一条规则，不读账号
         quality, lock_last = pick_mode(prompt)
         body = {
@@ -266,6 +356,9 @@ class StudioEngine(Engine):
             "end_image_path": str(Path(last_image).resolve()) if last_image else None,
             "direction": direction,
             "line": line,
+            "silent": is_silent,
+            "voice": voice_tag,
+            "signals": signals,
             "seconds": int(duration),
             "aspect": aspect,
             "quality": quality,
@@ -290,8 +383,8 @@ class StudioEngine(Engine):
         self._active.add(gid)
         if isinstance(seg, dict):
             seg["studio_job"] = dict(meta)
-        mode = {"camera": "运镜档 640p", "balanced": "均衡 640p", "fast": "极速 576p",
-                "high": "高质 768p", "best": "精品 768p（8 步）"}.get(quality, quality)
+        mode = {"camera": "运镜档 704×1280 高清+音质增强", "balanced": "均衡 704×1280 高清+音质增强", "fast": "极速 576p",
+                "high": "高质 768p+音质增强", "best": "精品 768p（8 步）+音质增强"}.get(quality, quality)
         self.log(f"  · 本地模型：{aspect} · {int(duration)} 秒 · {mode} · {'锁尾帧' if lock_last else '不锁尾帧'}")
         return gid
 
@@ -321,12 +414,14 @@ class StudioEngine(Engine):
         out: dict[str, dict] = {}
         for gid in gen_ids:
             if gid in self._void:
+                self._active.discard(gid)
                 out[gid] = {"state": "failed", "error": "本地模型这条片子作废了，用原图重交"}
                 continue
             try:
                 r = http_json("GET", f"/v1/videos/{self._sid(gid)}")
             except StudioHTTPError as e:
                 if e.status == 404:
+                    self._active.discard(gid)
                     out[gid] = {"state": "failed", "error": "本地模型那边找不到这条（Studio API 可能重启过）"}
                 else:
                     out[gid] = {"state": "pending", "queued": False}
@@ -341,6 +436,7 @@ class StudioEngine(Engine):
             elif st == "done":
                 out[gid] = {"state": "done", "url": f"{base_url()}/v1/videos/{self._sid(gid)}/file"}
             else:
+                self._active.discard(gid)
                 why = r.get("error") or ("已取消" if st == "cancelled" else "本地模型出片失败")
                 out[gid] = {"state": "failed", "error": f"本地模型：{why}"[:400]}
         return out

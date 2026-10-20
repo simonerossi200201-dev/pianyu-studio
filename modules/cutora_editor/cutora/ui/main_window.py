@@ -11999,14 +11999,20 @@ class MainWindow(CommandBodies, QMainWindow):
         if 0 <= idx < len(tasks):
             log_subtitle_source("stitch_import", tasks[idx])
         self.project_path = None
-        # BUG-38 配套：拼接进来的是新工程，素材尺寸和画布不一致就问一次
-        # （和打开工程走同一个提示，不另写一套）。
-        self._canvas_mismatch_asked = False
         try:
-            self._prompt_canvas_if_sources_mismatch()
+            import re as _re
+            first_p = str(asprojs[0]) if asprojs else ""
+            m_dt = _re.search(r"(20\d{2}-\d{2}-\d{2})", first_p)
+            if m_dt:
+                day_str = m_dt.group(1)
+                idx_dt = first_p.find(day_str)
+                day_dir = first_p[: idx_dt + len(day_str)]
+                if os.path.isdir(day_dir):
+                    auto_proj = os.path.join(day_dir, f"{day_str}_智能拼接.cutora")
+                    self.bus.execute("project.save_as", {"path": auto_proj}, source="api")
         except Exception:
-            from cutora.core.log import get_logger
-            get_logger("cutora.ui.main_window").exception("拼接导入后画布检查失败")
+            pass
+        self._canvas_mismatch_asked = True
 
     def start_batch_ai(self):
         unaligned_count = sum(

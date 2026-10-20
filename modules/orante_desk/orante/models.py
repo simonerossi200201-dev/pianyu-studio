@@ -127,6 +127,13 @@ class Manifest:
             d["mode"] = "first_frame"
         if not isinstance(d.get("chain"), dict):
             d["chain"] = {}
+        for seg in d.get("segments") or []:
+            if isinstance(seg, dict):
+                st = seg.get("status")
+                if st in ("pending", "queued", "waiting"):
+                    seg["status"] = "planned"
+                elif st in ("done", "completed", "succeeded"):
+                    seg["status"] = "collected"
         return Manifest(**{k: d[k] for k in Manifest.__dataclass_fields__ if k in d})
 
     def save(self, task_dir: Path) -> None:
@@ -140,9 +147,23 @@ class Manifest:
         p = Path(task_dir) / MANIFEST
         p.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".manifest-", suffix=".tmp")
+        data_str = json.dumps(asdict(self), ensure_ascii=False, indent=1)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(asdict(self), f, ensure_ascii=False, indent=1)
-        os.replace(tmp, p)
+            f.write(data_str)
+        import time as _time
+        for _att in range(8):
+            try:
+                os.replace(tmp, p)
+                break
+            except PermissionError:
+                if _att == 7:
+                    try:
+                        p.write_text(data_str, encoding="utf-8")
+                        os.unlink(tmp)
+                    except OSError:
+                        raise
+                    break
+                _time.sleep(0.05 * (_att + 1))
 
     def validate(self) -> None:
         seen = set()

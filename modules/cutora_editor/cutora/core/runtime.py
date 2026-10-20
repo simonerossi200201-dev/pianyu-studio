@@ -193,18 +193,24 @@ def preload_system_msvc_runtime() -> str | None:
 
 
 def _nvidia_gpu_name() -> str | None:
-    """不碰 torch 的显卡名（nvidia-smi）。没有 N 卡 / 没有 nvidia-smi → None。"""
+    """不碰 torch 的显卡名（nvidia-smi / nvcuda.dll）。没有 N 卡 → None。"""
+    if _CUDA_DEVICE_NAME and _CUDA_DEVICE_NAME != "cpu":
+        return _CUDA_DEVICE_NAME
     try:
         import subprocess
         from cutora.core.proc import run as _run
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
-        r = _run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-                 capture_output=True, text=True, timeout=4, creationflags=flags)
+        smi_exe = r"C:\Windows\System32\nvidia-smi.exe" if (os.name == "nt" and os.path.isfile(r"C:\Windows\System32\nvidia-smi.exe")) else "nvidia-smi"
+        r = _run([smi_exe, "--query-gpu=name", "--format=csv,noheader"],
+                 capture_output=True, text=True, timeout=8, creationflags=flags)
         if r.returncode == 0:
             name = (r.stdout or "").strip().splitlines()[0].strip()
-            return name or None
+            if name:
+                return name
     except Exception:
         pass
+    if os.name == "nt" and os.path.isfile(r"C:\Windows\System32\nvcuda.dll"):
+        return "NVIDIA GeForce RTX GPU"
     return None
 
 

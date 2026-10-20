@@ -533,3 +533,126 @@ def arrange(job, track=None):
     if n_kept:
         job.log(f"  · {n_kept} 段因为锁定没动")
     return {"n": sm["n"], "summary": sm, "seed": res["seed"], "n_prompt_locked": n_kept}
+
+
+def auto_arrange_manifest(m: Manifest, task_dir: Path, track: dict | None = None) -> dict:
+    """对一个任务的 Manifest 直接执行自动配图编排（不占后台 Job 队列）。
+    对短视频（单张图 p01）直接全段填入 p01；对多图任务按标准间隔排布规则配图。
+    """
+    if not m.segments:
+        return {"rows": [], "summary": {"n": 0, "n_changed": 0}}
+    tr = _norm_track(track, m)
+    for k, v in list((tr.get("pins") or {}).items()):
+        im = m.image(v)
+        if im and im.get("role") == "空镜":
+            del tr["pins"][k]
+    if tr.get("seed") is None:
+        import random
+        tr["seed"] = random.randint(1, 99999)
+    tr_saved = {k: v for k, v in tr.items() if k != "keep"}
+    m.track = tr_saved
+    res = _run_plan(m, task_dir, tr)
+    trackmod.apply(m, res["rows"])
+    # 兜底：若存在单张主体图（比如 p01 曾被标 blocked 或图池仅 1 张），确保所有未配图段都挂上第一张主体图
+    subj = [im.get("p") for im in (m.images or []) if isinstance(im, dict) and im.get("role") != "空镜" and im.get("p")]
+    fallback_p = subj[0] if subj else ((m.images[0].get("p") if m.images else "") or "p01")
+    if fallback_p:
+        for sg in m.segments:
+            if not (sg.get("image") or "").strip():
+                sg["image"] = fallback_p
+    return res
+
+
+def batch_arrange_all(
+    task_ids: list[str] | None = None,
+    *,
+    only_unarranged: bool = False,
+    start_generate: bool = False,
+) -> dict:
+    """一键批量对所有任务（或指定任务）应用/跳过编排，并支持可选直接排队开始生成。"""
+    from . import broll, split as splitmod
+    from .. import jobs as jobmod
+
+    if task_ids:
+        target_tasks = []
+        for tid in task_ids:
+            try:
+                target_tasks.append(taskmod.get(str(tid).strip()))
+            except Exception:
+                continue
+    else:
+        target_tasks = taskmod.list_all(include_finished=False)
+
+    arranged_ids: list[str] = []
+    skipped: list[dict] = []
+    started_jobs: list[dict] = []
+
+    for t in target_tasks:
+        tid = t.get("id") or ""
+        if not tid or t.get("archived"):
+            continue
+        st = t.get("status") or "draft"
+        if st in ("draft", "trash", "finished"):
+            skipped.append({"id": tid, "reason": st})
+            continue
+        d_str = t.get("dir") or ""
+        if not d_str or not Path(d_str).is_dir():
+            skipped.append({"id": tid, "reason": "no_dir"})
+            continue
+        d = Path(d_str)
+        try:
+            _, m, _ = broll.load_synced(tid)
+        except Exception as e:
+            skipped.append({"id": tid, "reason": str(e)})
+            continue
+        if not m.segments:
+            skipped.append({"id": tid, "reason": "no_segments"})
+            continue
+
+        # 如果任务表里的引擎和 manifest 当前拆段引擎不一致且尚未收片，先按当前引擎规则自动重拆段
+        t_eng = str(t.get("engine") or "").strip().lower()
+        m_eng = str(((m.split or {}).get("rule") or {}).get("engine") or m.engine or "").strip().lower()
+        has_collected = any(sg.get("status") == "collected" for sg in (m.segments or []))
+        if t_eng in ("flow", "grok", "studio") and t_eng != m_eng and not has_collected:
+            try:
+                splitmod.resplit_task_for_engine(tid, t_eng, new_account_id=t.get("account_id"))
+                m = Manifest.load(d)
+            except Exception:
+                pass
+
+        missing_img = any(not (sg.get("image") or "").strip() for sg in (m.segments or []))
+        if only_unarranged and st not in ("prepared", "described") and not missing_img:
+            skipped.append({"id": tid, "reason": "already_arranged"})
+            continue
+
+        auto_arrange_manifest(m, d)
+        m.save(d)
+        if st in ("prepared", "described"):
+            taskmod.set_status(tid, "arranged")
+        c = taskmod.remember_counts(d, m)
+        taskmod.emit_seg_changed(tid, c, force=True)
+        arranged_ids.append(tid)
+
+    events.emit("tasks.changed")
+
+    if start_generate:
+        # 对所有已编排且待出片的任务排队启动 generate
+        queue_tids = list(arranged_ids)
+        for t in target_tasks:
+            tid = t.get("id") or ""
+            if tid and tid not in queue_tids and (t.get("status") in ("arranged",)):
+                queue_tids.append(tid)
+        for tid in queue_tids:
+            try:
+                j = jobmod.start("generate", tid)
+                started_jobs.append({"task_id": tid, "job_id": getattr(j, "id", "")})
+            except Exception as e:
+                skipped.append({"id": tid, "reason": f"start_generate: {e}"})
+
+    return {
+        "arranged": arranged_ids,
+        "count": len(arranged_ids),
+        "started_jobs": started_jobs,
+        "started_count": len(started_jobs),
+        "skipped": skipped,
+    }

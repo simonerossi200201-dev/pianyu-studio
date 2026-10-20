@@ -28,18 +28,18 @@ _STATE = {"ok": set(), "no": set(), "gpu": None, "asking": False}
 
 
 def has_gpu() -> bool:
-    """这台电脑有没有能用的 NVIDIA 显卡（nvidia-smi 能看到）。``CUTORA_FAKE_NO_GPU=1`` 模拟没有。"""
+    """这台电脑有没有能用的 NVIDIA 显卡（nvidia-smi / nvcuda.dll 能看到）。``CUTORA_FAKE_NO_GPU=1`` 模拟没有。"""
     import os
     if os.environ.get("CUTORA_FAKE_NO_GPU") == "1":
         return False
     if os.environ.get("CUTORA_FAKE_GPU") == "1":       # 测试机没 N 卡也别弹提示把测试卡住
         return True
-    if _STATE["gpu"] is None:
+    if not _STATE["gpu"]:
         try:
             from cutora.fx.gpu import has_nvidia_gpu
             _STATE["gpu"] = bool(has_nvidia_gpu())
         except Exception:
-            _STATE["gpu"] = False
+            _STATE["gpu"] = bool(os.name == "nt" and os.path.isfile(r"C:\Windows\System32\nvcuda.dll"))
     return bool(_STATE["gpu"])
 
 

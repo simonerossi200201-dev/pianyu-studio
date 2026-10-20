@@ -2482,9 +2482,29 @@ class DailyWorkflowConductor:
         cutora_dir = STUDIO_ROOT / "modules" / "cutora_editor"
         if not cutora_dir.is_dir():
             return False
+        if room == "stitch":
+            try:
+                from core.spine_db import get_spine_db
+                get_spine_db().export_batch_for_cutora_stitch()
+            except Exception:
+                pass
+            try:
+                from core.table_sync import HANDOFF_FILE, prepare_cutora_stitch_handoff
+                need_prep = True
+                if HANDOFF_FILE.is_file():
+                    try:
+                        hd = json.loads(HANDOFF_FILE.read_text(encoding="utf-8"))
+                        if isinstance(hd, dict) and not hd.get("consumed") and (time.time() * 1000 - float(hd.get("created_at") or 0)) < 10000:
+                            need_prep = False
+                    except Exception:
+                        pass
+                if need_prep:
+                    prepare_cutora_stitch_handoff(auto_start=True, auto_ai=True, source="launcher")
+            except Exception:
+                pass
         stats = self.get_live_workspace_stats()
         proj_str = (project_path or "").strip()
-        if not proj_str:
+        if not proj_str and room not in ("stitch", "ai_studio"):
             raw_dl_dir = Path(stats["raw_dl_dir"])
             day_dir = Path(stats["day_dir"])
             for search_d in (raw_dl_dir, day_dir):
@@ -2509,7 +2529,7 @@ class DailyWorkflowConductor:
                     kernel32.CloseHandle(h)
                     if proj_str and Path(proj_str).is_file():
                         self.call_cutora_api("project.open", {"path": str(Path(proj_str).resolve())})
-                    self.call_cutora_api("ui.focus", {"panel": "preview"})
+                    self.call_cutora_api("ui.focus", {"panel": room or "preview"})
                     return False
             except Exception:
                 pass
@@ -2518,7 +2538,7 @@ class DailyWorkflowConductor:
         if proj_str and Path(proj_str).is_file():
             api_res = self.call_cutora_api("project.open", {"path": str(Path(proj_str).resolve())})
             if api_res.get("ok"):
-                self.call_cutora_api("ui.focus", {"panel": "preview"})
+                self.call_cutora_api("ui.focus", {"panel": room or "preview"})
                 return False
 
         env = os.environ.copy()
@@ -2526,6 +2546,8 @@ class DailyWorkflowConductor:
         env["CUTORA_RUNTIME"] = str(STUDIO_ROOT / "runtime")
         if room:
             env["CUTORA_START_ROOM"] = room
+        if room == "stitch":
+            env["CUTORA_SYNC_ORANTE"] = "1"
         if proj_str and Path(proj_str).is_file():
             env["CUTORA_OPEN_PROJECT"] = str(Path(proj_str).resolve())
         env["CUTORA_BATCH_DIR"] = stats["raw_dl_dir"]

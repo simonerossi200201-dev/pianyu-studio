@@ -112,10 +112,13 @@ SPINE = SpineDB()
 _COMFY_LAUNCH_LOCK = threading.Lock()
 
 
+_NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def comfy_alive(timeout: float = 2.0) -> bool:
     try:
         req = urllib.request.Request(f"{COMFY_URL}/system_stats", method="GET")
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _NO_PROXY_OPENER.open(req, timeout=timeout) as resp:
             return resp.status == 200
     except Exception:
         return False
@@ -280,8 +283,34 @@ def _run_ltx25_video(rec: dict[str, Any]) -> None:
     runner = _resolve_runner("bench/ltx25/ltx25_run.py", r"D:\0_LLM\bench\ltx25\ltx25_run.py")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     prompt_file = OUT_DIR / f"prompt_{rec['id']}.txt"
-    prompt_text = p.get("prompt") or f"{p.get('direction', '')}\n{p.get('line', '')}".strip()
+    signals = p.get("signals") if isinstance(p.get("signals"), dict) else {}
+    is_silent_req = bool(p.get("silent") or signals.get("silent"))
+    spoken_line = "" if is_silent_req else str(p.get("line") or "").strip()
+    direction_text = str(p.get("direction") or "").strip()
+    voice_tag = str(p.get("voice") or signals.get("voice") or "").strip()
+    if not is_silent_req and voice_tag and voice_tag not in direction_text:
+        direction_text = f"{voice_tag}\n{direction_text}".strip()
+    if p.get("prompt") and not direction_text:
+        prompt_text = str(p.get("prompt")).strip()
+    elif direction_text:
+        prompt_text = direction_text
+    else:
+        prompt_text = spoken_line
     prompt_file.write_text(prompt_text, encoding="utf-8")
+
+    line_file: Path | None = None
+    if spoken_line and not is_silent_req:
+        line_file = OUT_DIR / f"line_{rec['id']}.txt"
+        line_file.write_text(spoken_line, encoding="utf-8")
+
+    signals_file: Path | None = None
+    if signals or is_silent_req or voice_tag:
+        signals_payload = dict(signals)
+        signals_payload["silent"] = is_silent_req
+        if voice_tag:
+            signals_payload["voice"] = voice_tag
+        signals_file = OUT_DIR / f"signals_{rec['id']}.json"
+        signals_file.write_text(json.dumps(signals_payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     raw_seed = p.get("seed")
     run_seed = int(raw_seed) if (raw_seed and int(raw_seed) > 0) else random.randint(10000, 99999999)
@@ -298,6 +327,10 @@ def _run_ltx25_video(rec: dict[str, Any]) -> None:
         "--frames", str(frames),
         "--seed", str(run_seed),
     ]
+    if line_file is not None:
+        cmd.extend(["--line_file", str(line_file)])
+    if signals_file is not None:
+        cmd.extend(["--signals_file", str(signals_file)])
     if mode == "i2v" and p.get("image_path"):
         src_img = _validate_local_file(p["image_path"], "参考首帧图")
         comfy_input.mkdir(parents=True, exist_ok=True)
@@ -331,7 +364,65 @@ def _run_ltx25_video(rec: dict[str, Any]) -> None:
             candidates.extend(sdir.glob(f"*ltx_{rec['id']}*.mp4"))
     candidates.sort(key=lambda x: x.stat().st_mtime, reverse=True)
     if candidates:
-        rec["file"] = str(candidates[0])
+        raw_mp4 = candidates[0]
+        # 若为有声说话视频，自动调用 Resemble Enhance 对生成音轨进行 44.1kHz 录音棚级去失真与人声增强
+        if not is_silent_req:
+            try:
+                re_py = _resolve_tool_py(r"D:\0_LLM\audio\venv_resemble\Scripts\python.exe")
+                ve_script = _resolve_runner(
+                    "audio/runners/voice_enhance.py",
+                    r"D:\0_LTX\modules\studio_gateway\runners\audio\runners\voice_enhance.py",
+                )
+                ffmpeg_bin = str(BIN_DIR / "ffmpeg.exe")
+                if not Path(ffmpeg_bin).is_file():
+                    ffmpeg_bin = str(
+                        LTX_ROOT
+                        / "runtime"
+                        / "venv"
+                        / "Lib"
+                        / "site-packages"
+                        / "imageio_ffmpeg"
+                        / "binaries"
+                        / "ffmpeg-win-x86_64-v7.1.exe"
+                    )
+                if re_py.is_file() and ve_script.is_file() and Path(ffmpeg_bin).is_file():
+                    enh_dir = OUT_DIR / f"audio_enh_{rec['id']}"
+                    enh_dir.mkdir(parents=True, exist_ok=True)
+                    src_wav = enh_dir / "src.wav"
+                    subprocess.run(
+                        [ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_mp4),
+                         "-af", "adeclip,volume=0.88", "-vn", "-ac", "1", "-ar", "44100", str(src_wav)],
+                        check=True,
+                        creationflags=CREATE_NO_WINDOW,
+                    )
+                    if src_wav.is_file() and src_wav.stat().st_size > 1024:
+                        subprocess.run(
+                            [str(re_py), str(ve_script), str(src_wav), "-o", str(enh_dir),
+                             "--mode", "enhance", "--nfe", "32", "--lambd", "0.7", "--tau", "0.5"],
+                            check=True,
+                            env=env,
+                            creationflags=CREATE_NO_WINDOW,
+                        )
+                        enh_wav = enh_dir / "src_enhance.wav"
+                        if enh_wav.is_file() and enh_wav.stat().st_size > 1024:
+                            mux_mp4 = OUT_DIR / f"ltx_{rec['id']}_enhanced.mp4"
+                            subprocess.run(
+                                [ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
+                                 "-i", str(raw_mp4), "-i", str(enh_wav),
+                                 "-map", "0:v:0", "-map", "1:a:0",
+                                 "-c:v", "copy",
+                                 "-af", "highpass=f=70,lowpass=f=15500,alimiter=limit=0.92:level=disabled",
+                                 "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "192k",
+                                 "-shortest", str(mux_mp4)],
+                                check=True,
+                                creationflags=CREATE_NO_WINDOW,
+                            )
+                            if mux_mp4.is_file() and mux_mp4.stat().st_size > 1024:
+                                raw_mp4 = mux_mp4
+                    shutil.rmtree(enh_dir, ignore_errors=True)
+            except Exception as exc:
+                log.warning("LTX-2.5 音轨 Resemble Enhance 增强跳过: %s", exc)
+        rec["file"] = str(raw_mp4)
         rec["progress"] = 1.0
     else:
         raise RuntimeError("未找到 LTX-2.5 输出成片文件")
@@ -567,20 +658,26 @@ def _run_nomos2_upscale(rec: dict[str, Any]) -> None:
 def _run_audio_enhance(rec: dict[str, Any]) -> None:
     """运行 Resemble Enhance 人声去混响与降噪增强。"""
     p = rec["_params"]
-    re_py = _resolve_tool_py(r"D:\0_LLM\tools\venv_resemble\Scripts\python.exe")
-    re_script = _resolve_runner("tools/audio_ai/enhance_voice.py", r"D:\0_LLM\tools\audio_ai\enhance_voice.py")
+    re_py = _resolve_tool_py(r"D:\0_LLM\audio\venv_resemble\Scripts\python.exe")
+    re_script = _resolve_runner(
+        "audio/runners/voice_enhance.py",
+        r"D:\0_LTX\modules\studio_gateway\runners\audio\runners\voice_enhance.py",
+    )
     inp = _validate_local_file(p.get("audio_path") or p.get("video_path"), "输入音视频")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_file = OUT_DIR / f"enhanced_{rec['id']}.wav"
+    out_dir = OUT_DIR / f"enh_{rec['id']}"
+    out_dir.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     subprocess.run(
-        [str(re_py), str(re_script), str(inp), str(out_file)],
+        [str(re_py), str(re_script), str(inp), "-o", str(out_dir), "--mode", "enhance", "--nfe", "32"],
         check=True,
         env=env,
         creationflags=CREATE_NO_WINDOW,
     )
-    rec["file"] = str(out_file)
+    wavs = sorted(out_dir.glob("*.wav"), key=lambda x: x.stat().st_mtime, reverse=True)
+    if wavs:
+        rec["file"] = str(wavs[0])
     rec["progress"] = 1.0
 
 
@@ -672,20 +769,30 @@ def build_app() -> FastAPI:
     def health() -> dict[str, Any]:
         prof = probe_hardware()
         comfy_ok = comfy_alive()
+        comfy_installed = _resolve_comfy_py().is_file() and (_resolve_comfy_root() / "main.py").is_file()
         return {
             "ok": True,
             "status": "ok",
             "version": "3.0.0-ltx25",
             "active_video_engine": "ltx-2.5-22b",
             "minimax_h3_bundled": False,  # 明确排除 MiniMax H3 打包
-            "comfy": comfy_ok,
+            "comfy": bool(comfy_ok or comfy_installed),
             "comfy_reachable": comfy_ok,
+            "comfy_ready_on_demand": comfy_installed,
             "comfy_root": str(_resolve_comfy_root()),
             "busy": JOBS.running_id is not None,
             "queued": JOBS.queued_count(),
             "presets": list(QUALITY_TO_LTX25_PRESET.keys()),
             "hardware": prof.to_dict(),
         }
+
+    @app.post("/v1/warmup")
+    def warmup_comfy() -> dict[str, Any]:
+        """按需唤醒本地 ComfyUI + LTX-2.5 推理后端。"""
+        ok = ensure_comfy_running(wait_seconds=90.0)
+        res = health()
+        res["warmed_up"] = ok
+        return res
 
     @app.post("/v1/videos")
     async def submit_video(req: Request) -> JSONResponse:
@@ -1016,10 +1123,17 @@ def _ensure_background_services() -> None:
         _SERVICES_STARTED = True
         logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s", datefmt="%H:%M:%S")
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        print("================================================================", flush=True)
-        print("  片语工作室 本地 AI 算力网关 (LTX-2.5 22B / FLUX.2 / Simone v6h / 音频 AI)", flush=True)
-        print(f"  监听地址: http://{HOST}:{PORT}  (联动 ComfyUI: {COMFY_URL})", flush=True)
-        print("================================================================", flush=True)
+        try:
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            if hasattr(sys.stderr, "reconfigure"):
+                sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+            print("================================================================", flush=True)
+            print("  片语工作室 本地 AI 算力网关 (LTX-2.5 22B / FLUX.2 / Simone v6h / 音频 AI)", flush=True)
+            print(f"  监听地址: http://{HOST}:{PORT}  (联动 ComfyUI: {COMFY_URL})", flush=True)
+            print("================================================================", flush=True)
+        except Exception:
+            pass
         threading.Thread(target=_worker_loop, daemon=True, name="ltx-gateway-worker").start()
         threading.Thread(target=lambda: ensure_comfy_running(wait_seconds=95.0), daemon=True, name="comfy-warmup").start()
 
@@ -1028,6 +1142,14 @@ app = build_app()
 
 
 def main() -> None:
+    if sys.stdout is None or sys.stderr is None:
+        log_dir = LTX_ROOT / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        fh = open(log_dir / "studio_gateway.log", "a", encoding="utf-8", errors="replace")
+        if sys.stdout is None:
+            sys.stdout = fh
+        if sys.stderr is None:
+            sys.stderr = fh
     import uvicorn
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
 

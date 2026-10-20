@@ -36,6 +36,7 @@ _LOUD_CACHE: dict = {}
 
 # 同一任务同一时间只允许一个校验线程（来回切面板不重复跑）
 _VERIFY_GUARD = threading.Lock()
+_VERIFY_SEM = threading.Semaphore(2)
 _VERIFY_THREADS: dict[str, threading.Thread] = {}
 _VERIFY_PROG: dict[str, dict] = {}
 _IO_LOCKS: dict[str, threading.Lock] = {}
@@ -217,7 +218,7 @@ def _flush_fps(tid: str, d: Path, segments: list, archived: bool) -> None:
         pass
 
 
-def _seg_payload(task_dir: Path, m: Manifest, sg: dict) -> dict:
+def _seg_payload(task_dir: Path, m: Manifest, sg: dict, lite: bool = False) -> dict:
     path = clip_path(task_dir, m, sg)
     exists = _exists(path)
     mtime = _file_mtime(path) if exists else 0
@@ -229,7 +230,7 @@ def _seg_payload(task_dir: Path, m: Manifest, sg: dict) -> dict:
         takes = takes[:-1] + [last]
     img_p = _image_path(task_dir, m, sg)
     wait = _wait_view(m, sg)
-    fps = _ensure_fps(sg, path, exists)
+    fps = (_read_fps_field(sg) or 24.0) if lite else _ensure_fps(sg, path, exists)
     return {
         "s": sg["s"],
         "text": sg.get("text") or "",
@@ -303,7 +304,8 @@ def _verify_bg(tid: str) -> None:
                 _VERIFY_PROG[tid] = {"running": True, "done": done, "total": tot}
             events.emit("review.verifying", tid=tid, done=done, total=tot)
 
-        results = verify.light_check(m, d, progress=prog)
+        with _VERIFY_SEM:
+            results = verify.light_check(m, d, progress=prog)
         # 重新读盘再写凭证，免得盖掉这期间用户改的标记 / 提示词
         with _io_lock(tid):
             m2 = Manifest.load(d)
@@ -350,22 +352,29 @@ def schedule_verify(tid: str, m: Manifest, d: Path) -> dict:
         return {"running": True, "done": 0, "total": total}
 
 
-def get_review(tid: str) -> dict:
+def get_review(tid: str, lite: bool = False) -> dict:
     """给收片面板：段列表 + 图 + 标记。只读已有凭证，立刻返回；缺的后台补。"""
     t = taskmod.get(tid)
     dpath = Path(t["dir"]) if t.get("dir") else None
     if not dpath or not dpath.is_dir():
         from . import project
         return project.review_stub(t)
-    from . import broll
-    d, m, sync_log = broll.load_synced(tid)
-    # 归档只读：不跑会写盘的后台校验，视频墙照常打开。
-    if t.get("archived"):
+    if lite:
+        d = dpath
+        m = Manifest.load(d)
+        sync_log = []
         st = {"running": False, "done": 0, "total": 0}
     else:
-        st = schedule_verify(tid, m, d)
-    segs = [_seg_payload(d, m, sg) for sg in m.segments]
-    _flush_fps(tid, d, m.segments, bool(t.get("archived")))
+        from . import broll
+        d, m, sync_log = broll.load_synced(tid)
+        # 归档只读：不跑会写盘的后台校验，视频墙照常打开。
+        if t.get("archived"):
+            st = {"running": False, "done": 0, "total": 0}
+        else:
+            st = schedule_verify(tid, m, d)
+    segs = [_seg_payload(d, m, sg, lite=lite) for sg in m.segments]
+    if not lite:
+        _flush_fps(tid, d, m.segments, bool(t.get("archived")))
     marks = {str(sg["s"]): True for sg in segs if sg["mark"]}
     from . import images as imgmod
     images = imgmod.annotate_images(d, m.images)

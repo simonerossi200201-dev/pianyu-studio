@@ -21,8 +21,8 @@ window.SettingsLogic = (function () {
     engine: ['engine.flow.mode', 'engine.flow.model', 'engine.flow.max_concurrent', 'engine.grok.max_concurrent',
              'engine.pack.multi_task', 'engine.pack.max_tasks', 'engine.flow.throttle_probe_min',
              'engine.flow.submit_gap_sec', 'flow.human_warmup'],
-    // 规格 98：本地模型 Studio Zero
-    studio: ['engine.studio.enabled', 'engine.studio.fallback', 'engine.studio.quality', 'engine.studio.lock_last',
+    // 规格 98：本地模型 Studio Zero（LTX）— 优先开关排第一
+    studio: ['engine.studio.fallback', 'engine.studio.enabled', 'engine.studio.quality', 'engine.studio.lock_last',
              'engine.studio.max_inflight', 'engine.studio.match_flow_spec', 'engine.studio.url', 'engine.studio.launcher'],
     generate: ['generate.mode', 'chain.desc_policy', 'tools.ffmpeg'],
     suite: ['suite.autosave_on_switch'],

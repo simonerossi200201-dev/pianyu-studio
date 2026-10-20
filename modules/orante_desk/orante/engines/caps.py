@@ -8,10 +8,9 @@ log = logging.getLogger("orante.caps")
 DURATIONS = {"flow": (4, 6, 8), "grok": (6, 10, 15), "studio": tuple(range(4, 16))}
 ASPECTS = {"flow": ("9:16", "16:9"), "grok": ("follow_image",), "studio": ("9:16", "16:9")}
 FLOW_ASPECT_CODE = {"9:16": 1, "16:9": 2}
-NO_COPY_DEFAULT = {"flow": 8, "grok": 10, "studio": 8}
-# 2026-10-06 用户要求：本地模型有文案的任务按 4/6/8/10/15 秒档拆段，尽量少段（一段长一点，镜头完整、不碎）
+NO_COPY_DEFAULT = {"flow": 8, "grok": 10, "studio": 10}
+# 本地模型（LTX）与 Grok 统一按 6/10/15 秒自动拆段；手选仍兼容 4/6/8/10/15
 COPY_TIERS = {"flow": (4, 6, 8), "grok": (6, 10, 15), "studio": (4, 6, 8, 10, 15)}
-# 本地模型有文案时「自动」只用这三档（学 Grok，段更完整）；手选仍是上面 COPY_TIERS 的五档
 STUDIO_AUTO_TIERS = (6, 10, 15)
 
 def aspect_for_image(path, engine: str = "flow") -> str:

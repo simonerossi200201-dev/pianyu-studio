@@ -195,7 +195,7 @@ class Scheduler:
         g = self.groups.get(acc)
         if not g or not g.get("held"):
             return False               # 组长还没拿到跨窗口的账号锁
-        if job.kind != "generate":
+        if job.kind not in ("generate", "regenerate"):
             return False
         if _job_blocked_by_throttle(job, acc):
             return False
@@ -207,14 +207,18 @@ class Scheduler:
             cap = int((accounts.get(acc) or {}).get("max_concurrent") or 4)
         except Exception:
             return False
-        need = pack_demand(job.task_id, job.args, running=False)
+        # 同一个任务不能在同组里重复进
+        for r in self._running_on(acc):
+            if r.task_id and r.task_id == job.task_id:
+                return False
+        need = pack_demand(job.task_id, job.args, running=False, account_id=acc)
         if not need or need <= 0:
             return False
         used = 0
         for r in self._running_on(acc):
-            if r.kind != "generate" or r.status not in ("queued", "running"):
+            if r.kind not in ("generate", "regenerate") or r.status not in ("queued", "running"):
                 return False
-            n = pack_demand(r.task_id, r.args, running=True)
+            n = pack_demand(r.task_id, r.args, running=True, account_id=acc)
             if n is None:
                 return False
             used += n
@@ -250,7 +254,7 @@ class Scheduler:
             used = 0
             packable = True
             for j in jobs:
-                n = pack_demand(j.task_id, j.args, running=True) if j.kind == "generate" else None
+                n = pack_demand(j.task_id, j.args, running=True, account_id=a) if j.kind in ("generate", "regenerate") else None
                 if n is None:
                     packable = False
                 else:

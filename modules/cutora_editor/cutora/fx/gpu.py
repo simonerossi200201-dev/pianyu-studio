@@ -115,13 +115,20 @@ _NV_CACHE = {"v": None}
 
 
 def has_nvidia_gpu() -> bool:
-    """不碰 torch：nvidia-smi 能报出一块卡就算有（真正能不能用 CUDA 由服务进程用 torch 验证）。"""
-    if _NV_CACHE["v"] is None:
+    """不碰 torch：nvidia-smi / nvcuda.dll 能报出一块卡就算有（真正能不能用 CUDA 由服务进程用 torch 验证）。"""
+    if not _NV_CACHE["v"]:
         try:
-            from cutora.core.runtime import _nvidia_gpu_name
-            _NV_CACHE["v"] = bool(_nvidia_gpu_name())
+            from cutora.core.runtime import _nvidia_gpu_name, cuda_warmup_status
+            ok_w, dev_n = cuda_warmup_status()
+            if ok_w or (dev_n and dev_n != "cpu"):
+                _NV_CACHE["v"] = True
+            else:
+                _NV_CACHE["v"] = bool(_nvidia_gpu_name())
         except Exception:
-            _NV_CACHE["v"] = False
+            if os.name == "nt" and os.path.isfile(r"C:\Windows\System32\nvcuda.dll"):
+                _NV_CACHE["v"] = True
+            else:
+                _NV_CACHE["v"] = False
     return bool(_NV_CACHE["v"])
 
 

@@ -87,9 +87,9 @@ DEFAULTS: dict = {
     "engine.flow.throttle_probe_min": 4,
     # 规格 94：两次提交之间至少隔几秒（带抖动）。连打最容易被 Google 判成「异常活动」。0 = 不等
     "engine.flow.submit_gap_sec": 2,
-    # 规格 98：本地 AI 算力网关（LTX-2.5 22B 视频 / FLUX.2 4B 生图）。优先使用付费 Flow/Grok 账号，本地 AI 作为可选项自由切换。
-    "engine.studio.enabled": True,            # 总开关：默认开，作为可选项供用户手动自由切换
-    "engine.studio.fallback": False,          # 默认优先用付费 Flow 账号补缺片，不自动拦截转本地（用户可随时手动切本地 AI）
+    # 规格 98：本地 AI 算力网关（LTX-2.5 22B 视频 / FLUX.2 4B 生图）。
+    "engine.studio.enabled": True,            # 总开关：默认开，支持随时手动切本地 AI 或自动兜底
+    "engine.studio.fallback": True,           # 优先开关（默认开）：Flow 拒图时优先唤醒本地视频模型 LTX（不重新生图，自动按本地/Grok规则重分段）
     "engine.studio.url": "http://127.0.0.1:7870",
     "engine.studio.launcher": "",             # 连不上时自动拉起的脚本。空 = 找 D:\0_LTX\启动本地算力网关.bat；填 off 不自动启动
     "engine.studio.max_inflight": 2,

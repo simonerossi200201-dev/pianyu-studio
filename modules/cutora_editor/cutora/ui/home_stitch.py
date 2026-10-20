@@ -718,6 +718,19 @@ class HomeStitchBand(QFrame):
         self._folder_of = folder_of
         self._base_of = base_of
         self._notes = list(notes)
+        try:
+            from cutora.batch.script_stitcher import StitcherDialog
+            auto_filled = 0
+            for k in self._groups:
+                if not str(self._scripts.get(k) or "").strip():
+                    ct = StitcherDialog._read_orante_copy_for_folder(self._folder_of.get(k, ""))
+                    if ct:
+                        self._scripts[k] = ct
+                        auto_filled += 1
+            if auto_filled or (self._groups and all(str(self._scripts.get(k) or "").strip() for k in self._groups)):
+                self._pasted = True
+        except Exception:
+            pass
         self._refresh_table()
 
     @staticmethod

@@ -750,6 +750,32 @@ def _enter_ai_studio_room(dlg, **kw):
     return None
 
 
+def _has_unconsumed_stitch_handoff() -> bool:
+    try:
+        import json as _json
+        import os as _os
+        p = r"D:\0_LTX\data\cutora_stitch_handoff.json"
+        if not _os.path.isfile(p):
+            return False
+        with open(p, "r", encoding="utf-8") as f:
+            d = _json.load(f)
+        return bool(isinstance(d, dict) and not d.get("consumed") and d.get("clip_dirs"))
+    except Exception:
+        return False
+
+
+def _enter_stitch_room(dlg, **_kw):
+    try:
+        if hasattr(dlg, "_busy") and not dlg._busy() and hasattr(dlg, "_sync_from_orante"):
+            has_handoff = _has_unconsumed_stitch_handoff()
+            scripts, _ = dlg._collect_scripts() if hasattr(dlg, "_collect_scripts") else ({}, [])
+            if has_handoff or not scripts:
+                dlg._sync_from_orante(quiet=not has_handoff)
+    except Exception:
+        _LOG.exception("智能拼接房间同步 Orante 失败")
+    return None
+
+
 def install(win) -> RoomHost:
     """MainWindow 建好外壳后调一次。"""
     host = RoomHost(win)
@@ -761,6 +787,7 @@ def install(win) -> RoomHost:
                   on_enter=_enter_monitor_room, on_leave=_leave_monitor_room,
                   tip="一屏看全部视频，直接在画面上调分屏、平移缩放、搬文字、拖素材（Ctrl+Shift+M）")
     host.register("stitch", "片段拼接", "link", _make_stitch_room, keep_alive=True,
+                  on_enter=_enter_stitch_room,
                   tip="片段智能拼接：按文案把素材片段拼成时间线工程（切走时后台照样跑）")
     host.register("ai_studio", "✨ AI 工坊", "sparkles", _make_ai_studio_room, keep_alive=True,
                   on_enter=_enter_ai_studio_room,
@@ -780,6 +807,28 @@ def install(win) -> RoomHost:
         _start_room = (_os.environ.get("CUTORA_START_ROOM") or "").strip()
         if _start_room in ("stitch", "ai_studio", "batch", "monitor"):
             _QTimer.singleShot(350, lambda r=_start_room: host.enter(r))
+
+        def _poll_stitch_handoff():
+            try:
+                if not _has_unconsumed_stitch_handoff():
+                    return
+                if hasattr(win, "raise_") and hasattr(win, "activateWindow"):
+                    win.showNormal()
+                    win.raise_()
+                    win.activateWindow()
+                host.enter("stitch")
+                room_obj = host.rooms.get("stitch")
+                dlg = getattr(room_obj, "widget", None) if room_obj else None
+                if dlg is not None and hasattr(dlg, "_busy") and not dlg._busy() and hasattr(dlg, "_sync_from_orante"):
+                    dlg._sync_from_orante(quiet=False)
+            except Exception:
+                pass
+
+        _ht = _QTimer(win)
+        _ht.setInterval(1500)
+        _ht.timeout.connect(_poll_stitch_handoff)
+        _ht.start()
+        win._stitch_handoff_timer = _ht
     except Exception:
         pass
     return host

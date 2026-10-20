@@ -3800,6 +3800,10 @@ class StitcherDialog(QDialog):
         self._base_of = {}
         self._groups = {}
         self._group_keys = []
+        self._session = None
+        self._pending_groups = None
+        self._pending_scripts = None
+        self._auto_handoff_mode = False
         self.setWindowTitle("片段智能拼接")
         self.setMinimumSize(760, 680)
         self._build_ui()
@@ -3809,10 +3813,11 @@ class StitcherDialog(QDialog):
             apply_plugin_style(self)
         except Exception:
             pass
-        self._session = None
-        self._pending_groups = None
-        self._pending_scripts = None
         self._attach_session()
+        if os.environ.get("CUTORA_START_ROOM") == "stitch" or os.environ.get("CUTORA_SYNC_ORANTE") == "1" or not self._folders():
+            self._sync_from_orante(quiet=True)
+        if self._folders() and not self._groups:
+            self._rescan()
 
     def _build_ui(self):
         v = QVBoxLayout(self)
@@ -3824,6 +3829,14 @@ class StitcherDialog(QDialog):
         row = QHBoxLayout()
         row.addWidget(QLabel("素材文件夹 (可添加多个):"))
         row.addStretch(1)
+        self.ed_orante_range = QLineEdit()
+        self.ed_orante_range.setPlaceholderText("任务范围(留空=全部，如 T0137-T0162 或 v01-v26)")
+        self.ed_orante_range.setFixedWidth(250)
+        row.addWidget(self.ed_orante_range)
+        b_orante = QPushButton("⚡ 载入 Orante 批次与文案")
+        b_orante.setToolTip("直接读取 Orante 当前活跃批次（或左侧指定范围）的全部已收片文件夹与文案，自动写入顺序锁并填好下方文案表")
+        b_orante.clicked.connect(lambda: self._sync_from_orante(quiet=False, auto_start_override=False))
+        row.addWidget(b_orante)
         b_add = QPushButton("添加文件夹...")
         b_add.clicked.connect(self._add_folder)
         row.addWidget(b_add)
@@ -3985,9 +3998,114 @@ class StitcherDialog(QDialog):
         self.ed_log.setMaximumHeight(150)
         v.addWidget(self.ed_log)
 
-        # 上次用过的文件夹已经摆进列表了, 这里补一次扫描 (控件此时才齐)
-        if self._folders():
-            self._rescan()
+    @staticmethod
+    def _read_orante_copy_for_folder(folder_path: str) -> str:
+        """从 <task_dir>/clips/_order.json 或 <task_dir>/manifest.json 自动读取 Orante 原文案。"""
+        if not folder_path:
+            return ""
+        try:
+            op = os.path.join(folder_path, "_order.json")
+            if os.path.isfile(op):
+                d = load_json_safe(op, {}) or {}
+                ct = (d.get("copy_text") or "").strip()
+                if ct:
+                    return ct
+            mp = os.path.join(os.path.dirname(os.path.normpath(folder_path)), "manifest.json")
+            if os.path.isfile(mp):
+                md = load_json_safe(mp, {}) or {}
+                cobj = md.get("copy") or {}
+                ct = (cobj.get("text") or cobj.get("raw") or "").strip()
+                if ct:
+                    return ct
+        except Exception:
+            pass
+        return ""
+
+    def _sync_from_orante(self, quiet: bool = False, auto_start_override: bool | None = None) -> int:
+        """一键读取 Orante 当前批次（或指定范围/交接单）所有已收片文件夹与文案，自动写入 _order.json 并填入表格。"""
+        try:
+            import sys as _sys
+            from pathlib import Path as _Path
+            from PySide6.QtCore import QTimer as _QTimer
+            if r"D:\0_LTX" not in _sys.path:
+                _sys.path.insert(0, r"D:\0_LTX")
+            from core.table_sync import HANDOFF_FILE, discover_orante_batch_tasks, write_order_lock_for_cutora
+
+            range_txt = ""
+            if hasattr(self, "ed_orante_range"):
+                range_txt = self.ed_orante_range.text().strip()
+
+            auto_start = False
+            if auto_start_override is not None:
+                auto_start = bool(auto_start_override)
+            elif os.environ.get("CUTORA_START_ROOM") == "stitch" or os.environ.get("CUTORA_SYNC_ORANTE") == "1":
+                auto_start = True
+
+            clip_dirs = []
+            # 1. 优先检查是否有来自 Orante / 主控台刚投递的交接单 (`cutora_stitch_handoff.json`)
+            if HANDOFF_FILE.is_file() and not range_txt:
+                try:
+                    hdata = json.loads(HANDOFF_FILE.read_text(encoding="utf-8"))
+                    if isinstance(hdata, dict) and not hdata.get("consumed"):
+                        hdata["consumed"] = True
+                        HANDOFF_FILE.write_text(json.dumps(hdata, ensure_ascii=False, indent=2), encoding="utf-8")
+                        if auto_start_override is None:
+                            auto_start = bool(hdata.get("auto_start", True))
+                        if hasattr(self, "chk_auto_ai") and "auto_ai" in hdata:
+                            self.chk_auto_ai.setChecked(bool(hdata.get("auto_ai", True)))
+                        if hasattr(self, "ed_orante_range") and hdata.get("range_text"):
+                            self.ed_orante_range.setText(str(hdata.get("range_text") or ""))
+                            range_txt = str(hdata.get("range_text") or "")
+                        for cdir in (hdata.get("clip_dirs") or []):
+                            if cdir and os.path.isdir(cdir):
+                                has_mp4 = any(
+                                    os.path.splitext(fn)[1].lower() in VIDEO_EXTS
+                                    and os.path.isfile(os.path.join(cdir, fn))
+                                    for fn in os.listdir(cdir)
+                                )
+                                if has_mp4:
+                                    clip_dirs.append(os.path.normpath(cdir))
+                except Exception:
+                    pass
+
+            # 2. 若无未消费交接单，则直接从 Orante 数据库与任务目录扫描（支持范围过滤）
+            if not clip_dirs:
+                recs = discover_orante_batch_tasks(range_text=range_txt)
+                for r in recs:
+                    if r.task_dir and _Path(r.task_dir).is_dir():
+                        write_order_lock_for_cutora(_Path(r.task_dir))
+                    if r.clips_dir and os.path.isdir(r.clips_dir):
+                        has_mp4 = any(
+                            os.path.splitext(fn)[1].lower() in VIDEO_EXTS
+                            and os.path.isfile(os.path.join(r.clips_dir, fn))
+                            for fn in os.listdir(r.clips_dir)
+                        )
+                        if has_mp4:
+                            clip_dirs.append(os.path.normpath(r.clips_dir))
+
+            if clip_dirs:
+                self._auto_handoff_mode = bool(auto_start)
+                self.lst_folders.clear()
+                for p in clip_dirs:
+                    self.lst_folders.addItem(p)
+                save_last_folders(clip_dirs)
+                self._rescan()
+                scope_note = f"（范围: {range_txt}）" if range_txt else "（当前批次全部任务）"
+                self._log(f"⚡ 已从 Orante 自动载入 {len(clip_dirs)} 个任务文件夹{scope_note}，并自动填好全部文案与分镜顺序锁！")
+                if auto_start and not self._busy():
+                    self._log("🚀 已触发自动智能拼接闭环：正在自动启动体检与语音对齐分析...")
+                    _QTimer.singleShot(450, self._auto_start_if_idle)
+                return len(clip_dirs)
+            if not quiet:
+                self._log("⚠ 未在 Orante 当前批次中找到已收片的 clips 文件夹")
+        except Exception as e:
+            if not quiet:
+                self._log(f"⚠ 从 Orante 同步批次失败: {e}")
+        return 0
+
+    def _auto_start_if_idle(self):
+        if not self._busy():
+            self._start()
 
     def _attach_session(self):
         """Dialog UI stays here. The workers live on the shared session."""
@@ -4187,8 +4305,11 @@ class StitcherDialog(QDialog):
             it0 = QTableWidgetItem(gnum)
             it0.setFlags(it0.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.tbl_script.setItem(r, 0, it0)
-            it1 = QTableWidgetItem(old.get(gnum, ""))
-            it1.setToolTip(old.get(gnum, ""))
+            txt_val = old.get(gnum, "")
+            if not txt_val:
+                txt_val = self._read_orante_copy_for_folder(self._folder_of.get(gnum, ""))
+            it1 = QTableWidgetItem(txt_val)
+            it1.setToolTip(txt_val)
             self.tbl_script.setItem(r, 1, it1)
         self._update_fill_label()
 
@@ -4252,13 +4373,21 @@ class StitcherDialog(QDialog):
 
     def _log(self, s):
         self.ed_log.appendPlainText(s)
+        try:
+            with open(r"D:\0_LTX\data\cutora_stitch_live.log", "a", encoding="utf-8") as _lf:
+                _lf.write(f"[{time.strftime('%H:%M:%S')}] {s}\n")
+        except Exception:
+            pass
 
     def _busy(self):
-        if self._session is not None and self._session.busy():
+        sess = getattr(self, "_session", None)
+        if sess is not None and sess.busy():
             return True
-        return (self.worker and self.worker.isRunning()) or \
-               (self.enc_worker and self.enc_worker.isRunning()) or \
-               (self.pf_worker and self.pf_worker.isRunning())
+        return bool(
+            (getattr(self, "worker", None) and self.worker.isRunning())
+            or (getattr(self, "enc_worker", None) and self.enc_worker.isRunning())
+            or (getattr(self, "pf_worker", None) and self.pf_worker.isRunning())
+        )
 
     def _start(self):
         if self._busy():
@@ -4393,21 +4522,32 @@ class StitcherDialog(QDialog):
         self._log(summary)
 
         need_review = self.chk_review.isChecked()
+        is_auto_handoff = bool(getattr(self, "_auto_handoff_mode", False))
         if not need_review:
-            box = QMessageBox(self)
-            box.setWindowTitle("分析结果确认")
-            box.setText(summary + "\n\n是否在生成时间线前人工复核/调整切点与顺序?")
-            b_rev = box.addButton("人工复核", QMessageBox.ButtonRole.ActionRole)
-            b_go = box.addButton("生成时间线", QMessageBox.ButtonRole.AcceptRole)
-            b_cancel = box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
-            box.setDefaultButton(b_rev if (n_low or n_recycle or missing_map) else b_go)
-            box.exec()
-            clicked = box.clickedButton()
-            if clicked is b_cancel:
-                self.btn_start.setText("开始拼接")
-                self._log("已取消 (确认阶段)")
-                return
-            need_review = clicked is b_rev
+            if not missing_map and is_auto_handoff:
+                self._log("🚀 全部片段文案覆盖完整、零缺失！正在自动为每个任务创建时间线并启动全自动加字幕...")
+            else:
+                extra_hint = (
+                    "\n\n⚡ 缺词片段已自动回传 Orante 并精准标记（mark=True）！\n"
+                    "建议点「取消」后直接回到 Orante「⑤ 收片 -> 全部任务 -> 已标记」一键批量重生补全；\n"
+                    "或点「生成时间线」先用现有片段创建时间线。"
+                    if missing_map
+                    else "\n\n是否在生成时间线前人工复核/调整切点与顺序?"
+                )
+                box = QMessageBox(self)
+                box.setWindowTitle("分析结果确认")
+                box.setText(summary + extra_hint)
+                b_rev = box.addButton("人工复核", QMessageBox.ButtonRole.ActionRole)
+                b_go = box.addButton("生成时间线", QMessageBox.ButtonRole.AcceptRole)
+                b_cancel = box.addButton("回 Orante 补全 / 取消" if missing_map else "取消", QMessageBox.ButtonRole.RejectRole)
+                box.setDefaultButton(b_cancel if missing_map else (b_rev if (n_low or n_recycle) else b_go))
+                box.exec()
+                clicked = box.clickedButton()
+                if clicked is b_cancel:
+                    self.btn_start.setText("开始拼接")
+                    self._log("已暂停生成时间线 —— 请在 Orante「全部任务 -> 已标记」中重生缺片后再来拼接" if missing_map else "已取消 (确认阶段)")
+                    return
+                need_review = clicked is b_rev
 
         if need_review:
             dlg = ReviewDialog(cuts_map, self)
@@ -4455,10 +4595,11 @@ class StitcherDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "导入工程失败", str(e))
             return
-        QMessageBox.information(
-            self, "完成",
-            "已生成时间线工程（%d 个独立片段，铺满画布，硬切）。\n"
-            "没有写出 _stitched 中间视频。\n%s" % (n_places, asproj))
+        if not bool(getattr(self, "_auto_handoff_mode", False)):
+            QMessageBox.information(
+                self, "完成",
+                "已生成时间线工程（%d 个独立片段，铺满画布，硬切）。\n"
+                "没有写出 _stitched 中间视频。\n%s" % (n_places, asproj))
         self.accept()
 
     def _on_failed(self, msg):

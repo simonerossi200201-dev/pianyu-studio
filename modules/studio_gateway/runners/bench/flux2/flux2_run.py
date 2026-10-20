@@ -75,9 +75,10 @@ def mon():
         try: peak["mem"] = max(peak["mem"], int(subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10).stdout.strip()))
         except Exception: pass
         time.sleep(1)
+_NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 def req(path, data=None):
     r = urllib.request.Request(URL + path, data=json.dumps(data).encode() if data is not None else None, headers={"Content-Type": "application/json"})
-    return json.loads(urllib.request.urlopen(r, timeout=60).read())
+    return json.loads(_NO_PROXY_OPENER.open(r, timeout=60).read())
 threading.Thread(target=mon, daemon=True).start(); t0 = time.time()
 try: pid = req("/prompt", {"prompt": P, "client_id": str(uuid.uuid4())})["prompt_id"]
 except urllib.error.HTTPError as e: print("SUBMIT_ERROR", e.read().decode()[:3000]); sys.exit(2)

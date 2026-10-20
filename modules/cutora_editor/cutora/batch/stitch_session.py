@@ -109,6 +109,14 @@ def preflight_continue(parent, rep, log) -> bool:
         box.exec()
         return False
     if rep.blocking:
+        # 若只是跨模型重生导致的组内分辨率/帧率混排（时间线工程会自动按画布缩放），或处于 Orante 自动交接模式且无致命无音轨问题，则自动放行
+        only_geo_diff = all(
+            getattr(i, "code", "") in ("W_MIXED_RES", "W_MIXED_FPS", "W_GAP")
+            for i in rep.blocking
+        )
+        if only_geo_diff or bool(getattr(parent, "_auto_handoff_mode", False)):
+            log("⚡ 体检自动放行 %d 项跨模型分辨率/帧率差异（时间线画布将自动统一缩放）。" % len(rep.blocking))
+            return True
         box = QMessageBox(parent)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("素材体检: 有 %d 项需要你确认" % len(rep.blocking))
@@ -253,24 +261,46 @@ class StitchSession(QObject):
         self.cuts_map = cuts_map
         self.missing_map = getattr(self.worker, "missing_map", None) or {}
         if self.missing_map:
-            # 【片语工作室联动 #2】发现缺片时，通过 SpineDB 实时推送给 Orante 制片台标红并触发 0-Token 自动重生
+            # 【片语工作室联动 #2】发现缺片/遗漏时，自动定位到 Orante 对应任务的具体分镜并标上「已标记 (mark=True)」与缺词提示
             try:
                 import sys
                 from pathlib import Path
                 if r"D:\0_LTX" not in sys.path:
                     sys.path.insert(0, r"D:\0_LTX")
-                from core.spine_db import SpineDB
-                spine = SpineDB()
-                for grp_key, entries in self.missing_map.items():
-                    grp_folder = Path(self.folder_of.get(grp_key) or (self.folders[0] if self.folders else ""))
-                    task_dir = grp_folder.parent if grp_folder.name in ("clips", "片段") else grp_folder
-                    tid = str(grp_key).split("-")[0]
-                    spine.report_stitch_gaps_to_orante(
-                        task_id=tid,
-                        task_dir=task_dir,
-                        missing_entries=[e if isinstance(e, dict) else {"text": str(e)} for e in (entries or [])],
+                from core.table_sync import sync_stitch_missing_to_orante
+                res_mark = sync_stitch_missing_to_orante(
+                    missing_map=self.missing_map,
+                    cuts_map=cuts_map,
+                    folder_of=self.folder_of,
+                    out_dirs=self.out_dirs,
+                )
+                marked_tasks = res_mark.get("marked_tasks") or []
+                if marked_tasks:
+                    detail_str = ", ".join(
+                        f"{t['task_id']}({','.join('s' + str(s) for s in t['marked_segments'])})"
+                        for t in marked_tasks[:12]
                     )
-                self.log.emit("⚡ 已将缺片清单实时同步至 Orante 制片台（可在 Orante 直接看到标红缺片并一键/自动重生）！")
+                    if len(marked_tasks) > 12:
+                        detail_str += f" 等共 {len(marked_tasks)} 个任务"
+                    self.log.emit(
+                        f"⚡ 已自动将缺词/遗漏片段回传 Orante 并完成精准标记: {detail_str}\n"
+                        f"👉 请回到 Orante「⑤ 收片 -> 全部任务 -> 已标记」直接一键重生补全！"
+                    )
+                try:
+                    from core.spine_db import SpineDB
+                    spine = SpineDB()
+                    for grp_key, info in self.missing_map.items():
+                        holes = info.get("missing") if isinstance(info, dict) else info
+                        grp_folder = Path(self.folder_of.get(grp_key) or (self.folders[0] if self.folders else ""))
+                        task_dir = grp_folder.parent if grp_folder.name in ("clips", "片段") else grp_folder
+                        tid = str(grp_key).split("-")[0]
+                        spine.report_stitch_gaps_to_orante(
+                            task_id=tid,
+                            task_dir=task_dir,
+                            missing_entries=[e if isinstance(e, dict) else {"text": str(e)} for e in (holes or [])],
+                        )
+                except Exception:
+                    pass
             except Exception as exc:
                 self.log.emit("缺片信号同步提示: %s" % exc)
             self.missing.emit(self.missing_map)

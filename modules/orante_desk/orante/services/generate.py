@@ -366,8 +366,12 @@ def is_content_refusal(err) -> bool:
 
 
 def studio_fallback_on() -> bool:
-    """Flow 拒图后自动转交本地模型：本地模型启用 + 自动转交开着。"""
-    return bool(config.get("engine.studio.enabled", False)) and bool(config.get("engine.studio.fallback", True))
+    """Flow 拒图后自动转交本地模型：优先开关开着即生效（若本地模型未启用则自动开启）。"""
+    if not bool(config.get("engine.studio.fallback", True)):
+        return False
+    if not bool(config.get("engine.studio.enabled", True)):
+        config.set("engine.studio.enabled", True, touch_rev=False)
+    return True
 
 
 def _blocked_for_flow(sg: dict) -> bool:
@@ -781,7 +785,7 @@ def packable_manifest(acc: dict, m) -> bool:
     return True
 
 
-def pack_demand(tid: str, args: dict | None = None, *, running: bool = False) -> int | None:
+def pack_demand(tid: str, args: dict | None = None, *, running: bool = False, account_id: str | None = None) -> int | None:
     """这个任务要占几个并发位；不能拼单返回 None。
 
     running=False（还在排队）：按 generate() 的 todo 算——planned / failed（开「跑到全部出片」时含 blocked）
@@ -789,7 +793,7 @@ def pack_demand(tid: str, args: dict | None = None, *, running: bool = False) ->
     """
     try:
         t = taskmod.get(tid)
-        acc = accounts.get(t["account_id"])
+        acc = accounts.get(account_id or t["account_id"])
         d = t.get("dir")
         if not d:
             return None
@@ -804,7 +808,7 @@ def pack_demand(tid: str, args: dict | None = None, *, running: bool = False) ->
         rtc = taskmod.rtc_on(t)
     except Exception:
         pass
-    only = args.get("only")
+    only = args.get("only") or args.get("segs")
     only_set = {int(x) for x in only} if only else None
     n = 0
     for sg in m.segments or []:
@@ -822,6 +826,8 @@ def pack_demand(tid: str, args: dict | None = None, *, running: bool = False) ->
             n += 1
         elif not running and (st == "failed" or ((args.get("redo") or rtc) and _blocked_for_flow(sg))):
             n += 1
+    if n == 0 and args.get("segs"):
+        n = max(1, len(args.get("segs") or []))
     return n
 
 
@@ -922,6 +928,22 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
     except (TypeError, ValueError):
         rtc_round = 0
     only_set = {int(x) for x in only} if only is not None else None
+    # 只要切换了模型/引擎，尚未收片的任务自动按当前引擎规则重新拆段
+    run_eng0 = str((acc or {}).get("engine") or "").strip().lower()
+    split_eng0 = str(((m.split or {}).get("rule") or {}).get("engine") or m.engine or "").strip().lower()
+    has_col0 = any(sg.get("status") == "collected" and _clip_exists(d, m, sg) for sg in (m.segments or []))
+    if run_eng0 in ("flow", "grok", "studio") and split_eng0 and run_eng0 != split_eng0 and not has_col0:
+        from . import split as _splitmod
+        try:
+            _splitmod.resplit_task_for_engine(
+                job.task_id, run_eng0, new_account_id=acc.get("id"), log=job.log
+            )
+            t = taskmod.get(job.task_id)
+            d, m, _ = broll.load_synced(job.task_id)
+            if only_set is not None:
+                only_set = {int(sg["s"]) for sg in (m.segments or [])}
+        except Exception as e:  # noqa: BLE001
+            job.log(f"  · 自动重拆段提示：{e}")
     # 检查已标 collected 但磁盘上缺片的段：有 asset_url 的先尝试取回，没有或取回失败的重新生成
     missing_with_url: list[dict] = []
     missing_reset = 0
@@ -1231,7 +1253,7 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
         _no_copy_t = not _s86q.has_copy(t) and not _s86q.has_copy(m)
     except Exception:
         _no_copy_t = False
-    if acc.get("engine") == "flow":
+    if acc.get("engine") in ("flow", "studio"):
         want_silent = _no_copy_t
         if want_silent:
             job.log("  · 不说话的任务：这次按「返回无声视频」提交（不改账号设置）")
@@ -1420,37 +1442,34 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
     studio_told: set = set()
 
     def route_to_studio(p: str, reason: str = "", *, dry: bool = False) -> bool:
-        """规格 98：Flow 不收这张图 → 这张图还没出片的段排给本地模型（原图，不换图）。
-        条件：本地模型启用 + 自动转交开着、这一轮是 Flow、不是尾帧接龙、图不是空镜；
-        锚点模式的接片段第一版不转（照旧换图 / 提示）。转了返回 True。dry=True 只判断不改。"""
+        """规格 98：Flow 不收这张图 → 优先唤醒本地视频模型 LTX（不重新生图），
+        并将该图对应的全部未完成段（含 anchor_bridge 模式下的关联段）排给本地模型，自动按本地/Grok规则重分段。"""
         if not studio_fallback_on() or acc.get("engine") != "flow" or chain_mode:
             return False
         im = m.image(p)
         if not im or im.get("role") == "空镜":
             return False
         segs = [sg for sg in m.segments
-                if sg.get("image") == p and sg.get("status") == "blocked"
-                and not (anchor_mode and sg.get("role") == "bridge")]
+                if sg.get("image") == p and sg.get("status") in ("blocked", "planned", "failed")]
         if dry:
-            return bool(segs) or any(sg.get("image") == p and sg.get("status") in ("planned", "failed")
-                                     and not (anchor_mode and sg.get("role") == "bridge")
-                                     for sg in m.segments)
+            return bool(segs)
         if not segs:
             return False
         why = (reason or im.get("block_reason") or "Flow 不收这张图")[:200]
         for sg in segs:
+            sg["status"] = "blocked"
             sg["studio_pending"] = True
             sg["studio_reason"] = why
-            sg["error"] = "Flow 不收这张图 → 已排给本地模型（原图，不换图）"
+            sg["error"] = "Flow 不收这张图 → 已排给本地模型 LTX（原图，自动重分段）"
         im["studio_route"] = True
         drain(p)
         ss = "、".join(f"s{int(sg['s']):03d}" for sg in segs)
-        job.log(f"  ⇢ {p} Flow 不收 → {ss} 交给本地模型 Studio Zero（原图，不换图；Flow 这一轮跑完就开始）")
+        job.log(f"  ⇢ {p} Flow 不收 → 优先唤醒本地视频模型 LTX（原图不重新生图，{ss} 将自动按本地/Grok 规则重分段出片）")
         if p not in studio_told:
             studio_told.add(p)
             try:
-                events.emit("toast", text=f"{p} Flow 不收，{len(segs)} 段已排给本地模型",
-                            hint="用原图出片、人物不变。Flow 这一轮跑完会自动开始。", level="warn")
+                events.emit("toast", text=f"{p} Flow 不收，优先唤醒本地模型 LTX",
+                            hint="不重新生图，自动按本地模型(Grok)规则重分段并用原图出片。", level="warn")
             except Exception:  # noqa: BLE001
                 pass
         try:
@@ -1517,6 +1536,8 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
             # 1) 提交到满。接龙每个任务并发 = 1，别让 5 个空位把后面的段提前提上去。
             if account_paused:
                 queue.clear()
+            if not shared_eng and isinstance(getattr(eng, "_active", None), set):
+                eng._active.intersection_update(inflight.keys())
             share = my_share()
             gap = submit_gap() if acc.get("engine") == "flow" else 0.0
             while queue and eng.capacity() > 0 and len(inflight) < share:
@@ -1636,12 +1657,40 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
                     job.log(f"  · s{seg['s']:03d} 原本 {int(seg.get('duration') or 8)} 秒，"
                             f"{_eng_label(eng)} 没有这一档 → 按 {sub_dur} 秒出")
                 try:
-                    if want_silent:
-                        gid = eng.submit(seg, img, prompt, sub_dur,
-                                         last_image=last_image, silent=True)
-                    else:
-                        gid = eng.submit(seg, img, prompt, sub_dur,
-                                         last_image=last_image)
+                    if isinstance(seg, dict):
+                        _cur_sid, _cur_sname = "", ""
+                        try:
+                            from . import suites as _suites_mod
+                            _cur_sid = _suites_mod.current_id()
+                            if _cur_sid:
+                                _cur_sname = str((_suites_mod.get(_cur_sid) or {}).get("name") or "")
+                        except Exception:  # noqa: BLE001
+                            pass
+                        seg["_orante_signals"] = {
+                            "task_id": str(t.get("id") or ""),
+                            "task_type": str(t.get("type") or getattr(m, "type", "") or ""),
+                            "suite_id": _cur_sid,
+                            "suite_name": _cur_sname,
+                            "silent": bool(want_silent or _no_copy_t),
+                            "voice": str((im or {}).get("voice") or ""),
+                            "eye": str((im or {}).get("eye") or ""),
+                            "scene": str((im or {}).get("scene") or ""),
+                            "pose": dict((im or {}).get("pose") or {}) if isinstance((im or {}).get("pose"), dict) else {},
+                            "measure": dict((im or {}).get("measure") or {}) if isinstance((im or {}).get("measure"), dict) else {},
+                            "role": str(seg.get("role") or "anchor"),
+                            "seg_index": int(seg.get("s") or 1),
+                            "seg_total": len(m.segments or []),
+                        }
+                    try:
+                        if want_silent:
+                            gid = eng.submit(seg, img, prompt, sub_dur,
+                                             last_image=last_image, silent=True)
+                        else:
+                            gid = eng.submit(seg, img, prompt, sub_dur,
+                                             last_image=last_image)
+                    finally:
+                        if isinstance(seg, dict):
+                            seg.pop("_orante_signals", None)
                 except CreditHalted as e:
                     notify_credit_halt(job, eng, e)
                     wait_credit_continue(job, eng)
@@ -2107,7 +2156,9 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
                     block_now = False
                     if im is not None and is_content_refusal(f"{err} {raw[:300]}"):
                         im["content_fail"] = int(im.get("content_fail") or 0) + 1
-                    if "被拒" in str(err):
+                        _block_image(m, p, f"{err} {raw[:120]}".strip())
+                        block_now = True
+                    elif "被拒" in str(err):
                         _block_image(m, p, err)
                         block_now = True
                     elif maybe_block_for_fails(p):
@@ -2210,13 +2261,28 @@ def regenerate(job, segs: list[int], fill_missing: bool = False):
     run_acc = accounts.get(run_acc_id)
     override = run_acc_id != t["account_id"]
     run_eng = str((run_acc or {}).get("engine") or t.get("engine") or "").strip().lower()
+    split_eng = str(((m.split or {}).get("rule") or {}).get("engine") or m.engine or "").strip().lower()
+    if run_eng in ("flow", "grok", "studio") and want0:
+        from . import split as _splitmod
+        try:
+            sp_res = _splitmod.resplit_segments_for_engine(
+                job.task_id, want0, run_eng, log=job.log
+            )
+            if sp_res.get("want"):
+                want0 = {int(x) for x in sp_res["want"]}
+                segs = sorted(want0)
+                m = Manifest.load(d)
+        except Exception as e:  # noqa: BLE001
+            job.log(f"  · 重生智能分段提示：{e}")
     if override:
         from ..engines import caps as _caps
         task_lab = {"flow": "Flow", "grok": "Grok", "studio": "本地模型"}.get(
             str(t.get("engine") or "").lower(), t.get("engine") or "?")
         run_lab = {"flow": "Flow", "grok": "Grok", "studio": "本地模型"}.get(run_eng, run_eng or "?")
-        job.log(f"这次重生临时改用账号「{(run_acc or {}).get('name') or run_acc_id}」（{run_lab}），"
-                f"任务本身仍是 {task_lab}，其它段不受影响")
+        acc_model = str((run_acc or {}).get("model") or "").strip()
+        model_note = f" · {acc_model}" if acc_model else ""
+        job.log(f"这次重生改用账号「{(run_acc or {}).get('name') or run_acc_id}」（{run_lab}{model_note}），"
+                f"任务本身仍是 {task_lab}，其它已收片段不受影响")
         for sg in m.segments:
             if int(sg.get("s") or 0) not in want0:
                 continue
@@ -2227,6 +2293,21 @@ def regenerate(job, segs: list[int], fill_missing: bool = False):
                 d1 = d0
             if d1 != d0:
                 job.log(f"  · s{int(sg['s']):03d} 原本 {d0} 秒，{run_lab} 按 {d1} 秒出")
+    # 当用户主动选用 Flow 账号（如 Flow1 Omni）重生时，先清理之前其它账号留下的旧拒收标记，
+    # 让当前 Flow 账号真实尝试上传与生成；若本次仍被 Flow 拒绝，会自动触发 route_to_studio 转回本地模型。
+    if run_eng == "flow":
+        for sg in m.segments:
+            if int(sg.get("s") or 0) not in want0:
+                continue
+            im = m.image(sg.get("image") or "")
+            if im and (im.get("flow_upload_refused") or im.get("status") == "blocked" or im.get("studio_route")):
+                im["status"] = "ok"
+                im.pop("flow_upload_refused", None)
+                im.pop("block_reason", None)
+                im.pop("studio_route", None)
+                im["gen_fail"] = 0
+                im["content_fail"] = 0
+        m.save(d)
 
     def _has_image(sg) -> bool:
         """有图 = manifest 里有这条记录，而且文件真的在盘上（同名别的扩展名也算）。"""

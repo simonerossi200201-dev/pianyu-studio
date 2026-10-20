@@ -66,6 +66,13 @@ def prepare(job, batch_dir: str = "", batch_id: str = ""):
         taskmod.set_status(t["id"], "arranged")
     n_subj = sum(1 for im in m.images if im.get("role") != "空镜")
     n_broll = sum(1 for im in m.images if im.get("role") == "空镜")
+    # 单图短视频任务：准备阶段即预先把唯一主体图 p01 挂到所有分段上，方便后续一键跳过编排
+    if n_subj == 1 and m.segments:
+        first_p = next((im.get("p") for im in m.images if im.get("role") != "空镜" and im.get("p")), "p01")
+        for sg in m.segments:
+            if not (sg.get("image") or "").strip():
+                sg["image"] = first_p
+        m.save(d)
     meta = dict(t.get("meta") or {}) if isinstance(t.get("meta"), dict) else {}
     meta["subjects"] = n_subj
     meta["brolls"] = n_broll

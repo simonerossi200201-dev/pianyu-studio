@@ -60,24 +60,33 @@ window.RegenAcc = (() => {
     return engLabel(a.engine) + ' · ' + (a.name || a.id);
   }
 
-  // segs: [{s, duration}]；返回要换时长的那几段的说明
+  // segs: [{s, duration, text}]；返回要换时长的那几段的说明
   function durNote(accId, segs) {
     const a = accOf(accId);
     if (!a) return '';
     const eng = a.engine;
     const changed = [];
+    let hasLongForFlow = false;
     for (const sg of (segs || [])) {
       const d0 = Math.round(Number(sg && sg.duration) || 0);
+      const wc = String((sg && sg.text) || '').trim().split(/\s+/).filter(Boolean).length;
+      if (eng === 'flow' && (d0 > 8 || wc > 20)) {
+        hasLongForFlow = true;
+      }
       if (!d0) continue;
       const d1 = snap(eng, d0);
-      if (d1 !== d0) changed.push({ s: sg.s, d0, d1 });
+      if (d1 !== d0) changed.push({ s: sg.s, d0, d1, tid: sg._tid || '' });
+    }
+    if (eng === 'flow' && hasLongForFlow) {
+      return '✨ 智能跨模型分段：超过 8 秒的长段落（如 10s/15s）将根据文案时长自动拆分为两段 ≤8 秒由 ' + (a.name || 'Flow') + (a.model ? ' (' + a.model + ')' : '') + ' 生成；若图片被 Flow 拒绝将自动转入本地模型生成。';
     }
     if (!changed.length) return t('regen.acc.dur_same', { eng: engLabel(eng) });
     // 同样的换法合并成一句：s003、s007：8 → 10 秒
     const groups = {};
     for (const c of changed) {
       const k = c.d0 + ' → ' + c.d1;
-      (groups[k] = groups[k] || []).push('s' + String(c.s).padStart(3, '0'));
+      const tag = (c.tid ? c.tid + '·' : '') + 's' + String(c.s).padStart(3, '0');
+      (groups[k] = groups[k] || []).push(tag);
     }
     const parts = Object.keys(groups).map(k => t('regen.acc.dur_part', {
       k, segs: groups[k].slice(0, 6).join('、') + (groups[k].length > 6 ? '…' : ''),
@@ -88,11 +97,11 @@ window.RegenAcc = (() => {
   // 菜单项：原账号（优先付费账号）/ 别的 Flow、Grok / 本地模型（可选项）
   function items(task) {
     const own = task ? accOf(task.account_id) : null;
-    const out = [{ id: '', label: own ? ('⚡ 优先 · ' + label(own)) : t('regen.acc.same_bare'), sub: '默认极速' }];
+    const out = [{ id: '', label: own ? ('⚡ 优先 · ' + label(own)) : (task ? t('regen.acc.same_bare') : '⚡ 各任务原账号'), sub: '默认' }];
     for (const a of others(task)) {
-      let sub = '';
-      if (a.login_state === 'need_relogin') sub = t('regen.acc.relogin');
-      else if (cooling(a)) sub = t('regen.acc.cooling');
+      let sub = a.model ? String(a.model).replace(/\s*\[.*\]/, '') : '';
+      if (a.login_state === 'need_relogin') sub = (sub ? sub + ' · ' : '') + t('regen.acc.relogin');
+      else if (cooling(a)) sub = (sub ? sub + ' · ' : '') + t('regen.acc.cooling');
       out.push({ id: a.id, label: label(a), sub, engine: a.engine });
     }
     if (task && task.account_id === STUDIO_ID) return out;   // 任务本来就用本地模型：「原账号」就是它

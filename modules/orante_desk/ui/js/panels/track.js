@@ -1336,6 +1336,48 @@ window.Panel_track = (() => {
         if (window.Rescan) window.Rescan.open(tid.value);
       }
 
+      const batchApplying = ref(false);
+      const unarrangedCount = computed(() =>
+        (readyTasks.value || []).filter(x => x.status === 'prepared' || x.status === 'described').length
+      );
+
+      async function batchApplyAll(startGen = false) {
+        if (batchApplying.value) return;
+        batchApplying.value = true;
+        try {
+          if (window.flushAll) await window.flushAll();
+          const r = await API.post('/api/track/batch-apply', {
+            only_unarranged: false,
+            start_generate: !!startGen,
+          });
+          try {
+            const tr = await API.get('/api/tasks');
+            if (tr && Array.isArray(tr.tasks)) store.tasks = tr.tasks;
+          } catch (e) { /* ignore */ }
+          if (tid.value) await loadTrack();
+          const cnt = String((r && r.count) || 0);
+          const scnt = String((r && r.started_count) || 0);
+          if (startGen) {
+            toast(
+              '🚀 已批量跳过/应用 ' + cnt + ' 个任务编排，并排队启动 ' + scnt + ' 个生成任务',
+              '已为您切到 ④ 生成面板查看进度',
+              'ok'
+            );
+            ui.node = 'generate';
+          } else {
+            toast(
+              '✓ 已一键对 ' + cnt + ' 个任务批量应用/跳过编排',
+              '所有短视频/单图及多图任务均已就绪，可直接进入 ④ 生成排队',
+              'ok'
+            );
+          }
+        } catch (e) {
+          /* API.post 已弹 toast */
+        } finally {
+          batchApplying.value = false;
+        }
+      }
+
       async function goDescribe() {
         if (window.flushAll) await window.flushAll();
         else if (window.flushEdits) await window.flushEdits();
@@ -1422,7 +1464,7 @@ window.Panel_track = (() => {
         liveJob, prog, cardLive, phaseText, ringOff, barPct, shownItems, hiddenN,
         brollHits, nEditable, busy, axisN, menu, menuRef,
         pcolor, fmtP, pad3, mediaUrl, usedCount, zoneOf, cellP, cellLocked, isSelected,
-        openRescan, goDescribe,
+        openRescan, goDescribe, batchApplying, unarrangedCount, batchApplyAll,
         thClass, isDead, clickThumb, keepImg, discardImg, clickCell,
         isLastSeg, setSegMode, durOptions, durMenu, durDlg, openDurMenu, closeDurMenu, onDurChange, restoreDur, openBatchDurDlg, applyBatchDur,
         onPinPick, setZone, unpin, clearZone, unselect,
@@ -1438,6 +1480,18 @@ window.Panel_track = (() => {
     <task-pick v-model="tid" min-status="prepared" :tasks="allTasks"></task-pick>
     <span class="tag" v-if="selectedTask" :class="selectedTask.engine">{{ selectedTask.engine }}</span>
     <span class="bstat">{{ statsText }}</span>
+    <button class="btn sm primary" type="button"
+            :disabled="batchApplying || !readyTasks.length"
+            title="短视频/单图任务无需逐个手动编排：一键对列表内全部已准备/已描述任务批量完成配图编排"
+            @click="batchApplyAll(false)">
+      ⚡ 一键批量应用/跳过编排 ({{ unarrangedCount || readyTasks.length }})
+    </button>
+    <button class="btn sm" type="button"
+            :disabled="batchApplying || !readyTasks.length"
+            title="一键对全部任务完成编排并直接送入 ④ 生成排队出片"
+            @click="batchApplyAll(true)">
+      🚀 批量跳过编排并立即排队生成
+    </button>
     <button class="btn sm" type="button" :disabled="!tid" @click="openRescan">{{ t('rescan.btn') }}</button>
   </div>
 
@@ -1749,6 +1803,18 @@ window.Panel_track = (() => {
     <div class="bfoot">
       <button class="btn primary" :disabled="applying || !rows || busy.has('arrange')"
               :title="t('track.apply_title')" @click="applyTrack">{{ t('track.apply') }}</button>
+      <button class="btn" type="button"
+              :disabled="batchApplying || !readyTasks.length"
+              title="对全部任务一键批量应用/跳过编排（短视频仅一张图自动配齐 p01）"
+              @click="batchApplyAll(false)">
+        ⚡ 一键批量应用/跳过全部任务 ({{ unarrangedCount || readyTasks.length }})
+      </button>
+      <button class="btn" type="button"
+              :disabled="batchApplying || !readyTasks.length"
+              title="对全部任务一键跳过编排并立刻开始排队生成"
+              @click="batchApplyAll(true)">
+        🚀 批量跳过编排并排队生成
+      </button>
       <span class="bstat" style="margin-left:auto">{{ hint }}</span>
     </div>
   </template>

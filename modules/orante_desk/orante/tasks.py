@@ -521,14 +521,22 @@ def _write_manifest_mode(tid: str, mode: str, remember: bool = False) -> None:
 def _sync_mode_after_upsert(tid: str, cur: dict, norm: dict, gm: str) -> None:
     """换账号或改了生成方式列时，决定要不要动已有 manifest。
 
-    跟随引擎 + 换了 Grok↔Flow → 模式跟着变。
-    用户显式选过 → 不动（前端那行会打提示图标）。
+    只要换了模型/引擎（如 Flow ↔ 本地模型 LTX ↔ Grok），自动按照新模型的规则重新分段并重排配图。
     """
-    from .services import pipeline
-    old_eng = cur.get("engine") or ""
-    new_eng = norm.get("engine") or old_eng
+    from .services import pipeline, split as splitmod
+    old_eng = (cur.get("engine") or "").strip().lower()
+    new_eng = (norm.get("engine") or old_eng).strip().lower()
     old_gm = pipeline.parse_gen_mode(cur.get("gen_mode"))
     stored = pipeline.parse_gen_mode(gm)
+    if old_eng != new_eng and cur.get("dir") and not task_is_running(tid):
+        try:
+            splitmod.resplit_task_for_engine(
+                tid,
+                new_eng,
+                new_account_id=norm.get("account_id"),
+            )
+        except Exception as e:
+            _note(f"换模型自动重拆段失败 {tid} ({old_eng} -> {new_eng}): {e}", tid)
     if stored in pipeline.MODES:
         if old_gm != stored:
             _write_manifest_mode(tid, stored, remember=False)
@@ -676,18 +684,20 @@ def set_expand_account_id(task_id: str, account_id: str | None) -> None:
 
 
 def set_account(task_id: str, account_id: str) -> dict:
-    """换任务的出片账号。只许换同一引擎（Flow 换 Flow），人声不能混。"""
+    """换任务的出片账号。若切换到了不同引擎（如 Flow 切到本地模型 LTX 或 Grok），自动按新引擎规则重新拆段。"""
     ensure_writable(task_id)
     t = get(task_id)
     acc = accounts.get(account_id)
-    old_eng = (t.get("engine") or "").strip()
-    new_eng = (acc.get("engine") or "").strip()
-    if old_eng and new_eng and old_eng != new_eng:
-        raise OranteError(
-            "只能换同一个引擎的账号",
-            "Flow 和 Grok 的人声不一样，同一条片子里混用会跳戏。")
+    old_eng = (t.get("engine") or "").strip().lower()
+    new_eng = (acc.get("engine") or "").strip().lower()
     db.run("UPDATE tasks SET account_id=?, engine=?, updated=? WHERE id=?",
            (acc["id"], new_eng or old_eng, db.now(), task_id))
+    if new_eng and old_eng != new_eng and t.get("dir") and not task_is_running(task_id):
+        from .services import split as splitmod
+        try:
+            splitmod.resplit_task_for_engine(task_id, new_eng, new_account_id=acc["id"])
+        except Exception as e:
+            _note(f"set_account 自动重拆段失败 {task_id}: {e}", task_id)
     return get(task_id)
 
 

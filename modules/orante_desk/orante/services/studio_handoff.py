@@ -78,10 +78,13 @@ def kick(task_id: str, *, manual: bool = False, log=None) -> dict:
 
     if not task_id:
         return {"skip": "no_task"}
-    if not accounts.studio_enabled():
-        return {"skip": "disabled"}
     if not manual and not bool(config.get("engine.studio.fallback", True)):
         return {"skip": "fallback_off"}
+    if not accounts.studio_enabled():
+        if bool(config.get("engine.studio.fallback", True)) or manual:
+            config.set("engine.studio.enabled", True, touch_rev=False)
+        else:
+            return {"skip": "disabled"}
     try:
         t = taskmod.get(task_id)
     except Exception:  # noqa: BLE001
@@ -101,6 +104,27 @@ def kick(task_id: str, *, manual: bool = False, log=None) -> dict:
     if not segs:
         forget(task_id)
         return {"skip": "none"}
+
+    # Flow 拒图转交本地模型 LTX 时：自动按本地模型（同 Grok）规则重新分段并配图
+    from . import split as splitmod
+    try:
+        sp_res = splitmod.resplit_task_for_engine(
+            task_id,
+            "studio",
+            new_account_id=accounts.STUDIO_ID,
+            log=_log,
+            mark_studio_pending=True,
+            studio_reason="Flow 拒图自动唤醒本地模型 LTX",
+        )
+        m = Manifest.load(Path(t["dir"]))
+        segs = pending_segs(m) or [
+            int(s["s"]) for s in (m.segments or []) if s.get("status") != "collected"
+        ]
+        if sp_res.get("resplit"):
+            _log(f"  · {task_id} 已按本地模型(Grok)规则自动重新分段：{sp_res.get('old_segments')} 段 → {sp_res.get('segments')} 段")
+    except Exception as e:  # noqa: BLE001
+        _log(f"  · 转本地模型重分段提示：{e}")
+
     h = accounts.studio_health(force=True)
     alive = bool(h.get("ok") and h.get("comfy"))
     if not alive:
@@ -110,15 +134,19 @@ def kick(task_id: str, *, manual: bool = False, log=None) -> dict:
             launcher = ""
         elif not launcher:
             launcher = st.DEFAULT_LAUNCHER
-        if not (launcher and Path(launcher).is_file()):
+        can_auto_wake = bool(
+            (launcher and Path(launcher).is_file())
+            or Path(r"D:\0_LTX\modules\studio_gateway\server.py").is_file()
+        )
+        if not can_auto_wake:
             remember(task_id)
             now = time.time()
             if manual or now - _TOLD_OFFLINE.get(task_id, 0) > TELL_EVERY:
                 _TOLD_OFFLINE[task_id] = now
                 _toast(f"本地模型没开，{task_id} 有 {len(segs)} 段等着",
-                       "双击 D:\\0_LLM\\启动Studio API.bat，开好后 1 分钟内会自动开始。")
+                       "双击 D:\\0_LTX\\启动本地算力网关.bat，开好后 1 分钟内会自动开始。")
             return {"skip": "offline", "segs": segs}
-        # 有启动脚本：照样开 Job，StudioEngine.connect 会先把它拉起来（最多等 90 秒）
+        # 有本地网关或启动脚本：照样开 Job，StudioEngine.connect 会自动唤醒本地模型 LTX（最多等 90 秒）
     from .. import jobs as jobmod
     from ..errors import OranteError
     try:
@@ -130,7 +158,7 @@ def kick(task_id: str, *, manual: bool = False, log=None) -> dict:
     forget(task_id)
     jid = getattr(j, "id", None) or ""
     ss = "、".join(f"s{n:03d}" for n in segs)
-    _toast(f"{task_id} 的 {len(segs)} 段交给本地模型出片", f"{ss}（原图，不换图）", "ok")
+    _toast(f"{task_id} 已按本地模型规则重分为 {len(segs)} 段并唤醒 LTX 出片", f"{ss}（原图，不重新生图）", "ok")
     return {"started": jid, "segs": segs}
 
 
