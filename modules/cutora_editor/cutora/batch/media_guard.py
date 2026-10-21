@@ -69,8 +69,8 @@ STILL_CODECS = {
     "ppm", "pgm", "jpeg2000", "jpegls",
 }
 
-# 单个文件 ffprobe 超时 (秒)。坏文件常见表现就是 ffprobe 卡死。
-PROBE_TIMEOUT = 20
+# 单个文件 ffprobe 超时 (秒)。笔记本高并发或杀毒扫描时给足缓冲。
+PROBE_TIMEOUT = 45
 
 # 文件头魔数 → 人类可读的真实类型
 _MAGICS = [
@@ -145,7 +145,9 @@ def ffprobe_works(exe):
         return False
 
 
+import threading
 _FFPROBE_CACHE = [None]
+_FFPROBE_LOCK = threading.Lock()
 
 
 def resolve_ffprobe():
@@ -153,24 +155,27 @@ def resolve_ffprobe():
     torch/CUDA 检测, 让本该几秒跑完的体检变成半分钟启动。"""
     if _FFPROBE_CACHE[0]:
         return _FFPROBE_CACHE[0]
-    from cutora.core.paths import FFPROBE, FFMPEG_DIR
-    names = ("ffprobe.exe", "ffprobe") if os.name == "nt" else ("ffprobe", "ffprobe.exe")
-    cands = [FFPROBE]
-    for n in names:
-        cands.append(os.path.join(FFMPEG_DIR, n))
-    w = shutil.which("ffprobe")
-    if w:
-        cands.append(w)
-    for c in cands:
-        if os.path.exists(c) and ffprobe_works(c):
-            _FFPROBE_CACHE[0] = c
-            return c
-    return "ffprobe"
+    with _FFPROBE_LOCK:
+        if _FFPROBE_CACHE[0]:
+            return _FFPROBE_CACHE[0]
+        from cutora.core.paths import FFPROBE, FFMPEG_DIR
+        names = ("ffprobe.exe", "ffprobe") if os.name == "nt" else ("ffprobe", "ffprobe.exe")
+        cands = [FFPROBE]
+        for n in names:
+            cands.append(os.path.join(FFMPEG_DIR, n))
+        w = shutil.which("ffprobe")
+        if w:
+            cands.append(w)
+        for c in cands:
+            if os.path.exists(c) and ffprobe_works(c):
+                _FFPROBE_CACHE[0] = c
+                return c
+        return "ffprobe"
 
 
 def sniff_type(head):
     """按文件头猜真实类型。返回 (是否ISO容器, 人类可读类型名)。"""
-    if len(head) >= 12 and head[4:8] == b"ftyp":
+    if len(head) >= 12 and head[4:8] in (b"ftyp", b"moov", b"wide", b"mdat", b"free", b"skip"):
         return True, "ISO-BMFF (mp4/mov)"
     for magic, label in _MAGICS:
         if head.startswith(magic):
@@ -197,27 +202,37 @@ def scan_iso_boxes(path, limit_boxes=4096):
                 hdr = f.read(8)
                 if len(hdr) < 8:
                     break
+                if hdr == b"\x00" * 8 and "moov" in found and "mdat" in found:
+                    # 尾部零字节填充 (部分转码器/网盘网关会在文件末尾补齐块)
+                    break
                 size = int.from_bytes(hdr[0:4], "big")
                 btype = hdr[4:8]
                 hdr_len = 8
                 if size == 1:                      # 64 位大 box
                     ext = f.read(8)
                     if len(ext) < 8:
+                        if "moov" in found and "mdat" in found:
+                            break
                         return found, "box 头被截断"
                     size = int.from_bytes(ext, "big")
                     hdr_len = 16
                 elif size == 0:                    # 一直到文件尾
                     size = total - off
                 if size < hdr_len:
+                    if "moov" in found and "mdat" in found:
+                        break
                     return found, "box 长度非法 (size=%d @ 偏移 %d)" % (size, off)
                 try:
-                    found.add(btype.decode("ascii"))
+                    found.add(btype.decode("latin1"))
                 except Exception:
-                    return found, "box 类型不是 ASCII @ 偏移 %d" % off
+                    return found, "box 类型非法 @ 偏移 %d" % off
                 if off + size > total:
+                    bname = btype.decode("latin1", "replace")
+                    if bname not in ("moov", "mdat", "ftyp") and "moov" in found and "mdat" in found:
+                        break
                     return found, ("box '%s' 声称长度 %d, 超出文件末尾 —— "
                                    "文件被截断 (下载没下完)"
-                                   % (btype.decode("ascii", "replace"), size))
+                                   % (bname, size))
                 off += size
         return found, None
     except Exception as e:

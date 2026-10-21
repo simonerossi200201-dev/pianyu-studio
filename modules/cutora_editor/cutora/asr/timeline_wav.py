@@ -302,9 +302,9 @@ def render_timeline_wav(task: dict, dest: str | None = None, *, rate: int = 1600
                 "spatial_enabled": False, "spatial_amount": 0.0,
                 "is_main": True, "audio_role": "main", "loop": False,
             }],
-            "trim_start_sec": (task or {}).get("trim_start_sec", 0.0),
-            "trim_end_sec": (task or {}).get("trim_end_sec", 0.0),
-            "src_volume": (task or {}).get("src_volume", 1.0),
+            "trim_start_sec": float((task or {}).get("trim_start_sec") or 0.0),
+            "trim_end_sec": float((task or {}).get("trim_end_sec") or 0.0),
+            "src_volume": float((task or {}).get("src_volume") if (task or {}).get("src_volume") is not None else 1.0),
             "audio_fx": (task or {}).get("audio_fx"),
         }
         fc, tracks = rw.export_audio_filter_complex(fake, has_video=False)

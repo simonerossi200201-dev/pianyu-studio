@@ -847,7 +847,7 @@ class RenderWorker(QThread):
             mad_refs = []
 
             # 渲染起点裁剪（trim_start_sec）：直接从裁剪点对应的帧开始渲染
-            _trim_start_sec = float(project.get("trim_start_sec", 0.0))
+            _trim_start_sec = float(project.get("trim_start_sec") or 0.0)
             _trim_start_frame = max(0, int(_trim_start_sec * fps))
             _end_frame = int(total_frames)
             if self.frame_range:
@@ -1524,10 +1524,10 @@ class RenderWorker(QThread):
         tracks = self._build_audio_tracks(
             project, solo_ids=solo_ids, preview_sfx=preview_sfx)
         target_sr = int(self.export_audio_rate) if isinstance(self.export_audio_rate, (int, float)) and self.export_audio_rate > 0 else 48000
-        src_volume = float(project.get("src_volume", 1.0))
+        src_volume = float(project.get("src_volume") if project.get("src_volume") is not None else 1.0)
         if tracks and src_volume != 1.0:
             for t in tracks:
-                if t.get("is_main") and abs(t.get("gain_db", 0.0)) < 0.01:
+                if t.get("is_main") and abs(float(t.get("gain_db") or 0.0)) < 0.01:
                     t["gain_db"] = 20.0 * math.log10(max(src_volume, 1e-6))
         if not tracks:
             return "", tracks
@@ -1540,15 +1540,15 @@ class RenderWorker(QThread):
         audio_index0 = 1 if has_video else 0
         filter_parts = []
         for idx, t in enumerate(tracks):
-            gain_db = float(t.get("gain_db", 0.0))
-            trim_in = float(t.get("trim_in", 0.0))
+            gain_db = float(t.get("gain_db") or 0.0)
+            trim_in = float(t.get("trim_in") or 0.0)
             duration = t.get("duration")
             if duration is not None:
                 duration = max(0.01, float(duration))
-            start_sec = float(t.get("start", 0.0))
-            pitch = float(t.get("pitch_semitones", 0.0))
-            fade_in_d = float(t.get("fade_in_dur", 0.0))
-            fade_out_d = float(t.get("fade_out_dur", 0.0))
+            start_sec = float(t.get("start") or 0.0)
+            pitch = float(t.get("pitch_semitones") or 0.0)
+            fade_in_d = float(t.get("fade_in_dur") or 0.0)
+            fade_out_d = float(t.get("fade_out_dur") or 0.0)
             fade_curve = str(t.get("fade_curve") or "tri")
             if fade_curve not in ("tri", "esin"):
                 fade_curve = "tri"
@@ -1706,8 +1706,8 @@ class RenderWorker(QThread):
 
         from cutora.render.export_params import audio_mix_trim_tail
         _trim_tail = audio_mix_trim_tail(
-            float(project.get("trim_start_sec", 0.0)),
-            float(project.get("trim_end_sec", 0.0)))
+            float(project.get("trim_start_sec") or 0.0),
+            float(project.get("trim_end_sec") or 0.0))
         from cutora.audio.ducking import ducked_filter
         ducked = ducked_filter(filter_parts, tracks, project, _trim_tail)
         if ducked is not None:

@@ -6005,7 +6005,7 @@ class MainWindow(CommandBodies, QMainWindow):
         if source_id := self._task_source_id(task):
             src = self._task_source(task, source_id)
             src_path = getattr(src, "path", None) if src is not None else path
-            if info.get("has_audio") and src_path:
+            if info.get("has_audio") and src_path and (self.curr_idx == idx or len(self.tasks or []) <= 2):
                 self._trigger_waveform_generation(source_id, src_path)
         if self.curr_idx == idx and hasattr(self, "timeline"):
             from cutora.preview.engine import timeline_duration_sec
@@ -6053,14 +6053,29 @@ class MainWindow(CommandBodies, QMainWindow):
         source.has_video = bool(info.get("has_video", True))
         source.has_audio = bool(info.get("has_audio"))
         link_id = task.get("_link_group_id") or uuid.uuid4().hex
+        has_vclip = False
+        main_vtrack = None
         for tr in getattr(tl, "tracks", []) or []:
             if getattr(tr, "type", None) != "video":
                 continue
+            if main_vtrack is None or getattr(tr, "is_main_video", False):
+                main_vtrack = tr
             for clip in getattr(tr, "clips", []) or []:
                 if getattr(clip, "source_id", None) == source_id:
                     clip.out_t = dur
                     if not getattr(clip, "link_group_id", None):
                         clip.link_group_id = link_id
+                    has_vclip = True
+        if not has_vclip and main_vtrack is not None:
+            vclip = Clip(source_id, 0.0, float(dur or 0.0), 0.0)
+            vclip.link_group_id = link_id
+            vclip.fit_mode = getattr(self, "_current_fit_mode", DEFAULT_VIDEO_FIT_MODE)
+            vclip.size_mode = "project"
+            vclip.x = 0.0
+            vclip.y = 0.0
+            vclip.scale = 1.0
+            vclip.rotation = 0.0
+            main_vtrack.clips.append(vclip)
         if _SFX is not None:
             audio_track = _SFX.ensure_role_track(tl, "main")
         else:
@@ -6370,6 +6385,11 @@ class MainWindow(CommandBodies, QMainWindow):
         if item is None or self.file_list.row(item) == -1: return
         self.curr_idx = self.file_list.row(item)
         task = self.tasks[self.curr_idx]
+        if task.get("guard_error") and not task.get("probe_pending"):
+            vpath = task.get("video") or ""
+            if vpath and os.path.isfile(vpath):
+                task["probe_pending"] = True
+                self._queue_task_import_probe(self.curr_idx, vpath)
         self._task_data = task
         self._timeline_ms = 0
         self._timeline_last_ts = None
@@ -7539,9 +7559,9 @@ class MainWindow(CommandBodies, QMainWindow):
             td["image_overlays"] = self._sanitize_overlays(t.get('image_overlays', []))
             td["audio_clips"] = self._sanitize_audio_clips(t.get('audio_clips', []))
             td["style"] = force_allowed_font(copy.deepcopy(t.get('style', {})))
-            td["src_volume"] = float(t.get('src_volume', 1.0))
-            td["trim_start_sec"] = float(t.get("trim_start_sec", 0.0))
-            td["trim_end_sec"] = float(t.get("trim_end_sec", 0.0))
+            td["src_volume"] = float(t.get('src_volume') if t.get('src_volume') is not None else 1.0)
+            td["trim_start_sec"] = float(t.get("trim_start_sec") or 0.0)
+            td["trim_end_sec"] = float(t.get("trim_end_sec") or 0.0)
             # 角色字体清洗
             roles = td.get("subtitle_roles", {})
             if isinstance(roles, dict):
@@ -15879,6 +15899,8 @@ class MainWindow(CommandBodies, QMainWindow):
         if not (0 <= self.curr_idx < len(self.tasks or [])):
             return
         task = self.tasks[self.curr_idx]
+        if task.get("guard_error"):
+            return
         solo_ids = getattr(getattr(self, "timeline", None), "_solo_ids", None) or None
         preview_sfx = bool(getattr(self, "_sfx_preview_on", True))
         from cutora.asr.timeline_wav import render_preview_wav

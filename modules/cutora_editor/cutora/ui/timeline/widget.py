@@ -1385,8 +1385,8 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
     def set_trim_from_task(self, task_data):
         """从 task 字典中恢复 trim_start_sec 和 trim_end_sec。"""
         if isinstance(task_data, dict):
-            self.trim_start_sec = float(task_data.get("trim_start_sec", 0.0))
-            self.trim_end_sec = float(task_data.get("trim_end_sec", 0.0))
+            self.trim_start_sec = float(task_data.get("trim_start_sec") or 0.0)
+            self.trim_end_sec = float(task_data.get("trim_end_sec") or 0.0)
         else:
             self.trim_start_sec = 0.0
             self.trim_end_sec = 0.0

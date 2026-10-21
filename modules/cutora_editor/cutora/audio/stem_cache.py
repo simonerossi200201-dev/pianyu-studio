@@ -189,8 +189,8 @@ def render_role_pcm(task, rows, *, role="main", pad_to=0.0) -> np.ndarray:
         "audio_tracks": tracks,
         "audio_fx": ((task or {}).get("audio_fx") if role == "main" else None) or {},
         "src_volume": 1.0,
-        "trim_start_sec": (task or {}).get("trim_start_sec", 0.0) if role == "main" else 0.0,
-        "trim_end_sec": (task or {}).get("trim_end_sec", 0.0) if role == "main" else 0.0,
+        "trim_start_sec": float((task or {}).get("trim_start_sec") or 0.0) if role == "main" else 0.0,
+        "trim_end_sec": float((task or {}).get("trim_end_sec") or 0.0) if role == "main" else 0.0,
     }
     rw = RenderWorker.__new__(RenderWorker)
     rw.export_audio_rate = SAMPLE_RATE

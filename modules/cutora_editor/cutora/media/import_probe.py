@@ -22,8 +22,10 @@ _MAX_IMPORT_CACHE = 4096
 _keep_signals: list = []
 _import_mem: dict = {}
 _import_loaded = False
+_cache_lock = threading.RLock()
 _inflight_lock = threading.Lock()
 _inflight: dict = {}
+_probe_sem = threading.BoundedSemaphore(4)
 
 
 def format_duration_label(duration) -> str:
@@ -80,56 +82,61 @@ def _fp_key(path: str) -> str | None:
 
 def _load_import_cache() -> None:
     global _import_loaded
-    if _import_loaded:
-        return
-    _import_loaded = True
-    path = _cache_path()
-    if not os.path.isfile(path):
-        return
-    try:
-        import json
-        data = json.loads(open(path, encoding="utf-8").read() or "{}")
-    except (OSError, ValueError):
-        return
-    if not isinstance(data, dict) or int(data.get("v") or 0) != _IMPORT_CACHE_VERSION:
-        return
-    items = data.get("items")
-    if isinstance(items, dict):
-        for k, rec in items.items():
-            if isinstance(k, str) and isinstance(rec, dict):
-                _import_mem[k] = rec
+    with _cache_lock:
+        if _import_loaded:
+            return
+        _import_loaded = True
+        path = _cache_path()
+        if not os.path.isfile(path):
+            return
+        try:
+            import json
+            with open(path, encoding="utf-8") as fh:
+                data = json.loads(fh.read() or "{}")
+        except (OSError, ValueError):
+            return
+        if not isinstance(data, dict) or int(data.get("v") or 0) != _IMPORT_CACHE_VERSION:
+            return
+        items = data.get("items")
+        if isinstance(items, dict):
+            for k, rec in items.items():
+                # 绝不恢复失败的探测记录（防止瞬时并发/下载未完成导致的误判被永久锁死）
+                if isinstance(k, str) and isinstance(rec, dict) and rec.get("ok"):
+                    _import_mem[k] = rec
 
 
 def _flush_import_cache() -> None:
     import json
-    dest = _cache_path()
-    parent = os.path.dirname(dest)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    items = dict(_import_mem)
-    if len(items) > _MAX_IMPORT_CACHE:
-        for k in list(items.keys())[: len(items) - _MAX_IMPORT_CACHE]:
-            items.pop(k, None)
-            _import_mem.pop(k, None)
-    tmp = dest + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-            json.dump({"v": _IMPORT_CACHE_VERSION, "items": items}, fh, ensure_ascii=False)
-        os.replace(tmp, dest)
-    except OSError:
-        _LOG.exception("import probe cache write failed: %s", dest)
+    with _cache_lock:
+        dest = _cache_path()
+        parent = os.path.dirname(dest)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        items = {k: v for k, v in list(_import_mem.items()) if isinstance(v, dict) and v.get("ok")}
+        if len(items) > _MAX_IMPORT_CACHE:
+            for k in list(items.keys())[: len(items) - _MAX_IMPORT_CACHE]:
+                items.pop(k, None)
+                _import_mem.pop(k, None)
+        tmp = "%s.%d.%d.tmp" % (dest, os.getpid(), threading.get_ident())
         try:
-            if os.path.isfile(tmp):
-                os.remove(tmp)
-        except OSError:
-            pass
+            with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+                json.dump({"v": _IMPORT_CACHE_VERSION, "items": items}, fh, ensure_ascii=False)
+            os.replace(tmp, dest)
+        except Exception:
+            _LOG.exception("import probe cache write failed: %s", dest)
+            try:
+                if os.path.isfile(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
 
 
 def reset_import_cache() -> None:
     """Tests: drop the in-process import cache. Disk file is left to CUTORA_USER_DATA."""
     global _import_loaded
-    _import_mem.clear()
-    _import_loaded = False
+    with _cache_lock:
+        _import_mem.clear()
+        _import_loaded = False
     with _inflight_lock:
         _inflight.clear()
 
@@ -138,21 +145,30 @@ def lookup_import(path: str) -> dict | None:
     key = _fp_key(path)
     if key is None:
         return None
-    _load_import_cache()
-    rec = _import_mem.get(key)
-    return rec if isinstance(rec, dict) and rec else None
+    with _cache_lock:
+        _load_import_cache()
+        rec = _import_mem.get(key)
+        if isinstance(rec, dict) and rec.get("ok"):
+            return dict(rec)
+        return None
 
 
 def store_import(path: str, rec: dict) -> None:
+    if not isinstance(rec, dict) or not rec.get("ok"):
+        return
     key = _fp_key(path)
     if key is None:
         return
-    _load_import_cache()
-    _import_mem[key] = dict(rec or {})
-    _flush_import_cache()
-    info = (rec or {}).get("info")
-    if isinstance(info, dict) and info:
-        _feed_duration_cache(path, info)
+    try:
+        with _cache_lock:
+            _load_import_cache()
+            _import_mem[key] = dict(rec)
+            _flush_import_cache()
+        info = rec.get("info")
+        if isinstance(info, dict) and info:
+            _feed_duration_cache(path, info)
+    except Exception:
+        _LOG.exception("store_import failed: %s", path)
 
 
 def _feed_duration_cache(path: str, info: dict) -> None:
@@ -192,7 +208,17 @@ def probe_file_for_import(path: str) -> dict:
     if hit is not None:
         return hit
     rec = _probe_file_uncached(path)
-    store_import(path, rec)
+    if not (rec or {}).get("ok"):
+        codes = {
+            f.get("code") for f in ((rec or {}).get("fatal") or [])
+            if isinstance(f, dict)
+        }
+        if codes & {"E_PROBE_FAIL", "E_UNREADABLE", "E_STAT"}:
+            import time
+            time.sleep(0.35)
+            rec = _probe_file_uncached(path)
+    if (rec or {}).get("ok"):
+        store_import(path, rec)
     return rec
 
 
@@ -227,7 +253,8 @@ def queue_import_probe(path: str, on_done) -> None:
         def run(self):
             rec = None
             try:
-                rec = probe_file_for_import(self._p)
+                with _probe_sem:
+                    rec = probe_file_for_import(self._p)
             except Exception as exc:
                 _LOG.exception("import probe failed: %s", self._p)
                 rec = {
