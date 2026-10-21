@@ -31,22 +31,17 @@ def rewrite_pyvenv_cfg(root: Path | str | None = None) -> Path:
     ]
 
     for cfg_path, target_home in targets:
-        if not cfg_path.is_file() or not (target_home / "python.exe").is_file():
+        if not cfg_path.parent.is_dir() or not (target_home / "python.exe").is_file():
             continue
-        lines = cfg_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        out: list[str] = []
-        found = False
-        for line in lines:
-            if line.strip().lower().startswith("home") and "=" in line:
-                out.append(f"home = {target_home}")
-                found = True
-            else:
-                out.append(line)
-        if not found:
-            out.insert(0, f"home = {target_home}")
-        cfg_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+        ver = "3.12.7" if "python312" in str(target_home).lower() else "3.10.11"
+        clean_cfg = (
+            f"home = {target_home}\n"
+            "include-system-site-packages = false\n"
+            f"version = {ver}\n"
+        )
+        cfg_path.write_text(clean_cfg, encoding="utf-8")
 
-    # 若存在便携式自愈启动器模板，确保 comfyui/venv/Scripts 也同步升级为相对路径自愈启动器
+    # 若存在便携式自愈启动器模板，确保 venv/Scripts 与 comfyui/venv/Scripts 同步升级为相对路径自愈启动器
     bin_dir = base / "runtime" / "bin"
     for venv_scripts in (
         base / "runtime" / "venv" / "Scripts",
@@ -60,9 +55,10 @@ def rewrite_pyvenv_cfg(root: Path | str | None = None) -> Path:
         ):
             tpl = bin_dir / tpl_name
             dst = venv_scripts / dst_name
-            if tpl.is_file() and (not dst.is_file() or dst.stat().st_size != tpl.stat().st_size):
+            if tpl.is_file():
                 try:
-                    shutil.copy2(tpl, dst)
+                    if not dst.is_file() or dst.read_bytes() != tpl.read_bytes():
+                        shutil.copy2(tpl, dst)
                 except OSError:
                     pass
     return py_home

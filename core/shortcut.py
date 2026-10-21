@@ -153,8 +153,10 @@ def ensure_shortcuts(root: Path | None = None, *, force: bool = False, quiet: bo
     wscript = Path(sysroot) / "System32" / "wscript.exe"
     vbs_path = base / "片语工作室.vbs"
     pyw = base / "runtime" / "venv" / "Scripts" / "pythonw.exe"
-    target = wscript if wscript.is_file() and vbs_path.is_file() else pyw
-    args = f'"{vbs_path}"' if target == wscript else f'"{base / "studio_launcher.py"}"'
+    if not pyw.is_file():
+        pyw = base / "runtime" / "python" / "pythonw.exe"
+    target = pyw if pyw.is_file() else wscript
+    args = f'"{base / "studio_launcher.py"}"' if target == pyw else f'"{vbs_path}"'
 
     ico_studio = base / "resources" / "brand" / "app.ico"
     ico_cutora = base / "resources" / "brand" / "cutora.ico"

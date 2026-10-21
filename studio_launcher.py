@@ -34,9 +34,9 @@ from core.spine_db import get_spine_db
 from core.robota_autopilot import get_autopilot
 from core.delivery_worker import get_delivery_worker
 
-# 启动即自动修正便携 Python 路径并确保桌面快捷方式存在
+# 启动即自动修正便携 Python 路径并确保桌面快捷方式指向当前目录
 rewrite_pyvenv_cfg(LTX_ROOT)
-ensure_shortcuts(LTX_ROOT, force=False, quiet=True)
+ensure_shortcuts(LTX_ROOT, force=True, quiet=True)
 
 # ─────────────────────── CUTORA Roma-Gold 色彩令牌 ───────────────────────
 BG0 = "#141210"         # 暖玄武岩黑
@@ -1444,16 +1444,37 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
 
 if __name__ == "__main__":
-    if "--patrol-once" in sys.argv:
-        print(json.dumps(get_autopilot().patrol_and_heal_once(), ensure_ascii=False, indent=2))
-    elif "--status" in sys.argv:
-        print(json.dumps({
-            "hardware": get_hardware_guard().probe_system().to_dict(),
-            "spine": get_spine_db().get_dashboard_summary(),
-        }, ensure_ascii=False, indent=2))
-    elif "--screenshot" in sys.argv:
-        idx = sys.argv.index("--screenshot")
-        shot_out = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else str(LTX_ROOT / "launcher_preview.png")
-        run_gui(screenshot_path=shot_out)
-    else:
-        run_gui()
+    try:
+        if "--patrol-once" in sys.argv:
+            print(json.dumps(get_autopilot().patrol_and_heal_once(), ensure_ascii=False, indent=2))
+        elif "--status" in sys.argv:
+            print(json.dumps({
+                "hardware": get_hardware_guard().probe_system().to_dict(),
+                "spine": get_spine_db().get_dashboard_summary(),
+            }, ensure_ascii=False, indent=2))
+        elif "--screenshot" in sys.argv:
+            idx = sys.argv.index("--screenshot")
+            shot_out = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else str(LTX_ROOT / "launcher_preview.png")
+            run_gui(screenshot_path=shot_out)
+        else:
+            run_gui()
+    except Exception as _exc:
+        import traceback
+        _err_txt = traceback.format_exc()
+        try:
+            _log_dir = LTX_ROOT / "logs"
+            _log_dir.mkdir(parents=True, exist_ok=True)
+            (_log_dir / "launcher_error.log").write_text(_err_txt, encoding="utf-8")
+        except Exception:
+            pass
+        if os.name == "nt":
+            try:
+                ctypes.windll.user32.MessageBoxW(
+                    None,
+                    f"片语工作室启动异常:\n{_exc}\n\n详细日志已保存至 logs\\launcher_error.log",
+                    "片语工作室 - 启动诊断",
+                    0x10,
+                )
+            except Exception:
+                pass
+        raise
