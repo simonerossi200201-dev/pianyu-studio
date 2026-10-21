@@ -25,18 +25,31 @@ def load_jobs_from_project(
     limit: int = 0,
     max_duration_sec: float = 0.0,
 ) -> Tuple[List[Tuple[dict, str, str, float, float]], List[str]]:
-    from cutora.model.project_io import deserialize_render_task, serialize_render_task
+    from cutora.model.project_io import _normalize_project_data, deserialize_render_task, serialize_render_task
+    from cutora.model.project_media import collect_missing, rebuild_animated_missing, resolve_relative_paths
     from cutora.render.parallel import job_weight, prepare_task_audio_for_export
 
     proj_path = os.path.abspath(proj_path)
     with open(proj_path, "r", encoding="utf-8") as f:
         proj_data = json.load(f)
 
+    _normalize_project_data(proj_data)
+    raw_tasks = list(proj_data.get("tasks") or [])
+    # CRITICAL: GUI save_project writes project-relative paths (e.g. "1021视频/v10.mp4").
+    # Always resolve relative paths against proj_path before deserializing or spawning workers!
+    resolve_relative_paths(raw_tasks, proj_path)
+    rebuild_animated_missing(raw_tasks)
+    missing_media = collect_missing(raw_tasks)
+    if missing_media:
+        raise FileNotFoundError(
+            f"[ExportCLI] Refusing to export {proj_path}: {len(missing_media)} media file(s) missing on disk "
+            f"(first 3: {missing_media[:3]})"
+        )
+
     os.makedirs(out_dir, exist_ok=True)
     jobs: List[Tuple[dict, str, str, float, float]] = []
     skipped: List[str] = []
 
-    raw_tasks = list(proj_data.get("tasks") or [])
     if limit and limit > 0:
         raw_tasks = raw_tasks[: int(limit)]
 
@@ -261,6 +274,37 @@ def run_batch_export(
                 for idx in w["indices"]:
                     if not (os.path.isfile(jobs[idx][1]) and os.path.getsize(jobs[idx][1]) > 100_000):
                         failed_stems.append(jobs[idx][2])
+
+        # Post-export black-screen guard: sample middle frame of each exported video
+        # to guarantee video tracks actually decoded and rendered (not black background + overlays).
+        import cv2
+        import numpy as np
+
+        for _ser_t, out_path, stem, _w, dur in jobs:
+            if stem in failed_stems or not os.path.isfile(out_path):
+                continue
+            cap = cv2.VideoCapture(out_path)
+            try:
+                if not cap.isOpened():
+                    failed_stems.append(stem)
+                    continue
+                n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                if n_frames > 4:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, n_frames // 2)
+                ok_f, frame = cap.read()
+                if not ok_f or frame is None:
+                    failed_stems.append(stem)
+                    continue
+                non_black_ratio = float(np.mean(np.max(frame, axis=2) > 16))
+                if non_black_ratio < 0.25:
+                    print(
+                        f"[ExportCLI] ERROR: {stem}.mp4 failed black-screen guard "
+                        f"(non_black_ratio={non_black_ratio:.3f} < 0.25)!",
+                        flush=True,
+                    )
+                    failed_stems.append(stem)
+            finally:
+                cap.release()
 
         wall_sec = max(1e-3, time.perf_counter() - t_start)
         agg_fps = total_frames / wall_sec

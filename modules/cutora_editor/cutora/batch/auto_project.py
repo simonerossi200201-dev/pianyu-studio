@@ -115,6 +115,42 @@ def parse_table_titles(txt_path: str) -> dict[str, str]:
     return titles
 
 
+def parse_table_phones(txt_path: str, default_phone_img: str = "") -> dict[str, str]:
+    if not txt_path or not os.path.isfile(txt_path):
+        return {}
+    import csv
+    import io
+    pic_dir = r"D:\1_PROJECT\Tiktok_Pic"
+    png_map: dict[str, str] = {}
+    if os.path.isdir(pic_dir):
+        for fn in sorted(os.listdir(pic_dir)):
+            if fn.lower().endswith(".png"):
+                digits = re.sub(r"\D+", "", os.path.splitext(fn)[0])
+                if len(digits) >= 8:
+                    png_map[digits] = os.path.join(pic_dir, fn)
+    if not png_map:
+        return {}
+    raw = open(txt_path, "r", encoding="utf-8").read()
+    phones: dict[str, str] = {}
+    reader = csv.reader(io.StringIO(raw), delimiter="\t")
+    for raw_row in reader:
+        cols = [c.strip() for c in raw_row if c is not None]
+        if not any(cols):
+            continue
+        for idx, val in enumerate(cols):
+            if re.match(r"^[vV]\d{1,4}$", val.strip()):
+                vid = val.strip().lower()
+                row_digits = re.sub(r"\D+", "", " ".join(cols[idx + 1 :]))
+                for d, ppath in png_map.items():
+                    if d in row_digits or (len(d) >= 9 and d[-9:] in row_digits):
+                        phones[vid] = ppath
+                        break
+                if vid not in phones and default_phone_img:
+                    phones[vid] = default_phone_img
+                break
+    return phones
+
+
 def load_clips_mapping(manifest_or_dir: str) -> dict[str, list[str]]:
     if os.path.isfile(manifest_or_dir):
         manifest_path = manifest_or_dir
@@ -236,6 +272,7 @@ def build_batch_project(
     cli.ensure_qapp()
 
     titles = parse_table_titles(table_path)
+    phones = parse_table_phones(table_path, default_phone_img=phone_img)
     mapping = load_clips_mapping(clips_manifest)
 
     video_files = []
@@ -377,7 +414,8 @@ def build_batch_project(
 
         t["text_overlays"] = [ov_title, ov_ai]
 
-        if phone_img and os.path.isfile(phone_img):
+        task_phone_img = phones.get(vid) or phone_img
+        if task_phone_img and os.path.isfile(task_phone_img):
             img_tr = SII.ensure_image_track(tl, 1)
             iw, ih = 2078, 644
             el_w = 1053.1975155279504 * (float(tw) / 1080.0)
@@ -397,7 +435,7 @@ def build_batch_project(
                 "elements": [
                     {
                         "kind": "image",
-                        "path": phone_img,
+                        "path": task_phone_img,
                         "x": float(el_x),
                         "y": float(el_y),
                         "w": float(el_w),
@@ -438,7 +476,7 @@ def build_batch_project(
                     "anim_dur_sec": 0.35,
                     "items": [
                         {
-                            "path": phone_img,
+                            "path": task_phone_img,
                             "x_pct": round(el_x / float(tw) * 100.0, 4),
                             "y_pct": round(el_y / float(th) * 100.0, 4),
                             "w_pct": round(el_w / float(tw) * 100.0, 4),
@@ -498,6 +536,11 @@ def build_batch_project(
                 continue
             ppath = os.path.join(batch_dir, f"{project_name}_part{p_idx + 1}.cutora")
             saved_projects.append(_save_proj(ppath, sub))
+        try:
+            from cutora.core.history import _record_recent_project
+            _record_recent_project(full_path)
+        except Exception:
+            pass
 
     report_path = os.path.join(batch_dir, f"{project_name}_facecheck.json")
     summary = {

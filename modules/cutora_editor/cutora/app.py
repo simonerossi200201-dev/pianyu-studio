@@ -531,6 +531,14 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
     w.show()
     w.raise_()
     w.activateWindow()
+    _open_proj = os.environ.get("CUTORA_OPEN_PROJECT", "").strip()
+    if not _open_proj:
+        for _arg in sys.argv[1:]:
+            if _arg.lower().endswith(".cutora") and os.path.isfile(_arg):
+                _open_proj = _arg
+                break
+    if _open_proj and os.path.isfile(_open_proj) and hasattr(w, "open_project"):
+        QTimer.singleShot(250, lambda p=_open_proj: w.open_project(p))
     # Q131：构造期间不许弹模态框（闪屏置顶，会把框压在下面、整个程序看着像卡死）。
     # 需要提示的先攒着，这里闪屏已经关了、主窗口已经在前台，再弹。
     pending = getattr(w, "show_pending_startup_warnings", None)
