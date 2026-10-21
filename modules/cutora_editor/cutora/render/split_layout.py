@@ -22,7 +22,6 @@ LAYOUTS = (
     "left1_right2",
     "top1_bottom2",
     "top1_bottom3",
-    "top1_bottom4",
     "bottom1_top2",
     "bottom1_top3",
     "left1_right3",
@@ -30,9 +29,9 @@ LAYOUTS = (
     "right1_left2",
     "right1_left3",
     "center_h",
-    "center_h_arc",
-    "center_h_embrace",
     "center_h_tilt",
+    "l_left2_bottom2",
+    "l_right2_bottom2",
     "l_left2_bottom3",
     "l_left1_bottom2",
     "l_right1_bottom2",
@@ -127,13 +126,18 @@ def cell_id_for_index(idx: int) -> str:
 
 
 def parse_1_to_n(layout: str | None) -> tuple[str, int] | None:
-    """解析一对多布局名：'top1_bottom<N>' / 'bottom1_top<N>' / 'left1_right<N>' / 'right1_left<N>' (N >= 2) -> (mode, N)。"""
+    """解析一对多布局名：
+    - 'top1_bottom<N>' / 'bottom1_top<N>' 仅允许 2 <= N <= 3（4个及以上挤在一横排太挤，自动走 L 形分屏）
+    - 'left1_right<N>' / 'right1_left<N>' (N >= 2) -> (mode, N)。
+    """
     name = str(layout or "").strip()
     for prefix in ("top1_bottom", "bottom1_top", "left1_right", "right1_left"):
         if name.startswith(prefix):
             tail = name[len(prefix):]
             if tail.isdigit():
                 n = int(tail)
+                if prefix in ("top1_bottom", "bottom1_top") and n >= 4:
+                    return None
                 if n >= 2:
                     return prefix, n
     return None
@@ -143,10 +147,19 @@ def parse_l_layout(layout: str | None) -> tuple[int, int, str, str] | None:
     """解析 L 形分屏布局名：
     'l_left<NL>_bottom<NB>' / 'l_right<NR>_bottom<NB>' / 'l_left<NL>_top<NT>' / 'l_right<NR>_top<NT>'
     -> (n_side, n_band, side, band)。
+    同时将旧版 'top1_bottom<N>' / 'bottom1_top<N>' (N >= 4) 自动转化为 L 形分屏，避免 4 个视频挤在一横排。
     """
     name = str(layout or "").strip()
     if name == "l_shape_auto":
-        return 2, 3, "left", "bottom"
+        return 2, 2, "left", "bottom"
+    for prefix, band_k in (("top1_bottom", "bottom"), ("bottom1_top", "top")):
+        if name.startswith(prefix):
+            tail = name[len(prefix):]
+            if tail.isdigit() and int(tail) >= 4:
+                n = int(tail)
+                ns = max(2, n // 2)
+                nb = max(2, n - ns)
+                return ns, nb, "left", band_k
     for side_key, side_prefix in (("left", "l_left"), ("right", "l_right")):
         if name.startswith(side_prefix):
             body = name[len(side_prefix):]
@@ -163,24 +176,18 @@ def parse_l_layout(layout: str | None) -> tuple[int, int, str, str] | None:
 
 
 def parse_center_h_layout(layout: str | None) -> tuple[int, int, float, str, str] | None:
-    """解析横向夹心分屏（主视频在中间，上下副屏，分界线可旋转或呈双层弧线）：
+    """解析横向夹心分屏（主视频在中间，上下副屏，默认全部采用直线分界）：
     返回 (n_top, n_bottom, rot_deg, c_top, c_bottom)。
     """
     name = str(layout or "").strip()
-    if name in ("center_h", "center_h_auto"):
+    if name in ("center_h", "center_h_auto", "center_h_arc", "center_h_arc_auto", "center_h_embrace", "center_h_embrace_auto", "center_h_swave", "center_h_swave_auto"):
         return 1, 1, 0.0, "straight", "straight"
     if name in ("center_h_tilt", "center_h_tilt_auto"):
         return 1, 1, 9.0, "straight", "straight"
-    if name in ("center_h_arc", "center_h_arc_auto"):
-        return 1, 1, 0.0, "arc", "arc"
-    if name in ("center_h_embrace", "center_h_embrace_auto"):
-        return 1, 1, 0.0, "arch_up", "arc"
-    if name in ("center_h_swave", "center_h_swave_auto"):
-        return 1, 1, 0.0, "s_wave", "s_wave"
     prefixes = (
-        ("center_h_embrace", 0.0, "arch_up", "arc"),
-        ("center_h_arc", 0.0, "arc", "arc"),
-        ("center_h_swave", 0.0, "s_wave", "s_wave"),
+        ("center_h_embrace", 0.0, "straight", "straight"),
+        ("center_h_arc", 0.0, "straight", "straight"),
+        ("center_h_swave", 0.0, "straight", "straight"),
         ("center_h_tilt", 9.0, "straight", "straight"),
         ("center_h", 0.0, "straight", "straight"),
     )
@@ -1857,24 +1864,23 @@ def apply_custom_creative_split(
     if chosen_mode == "random":
         recipes = [
             # (kind, main_pos, rot_deg, curve, bstyle, bcol, bw, feather, sh, sds, tw, title)
-            ("arc_top", 0.58, 0.0, "arc", "gradient", "#F3C668", 7, 0.0, "circle", 64, 0.0, "🌈 穹顶层叠弧分屏 · 上主下副优美下弧"),
-            ("arch_up_bottom", 0.40, 0.0, "arch_up", "gradient", "#88E0EF", 7, 0.0, "circle", 64, 0.0, "🌈 苍穹托举弧分屏 · 下主上副优雅上弧"),
-            ("center_h_embrace", 0.25, 0.0, "arc", "gradient", "#F3C668", 7, 0.0, "circle", 64, 0.0, "🌈 双层对称怀抱弧夹心 · 主视频居中"),
-            ("center_h_arc", 0.25, 0.0, "arc", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "🌈 双层同向层叠弧夹心 · 主视频居中"),
-            ("center_h_swave", 0.25, 0.0, "s_wave", "gradient", "#88E0EF", 6, 0.0, "circle", 64, 0.0, "🌊 双层流线S弧夹心 · 主视频居中"),
+            ("straight_top", 0.58, 0.0, "straight", "gradient", "#F3C668", 7, 0.0, "circle", 64, 0.0, "✨ 经典黄金直线 · 上主下副"),
+            ("straight_bottom", 0.40, 0.0, "straight", "gradient", "#88E0EF", 7, 0.0, "circle", 64, 0.0, "✨ 经典苍穹直线 · 下主上副"),
+            ("center_h", 0.25, 0.0, "straight", "gradient", "#F3C668", 7, 0.0, "circle", 64, 0.0, "📐 经典上下双栏夹心 · 主视频居中"),
+            ("center_h_tilt", 0.24, 8.0, "straight", "gradient", "#F3C668", 7, 0.0, "circle", 64, 0.0, "🎞️ 动感斜切夹心 · 主视频居中+上下斜线"),
+            ("center_h_tilt", 0.24, -8.0, "straight", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "🎞️ 反斜切夹心 · 主视频居中+上下斜线"),
             ("l_shape", 0.72, 0.0, "straight", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "📐 L形黄金分屏 · 右上主屏+左副下副"),
             ("l_right_bottom", 0.72, 0.0, "straight", "gradient", "#F3C668", 6, 0.0, "circle", 64, 0.0, "📐 反L形黄金分屏 · 左上主屏+右副下副"),
             ("l_left_top", 0.28, 0.0, "straight", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "📐 顶L形黄金分屏 · 右下主屏+左副上副"),
-            ("center_h_tilt", 0.24, 8.0, "straight", "gradient", "#F3C668", 7, 0.0, "circle", 64, 0.0, "🎞️ 动感斜切夹心 · 主视频居中+上下斜线"),
-            ("arc_left", 0.56, 0.0, "arc", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "🌈 侧翼流线左弧 · 左主右副"),
-            ("arc_right", 0.44, 0.0, "arch_up", "gradient", "#F3C668", 6, 0.0, "circle", 64, 0.0, "🌈 侧翼流线右弧 · 右主左副"),
+            ("slash_left", 0.56, 0.0, "straight", "solid", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "📐 侧翼直线分屏 · 左主右副"),
+            ("slash_right", 0.44, 0.0, "straight", "gradient", "#F3C668", 6, 0.0, "circle", 64, 0.0, "📐 侧翼直线分屏 · 右主左副"),
             ("hex_center", 0.50, 0.0, "straight", "glass", "#F5D082", 9, 0.0, "polygon", 64, 0.0, "⭕ 中央圆窗主屏+四角毛玻璃分屏"),
             ("hex_center", 0.50, 0.0, "straight", "solid", "#E5A93C", 6, 0.0, "polygon", 6, 0.0, "⬢ 六角中主+四角副屏 (分段可调至圆)"),
-            ("shutter_iris", 0.50, 0.0, "arc", "solid", "#E5A93C", 6, 0.0, "octagon", 8, 38.0, "📷 旋风弧叶快门 · 八角电影虹膜分屏"),
+            ("shutter_iris", 0.50, 0.0, "straight", "solid", "#E5A93C", 6, 0.0, "octagon", 8, 38.0, "📷 旋风快门 · 八角电影虹膜分屏"),
             ("circle_bottom", 0.76, 0.0, "straight", "solid", "#F3C668", 6, 0.0, "circle", 64, 0.0, "⭕ 底部圆窗画中画分屏"),
             ("circle_right", 0.78, 0.0, "straight", "gradient", "#E5A93C", 6, 0.0, "circle", 64, 0.0, "⭕ 右侧圆窗画中画分屏"),
-            ("slash_top", 0.58, 10.0, "straight", "gradient", "#E5A93C", 7, 0.0, "circle", 64, 0.0, "📐 10° 黄金斜切 · 上主下副"),
-            ("slash_bottom", 0.40, -10.0, "straight", "shadow", "#E5A93C", 7, 0.0, "circle", 64, 0.0, "📐 -10° 黄金斜切 · 下主上副"),
+            ("slash_top", 0.58, 8.0, "straight", "gradient", "#E5A93C", 7, 0.0, "circle", 64, 0.0, "📐 8° 黄金斜切 · 上主下副"),
+            ("slash_bottom", 0.40, -8.0, "straight", "shadow", "#E5A93C", 7, 0.0, "circle", 64, 0.0, "📐 -8° 黄金斜切 · 下主上副"),
         ]
         pick = recipes[(seed - 1) % len(recipes)]
         chosen_mode, r_pos, r_rot, r_curve, r_bstyle, r_bcol, r_bw, r_feather, r_sh, r_sds, r_tw, recipe_name = pick
@@ -1899,7 +1905,7 @@ def apply_custom_creative_split(
     b_curve = curve or "straight"
     out_layout = "custom"
 
-    if chosen_mode in ("l_shape", "l_left2_bottom3", "l_left1_bottom2", "l_right_bottom", "l_left_top", "l_right1_bottom2", "l_left1_top2"):
+    if chosen_mode in ("l_shape", "l_left2_bottom3", "l_left2_bottom2", "l_right2_bottom2", "l_left1_bottom2", "l_right_bottom", "l_left_top", "l_right1_bottom2", "l_left1_top2"):
         side_k = "right" if "right" in chosen_mode else "left"
         band_k = "top" if "top" in chosen_mode else "bottom"
         if chosen_mode == "l_left2_bottom3" or n >= 5:
@@ -1918,18 +1924,8 @@ def apply_custom_creative_split(
         nt = max(1, n // 2) if n >= 2 else 1
         nb = max(1, n - nt) if n >= 2 else 1
         r_deg = float(rot_deg if rot_deg is not None else (8.0 if "tilt" in chosen_mode else (-6.0 if "wave" in chosen_mode else 0.0)))
-        if chosen_mode == "center_h_embrace":
-            ct, cb = "arch_up", "arc"
-            base_ch = "center_h_embrace"
-        elif chosen_mode == "center_h_arc":
-            ct, cb = "arc", "arc"
-            base_ch = "center_h_arc"
-        elif chosen_mode in ("center_h_swave", "center_h_wave"):
-            ct, cb = "s_wave", "s_wave"
-            base_ch = "center_h_swave"
-        else:
-            ct, cb = "straight", "straight"
-            base_ch = "center_h_tilt" if abs(r_deg) > 0.5 else "center_h"
+        ct, cb = "straight", "straight"
+        base_ch = "center_h_tilt" if abs(r_deg) > 0.5 else "center_h"
         cells, dividers = _center_h_preset_geometry(nt, nb, rot_deg=r_deg, c_top=ct, c_bottom=cb)
         out_layout = base_ch if (nt, nb) == (1, 1) else ("%s_%d_%d" % (base_ch, nt, nb))
     elif chosen_mode in ("hex_center", "poly_center", "shutter", "shutter_hex", "shutter_iris", "shutter_diamond"):
@@ -1953,7 +1949,7 @@ def apply_custom_creative_split(
         b_curve = "straight"
         out_layout = "%s%d" % (cmode, m_sec)
     else:
-        if chosen_mode in ("arch_up_bottom", "slash_bottom", "arc_bottom"):
+        if chosen_mode in ("arch_up_bottom", "slash_bottom", "arc_bottom", "straight_bottom", "arch_bottom_top"):
             prefix_1n = "bottom1_top"
             def_p = 0.40
         elif chosen_mode in ("arc_left", "slash_left"):
@@ -1967,12 +1963,17 @@ def apply_custom_creative_split(
             def_p = 0.58
         if n <= 1:
             base_lay = "left_right" if prefix_1n in ("left1_right", "right1_left") else "top_bottom"
+        elif n >= 4 and prefix_1n in ("top1_bottom", "bottom1_top"):
+            nl = max(2, n // 2)
+            nb = max(2, n - nl)
+            band_k = "top" if prefix_1n == "bottom1_top" else "bottom"
+            base_lay = "l_left%d_%s%d" % (nl, band_k, nb)
         else:
             base_lay = "%s%d" % (prefix_1n, n)
         cells, dividers = preset_geometry(base_lay)
         p_val = _clamp_pos(main_pos if main_pos is not None else def_p, 0.25, 0.78)
         rot_val = float(rot_deg if rot_deg is not None else 0.0)
-        if dividers:
+        if dividers and not base_lay.startswith("l_"):
             dividers[0]["pos"] = p_val
             dividers[0]["rotation_deg"] = rot_val
             if b_curve in BORDER_CURVES and b_curve != "straight":
@@ -2024,11 +2025,19 @@ def _adapt_preset_layout_for_tracks(layout: str, n_tracks: int) -> str:
     if n_tracks < 2:
         return name
     if name in ("center_h", "center_h_tilt", "center_h_arc", "center_h_embrace", "center_h_swave"):
+        base_ch = "center_h_tilt" if "tilt" in name else "center_h"
         if n_sec <= 2:
-            return name
+            return base_ch
         nt = max(1, n_sec // 2)
         nb = max(1, n_sec - nt)
-        return ("%s_%d_%d" % (name, nt, nb))
+        return ("%s_%d_%d" % (base_ch, nt, nb))
+    if name in ("l_left2_bottom3", "l_left2_bottom2", "l_right2_bottom2", "l_left1_bottom2", "l_right1_bottom2"):
+        if n_sec >= 2:
+            side_k = "right" if "right" in name else "left"
+            band_k = "top" if "top" in name else "bottom"
+            nl = max(1, n_sec // 2)
+            nb = max(1, n_sec - nl)
+            return "l_%s%d_%s%d" % (side_k, nl, band_k, nb)
     if name in ("circle_bottom3", "circle_right3"):
         base_c = name[:-1]
         return "%s%d" % (base_c, max(1, n_sec))

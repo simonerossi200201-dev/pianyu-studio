@@ -1523,16 +1523,16 @@ class PropertyPanel(QWidget):
         _custom_presets = [
             ("🎲 随机换创意", "random", None, None),
             ("🔀 随机交换位置", "__shuffle__", None, None),
-            ("🌈 穹顶下弧分屏", "arc_top_bottom", None, "arc"),
-            ("🌈 苍穹上弧分屏", "arch_bottom_top", None, "arch_up"),
-            ("🌈 双层怀抱弧", "center_h_embrace", None, "arc"),
-            ("🌊 S流线弧分屏", "swave_top_bottom", None, "s_wave"),
-            ("📐 L形·右上主", "l_left2_bottom3", None, None),
-            ("📐 反L·左上主", "l_right_bottom", None, None),
-            ("🎞️ 动感斜夹心", "center_h_tilt", None, None),
-            ("⬡ 六角中主四角", "hex_center", None, None),
-            ("⭕ 底部套圆圈", "circle_bottom", None, None),
-            ("🔪 黄金斜切分屏", "slash_top", 9.0, "straight"),
+            ("✨ 上主下副直线", "straight_top", None, "straight"),
+            ("✨ 下主上副直线", "straight_bottom", None, "straight"),
+            ("📐 中主直线夹心", "center_h", None, "straight"),
+            ("🎞️ 动感斜夹心", "center_h_tilt", None, "straight"),
+            ("📐 L形·右上主", "l_left2_bottom3", None, "straight"),
+            ("📐 反L·左上主", "l_right_bottom", None, "straight"),
+            ("📐 顶L·右下主", "l_left_top", None, "straight"),
+            ("⬡ 六角中主四角", "hex_center", None, "straight"),
+            ("⭕ 底部套圆圈", "circle_bottom", None, "straight"),
+            ("🔪 黄金斜切分屏", "slash_top", 8.0, "straight"),
         ]
         for _ci, (_ctitle, _cmode, _crot, _ccurve) in enumerate(_custom_presets):
             _cbtn = QPushButton(_ctitle)

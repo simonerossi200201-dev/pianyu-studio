@@ -37,7 +37,7 @@ def preview_audio_mode(proxy_ready: bool) -> str:
 import weakref
 
 _POOLS: "weakref.WeakSet" = weakref.WeakSet()       # 活着的池（闲置回收统一扫）
-PREVIEW_POOL_IDLE_S = 30.0
+PREVIEW_POOL_IDLE_S = 4.0
 
 
 def reap_idle_pools(idle_s: float = PREVIEW_POOL_IDLE_S) -> int:
@@ -46,6 +46,18 @@ def reap_idle_pools(idle_s: float = PREVIEW_POOL_IDLE_S) -> int:
     for pool in list(_POOLS):
         try:
             n += pool.release_idle(idle_s)
+        except Exception:
+            pass
+    return n
+
+
+def release_all_pools() -> int:
+    """立即释放所有 CapturePool 中的 VideoCapture 文件句柄（切出窗口或暂停闲置时调用，避免占用外部 mp4 文件）。"""
+    n = 0
+    for pool in list(_POOLS):
+        try:
+            n += len(pool)
+            pool.clear()
         except Exception:
             pass
     return n

@@ -227,37 +227,57 @@ def detect_primary_face_in_video(
 
 
 def build_top_main_styles(n_sec: int) -> list[dict]:
-    """主视频在上方（遮蔽原视频下半屏旧字幕/旧分屏）的多样化优美弧线与斜切样式池。"""
+    """主视频在上方（遮蔽原视频下半屏旧字幕/旧分屏）的多样化直线与斜切样式池。
+    默认全部使用直线分界（绝不使用弧线）；当副视频 >= 4 时，自动采用 L 形或上下双栏夹心分屏，
+    绝不将 4 个视频挤在同一底排！
+    """
     n = max(1, int(n_sec))
+    if n >= 4:
+        nl = max(2, n // 2)
+        nb = max(2, n - nl)
+        return [
+            {"key": f"l_right{nl}_bottom{nb}_gold", "family": "top_main", "layout": f"l_right{nl}_bottom{nb}",
+             "label": f"📐 反L形黄金直线·左上主+右{nl}下{nb}",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
+            {"key": f"l_left{nl}_bottom{nb}_amber", "family": "top_main", "layout": f"l_left{nl}_bottom{nb}",
+             "label": f"📐 L形琥珀直线·右上主+左{nl}下{nb}",
+             "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+            {"key": f"ch_straight_{nl}_{nb}_gold", "family": "top_main", "layout": f"center_h_{nl}_{nb}",
+             "label": f"📐 横向直线夹心·上{nl}中主下{nb}",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
+            {"key": f"ch_tilt_pos_{nl}_{nb}", "family": "top_main", "layout": f"center_h_tilt_{nl}_{nb}", "rot_deg": 5.5,
+             "label": f"🔪 动感斜切夹心 (+5.5°)·上{nl}中主下{nb}",
+             "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
+            {"key": f"ch_tilt_neg_{nl}_{nb}", "family": "top_main", "layout": f"center_h_tilt_{nl}_{nb}", "rot_deg": -5.5,
+             "label": f"🔪 反斜切夹心 (-5.5°)·上{nl}中主下{nb}",
+             "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
+            {"key": f"l_right{nl}_bottom{nb}_cyan", "family": "top_main", "layout": f"l_right{nl}_bottom{nb}",
+             "label": f"📐 反L形冰青直线·左上主+右{nl}下{nb}",
+             "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
+        ]
     lay = "top_bottom" if n == 1 else f"top1_bottom{n}"
     return [
-        {"key": f"arc_t1b{n}_gold", "family": "top_main", "layout": lay, "pos": 0.56, "d1_curve": "arc",
-         "label": f"🌈 穹顶金弧·上 1 下 {n}",
-         "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arc"}},
-        {"key": f"arch_t1b{n}_amber", "family": "top_main", "layout": lay, "pos": 0.56, "d1_curve": "arch_up",
-         "label": f"🌈 苍穹琥珀弧·上 1 下 {n}",
-         "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "arch_up"}},
-        {"key": f"swave_t1b{n}_cyan", "family": "top_main", "layout": lay, "pos": 0.56, "d1_curve": "s_wave",
-         "label": f"🌊 丝绸冰蓝 S 弧·上 1 下 {n}",
-         "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "s_wave"}},
-        {"key": f"slash_pos_t1b{n}", "family": "top_main", "layout": lay, "pos": 0.56, "rot_deg": 5.5,
+        {"key": f"classic_t1b{n}_gold", "family": "top_main", "layout": lay, "pos": 0.56, "d1_curve": "straight",
+         "label": f"✨ 经典流金直线·上 1 下 {n}",
+         "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
+        {"key": f"classic_t1b{n}_amber", "family": "top_main", "layout": lay, "pos": 0.56, "d1_curve": "straight",
+         "label": f"✨ 经典琥珀直线·上 1 下 {n}",
+         "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
+        {"key": f"slash_pos_t1b{n}", "family": "top_main", "layout": lay, "pos": 0.56, "rot_deg": 5.5, "d1_curve": "straight",
          "label": f"🔪 黄金斜切 (+5.5°)·上 1 下 {n}",
          "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "straight"}},
-        {"key": f"slash_neg_t1b{n}", "family": "top_main", "layout": lay, "pos": 0.56, "rot_deg": -5.5,
+        {"key": f"slash_neg_t1b{n}", "family": "top_main", "layout": lay, "pos": 0.56, "rot_deg": -5.5, "d1_curve": "straight",
          "label": f"🔪 反斜切 (-5.5°)·上 1 下 {n}",
          "border": {"style": "solid", "width_px": 7, "color": "#E5A93C", "curve": "straight"}},
-        {"key": f"classic_t1b{n}_gold", "family": "top_main", "layout": lay, "pos": 0.56,
-         "label": f"✨ 经典流金·上 1 下 {n}",
-         "border": {"style": "solid", "width_px": 6, "color": "#E5A93C", "curve": "straight"}},
-        {"key": f"arc_t1b{n}_cyan", "family": "top_main", "layout": lay, "pos": 0.57, "d1_curve": "arc",
-         "label": f"🌈 穹顶冰青弧·上 1 下 {n}",
-         "border": {"style": "gradient", "width_px": 7, "color": "#A6E3E9", "curve": "arc"}},
-        {"key": f"swave_t1b{n}_gold", "family": "top_main", "layout": lay, "pos": 0.57, "d1_curve": "s_wave",
-         "label": f"🌊 丝绸流金 S 弧·上 1 下 {n}",
-         "border": {"style": "solid", "width_px": 7, "color": "#F5D082", "curve": "s_wave"}},
-        {"key": f"arch_t1b{n}_gold", "family": "top_main", "layout": lay, "pos": 0.56, "d1_curve": "arch_up",
-         "label": f"🌈 苍穹流金弧·上 1 下 {n}",
-         "border": {"style": "gradient", "width_px": 7, "color": "#F3C668", "curve": "arch_up"}},
+        {"key": f"classic_t1b{n}_cyan", "family": "top_main", "layout": lay, "pos": 0.57, "d1_curve": "straight",
+         "label": f"✨ 冰蓝直线·上 1 下 {n}",
+         "border": {"style": "gradient", "width_px": 6, "color": "#88E0EF", "curve": "straight"}},
+        {"key": f"slash_pos3_t1b{n}", "family": "top_main", "layout": lay, "pos": 0.56, "rot_deg": 3.5, "d1_curve": "straight",
+         "label": f"🔪 微斜切 (+3.5°)·上 1 下 {n}",
+         "border": {"style": "solid", "width_px": 7, "color": "#F5D082", "curve": "straight"}},
+        {"key": f"slash_neg3_t1b{n}", "family": "top_main", "layout": lay, "pos": 0.56, "rot_deg": -3.5, "d1_curve": "straight",
+         "label": f"🔪 微反斜切 (-3.5°)·上 1 下 {n}",
+         "border": {"style": "gradient", "width_px": 7, "color": "#A6E3E9", "curve": "straight"}},
     ]
 
 
@@ -411,21 +431,24 @@ def calibrate_task_face_safe(
     m_face = detect_primary_face_in_video(main_path, sample_count=8, is_main=True)
 
     sp = task.get("split") if isinstance(task.get("split"), dict) else {}
-    if len(vtracks) >= 2 and (not sp.get("enabled") or force_top_main_if_needed):
+    cur_lay_init = str(sp.get("layout") or "")
+    is_squeezed_4 = (
+        (cur_lay_init.startswith("top1_bottom") and cur_lay_init[len("top1_bottom"):].isdigit() and int(cur_lay_init[len("top1_bottom"):]) >= 4)
+        or (cur_lay_init.startswith("bottom1_top") and cur_lay_init[len("bottom1_top"):].isdigit() and int(cur_lay_init[len("bottom1_top"):]) >= 4)
+    )
+    if len(vtracks) >= 2 and (not sp.get("enabled") or force_top_main_if_needed or is_squeezed_4):
         n_sec = len(vtracks) - 1
         cur_lay = str(sp.get("layout") or "")
         # 若主讲人人脸在画面上半部 (cy < 0.52) 但当前随机到了将主画面放在底部/侧边窄条的布局，
-        # 或要求强制保护上半屏主讲人，则自动切换为上主下副多样化弧线/斜切分屏
-        need_top_main = force_top_main_if_needed
+        # 或要求强制保护上半屏主讲人，或遇到了 4 个视频挤在一横排的旧布局，则自动切换为优美直线/L形分屏
+        need_top_main = force_top_main_if_needed or is_squeezed_4
         if not need_top_main and m_face.get("has_face"):
             fcy = float(m_face.get("cy", 0.32))
             if fcy < 0.50 and (
                 cur_lay.startswith("bottom1_top")
-                or cur_lay.startswith("l_left")
-                or cur_lay.startswith("l_right")
+                or (cur_lay.startswith("l_") and "_top" in cur_lay)
                 or cur_lay.startswith("left1_right")
                 or cur_lay.startswith("right1_left")
-                or cur_lay.startswith("center_h")
             ):
                 need_top_main = True
         if need_top_main or not sp.get("enabled"):
@@ -444,6 +467,8 @@ def calibrate_task_face_safe(
             divs = sp.get("dividers") or []
             for d in divs:
                 d["feather_px"] = 2.0
+                if d.get("curve") in ("arc", "arch_up", "s_wave", "wave"):
+                    d["curve"] = "straight"
             if divs:
                 d1 = divs[0]
                 if "pos" in style_spec:
@@ -467,6 +492,12 @@ def calibrate_task_face_safe(
                 set_track_cell(task, getattr(tr, "id", ""), cid)
 
     sp = task.get("split") if isinstance(task.get("split"), dict) else {}
+    # 确保所有分界线与描边默认使用直线，不残留弧线
+    if isinstance(sp.get("border"), dict) and sp["border"].get("curve") in ("arc", "arch_up", "s_wave", "wave"):
+        sp["border"]["curve"] = "straight"
+    for _dv in sp.get("dividers") or []:
+        if isinstance(_dv, dict) and _dv.get("curve") in ("arc", "arch_up", "s_wave", "wave"):
+            _dv["curve"] = "straight"
     lay = str(sp.get("layout") or "top_bottom")
     cells = sp.get("cells") or []
     cell_map = {str(c.get("id")): c for c in cells if c.get("id")}

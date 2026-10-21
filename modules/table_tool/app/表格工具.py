@@ -295,6 +295,194 @@ class Project:
 
 # ============================================================ 改名引擎
 RNM_TMP = "__rnm"          # 两阶段改名用的临时前缀，正常情况下一瞬间就消失
+_PENDING_UNLINK = set()    # 被外部播放器只读占用、已安全复制为新文件名并等待释放后自动清理的旧路径
+_PENDING_LOCK = threading.Lock()
+
+
+def _find_locking_processes(file_path):
+    """通过 Windows Restart Manager (rstrtmgr.dll) 查询正在占用 file_path 的进程列表 [(pid, name), ...]。"""
+    if os.name != "nt" or not file_path or not os.path.exists(file_path):
+        return []
+    try:
+        import ctypes
+        from ctypes import wintypes
+        rstrtmgr = ctypes.WinDLL("rstrtmgr")
+
+        class RM_UNIQUE_PROCESS(ctypes.Structure):
+            _fields_ = [("dwProcessId", wintypes.DWORD), ("ProcessStartTime", wintypes.FILETIME)]
+
+        class RM_PROCESS_INFO(ctypes.Structure):
+            _fields_ = [
+                ("Process", RM_UNIQUE_PROCESS),
+                ("strAppName", wintypes.WCHAR * 256),
+                ("strServiceShortName", wintypes.WCHAR * 64),
+                ("ApplicationType", wintypes.DWORD),
+                ("AppStatus", wintypes.ULONG),
+                ("TSSessionId", wintypes.DWORD),
+                ("bRestartable", wintypes.BOOL),
+            ]
+
+        session_handle = wintypes.DWORD()
+        session_key = (wintypes.WCHAR * 64)()
+        if rstrtmgr.RmStartSession(ctypes.byref(session_handle), 0, session_key) != 0:
+            return []
+        try:
+            res_arr = (wintypes.LPCWSTR * 1)(os.path.abspath(file_path))
+            if rstrtmgr.RmRegisterResources(session_handle, 1, res_arr, 0, None, 0, None) != 0:
+                return []
+            needed = wintypes.UINT(0)
+            count = wintypes.UINT(16)
+            reasons = wintypes.DWORD(0)
+            info_arr = (RM_PROCESS_INFO * 16)()
+            rc = rstrtmgr.RmGetList(
+                session_handle, ctypes.byref(needed), ctypes.byref(count), info_arr, ctypes.byref(reasons)
+            )
+            if rc not in (0, 234):
+                return []
+            out = []
+            for i in range(min(int(count.value), 16)):
+                pid = int(info_arr[i].Process.dwProcessId)
+                app_name = str(info_arr[i].strAppName or "").strip()
+                if pid and pid != os.getpid():
+                    out.append((pid, app_name))
+            return out
+        finally:
+            rstrtmgr.RmEndSession(session_handle)
+    except Exception:
+        return []
+
+
+def _try_release_transient_holders(file_path):
+    """若文件被资源管理器预览宿主 (prevhost.exe) 或后台探测工具 (ffprobe.exe) 临时锁住，自动释放它们。"""
+    if os.name != "nt":
+        return
+    holders = _find_locking_processes(file_path)
+    for pid, app_name in holders:
+        low = app_name.lower()
+        if any(k in low for k in ("prevhost", "ffprobe", "windows shell experience", "thumbnail")):
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", str(pid)],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=CREATE_NO_WINDOW, timeout=2,
+                )
+            except Exception:
+                pass
+
+
+def _reap_pending_unlinks():
+    """后台清理已完成复制改名、等待外部播放器释放句柄的旧原名文件。"""
+    while True:
+        time.sleep(1.5)
+        with _PENDING_LOCK:
+            items = list(_PENDING_UNLINK)
+        if not items:
+            return
+        for p in items:
+            if not os.path.exists(p):
+                with _PENDING_LOCK:
+                    _PENDING_UNLINK.discard(p)
+                continue
+            try:
+                if os.name == "nt":
+                    import ctypes
+                    ctypes.windll.kernel32.SetFileAttributesW(str(p), 128)
+                os.unlink(p)
+                with _PENDING_LOCK:
+                    _PENDING_UNLINK.discard(p)
+            except Exception:
+                pass
+
+
+def _schedule_deferred_unlink(file_path):
+    abspath = os.path.abspath(file_path)
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetFileAttributesW(str(abspath), 2)  # FILE_ATTRIBUTE_HIDDEN
+        except Exception:
+            pass
+    try:
+        os.unlink(abspath)
+        return
+    except Exception:
+        pass
+    with _PENDING_LOCK:
+        was_empty = len(_PENDING_UNLINK) == 0
+        _PENDING_UNLINK.add(abspath)
+    if was_empty:
+        threading.Thread(target=_reap_pending_unlinks, daemon=True).start()
+
+
+def _safe_rename(src, dst, retries=10, delay=0.18, allow_copy_fallback=True):
+    """带自动重试、锁检测释放与只读占用无缝复制兜底的安全重命名：
+    1. 遇到 WinError 32（文件短暂被资源管理器缩略图/杀毒软件/CUTORA预览池占用）自动重试；
+    2. 自动检测并释放 prevhost.exe / ffprobe.exe 等临时锁；
+    3. 若外部播放器仍持有只读句柄导致无法直接 rename，自动通过复制+隐藏延迟清理完成改名，绝不中断用户操作！
+    """
+    import gc
+    src_abs = os.path.abspath(src)
+    dst_abs = os.path.abspath(dst)
+    # 若目标路径正好是之前等待延迟清理的残留隐藏旧文件，先清掉或恢复属性
+    with _PENDING_LOCK:
+        if dst_abs in _PENDING_UNLINK:
+            _PENDING_UNLINK.discard(dst_abs)
+            try:
+                if os.path.exists(dst_abs):
+                    if os.name == "nt":
+                        import ctypes
+                        ctypes.windll.kernel32.SetFileAttributesW(str(dst_abs), 128)
+                    os.unlink(dst_abs)
+            except Exception:
+                pass
+
+    last_err = None
+    for attempt in range(retries):
+        try:
+            os.rename(src, dst)
+            return
+        except OSError as e:
+            last_err = e
+            winerr = getattr(e, "winerror", None)
+            if winerr not in (32, 5, 13) and not isinstance(e, PermissionError):
+                raise
+            if attempt == 0:
+                gc.collect()
+                if os.name == "nt" and os.path.exists(src):
+                    try:
+                        import ctypes
+                        ctypes.windll.kernel32.SetFileAttributesW(str(src), 128)
+                    except Exception:
+                        pass
+            if attempt in (2, 5):
+                _try_release_transient_holders(src)
+            time.sleep(delay)
+
+    # 若重试后仍因外部程序持有只读锁 (WinError 32) 无法直接移动，且源是普通文件，则启用安全复制兜底
+    if (
+        allow_copy_fallback
+        and os.path.isfile(src)
+        and src_abs.lower() != dst_abs.lower()
+        and not os.path.exists(dst)
+    ):
+        try:
+            src_size = os.path.getsize(src)
+            shutil.copy2(src, dst)
+            if os.path.exists(dst) and os.path.getsize(dst) == src_size:
+                _schedule_deferred_unlink(src)
+                return
+        except Exception:
+            try:
+                if os.path.exists(dst):
+                    os.unlink(dst)
+            except Exception:
+                pass
+
+    holders = _find_locking_processes(src)
+    if holders:
+        names = "、".join(sorted({name or f"PID:{pid}" for pid, name in holders}))
+        raise OSError(f"文件「{os.path.basename(src)}」正被程序【{names}】占用，请先关闭或切出该程序后再试。({last_err})")
+    raise last_err
 
 
 def _tmp_name(directory, i, old):
@@ -328,7 +516,7 @@ def recover_temp_files(directory):
             stuck.append(name)
             continue
         try:
-            os.rename(os.path.join(directory, name), os.path.join(directory, orig))
+            _safe_rename(os.path.join(directory, name), os.path.join(directory, orig), retries=4, delay=0.1)
             recovered.append([name, orig])
         except Exception:
             stuck.append(name)
@@ -398,9 +586,19 @@ def do_rename(directory, plan):
     def back_to_original():
         for old, tmp, _new in reversed(staged):
             try:
-                if (os.path.exists(os.path.join(directory, tmp))
-                        and not os.path.exists(os.path.join(directory, old))):
-                    os.rename(os.path.join(directory, tmp), os.path.join(directory, old))
+                old_p = os.path.join(directory, old)
+                tmp_p = os.path.join(directory, tmp)
+                with _PENDING_LOCK:
+                    was_pending = os.path.abspath(old_p) in _PENDING_UNLINK
+                    _PENDING_UNLINK.discard(os.path.abspath(old_p))
+                if was_pending and os.path.exists(old_p):
+                    if os.name == "nt":
+                        import ctypes
+                        ctypes.windll.kernel32.SetFileAttributesW(str(old_p), 128)
+                    if os.path.exists(tmp_p):
+                        os.unlink(tmp_p)
+                elif os.path.exists(tmp_p) and not os.path.exists(old_p):
+                    _safe_rename(tmp_p, old_p, retries=4, delay=0.1, allow_copy_fallback=False)
             except Exception:
                 pass
 
@@ -408,7 +606,7 @@ def do_rename(directory, plan):
     try:
         for i, (old, new) in enumerate(plan):
             tmp = _tmp_name(directory, i, old)
-            os.rename(os.path.join(directory, old), os.path.join(directory, tmp))
+            _safe_rename(os.path.join(directory, old), os.path.join(directory, tmp))
             staged.append((old, tmp, new))
     except Exception as e:
         back_to_original()
@@ -419,15 +617,17 @@ def do_rename(directory, plan):
     try:
         for old, tmp, new in staged:
             dst = os.path.join(directory, new)
-            if os.path.exists(dst):
+            with _PENDING_LOCK:
+                dst_pending = os.path.abspath(dst) in _PENDING_UNLINK
+            if os.path.exists(dst) and not dst_pending:
                 raise OSError("「%s」这个名字已经被占用，不能覆盖它" % new)
-            os.rename(os.path.join(directory, tmp), dst)
+            _safe_rename(os.path.join(directory, tmp), dst)
             renamed.append([old, new])
             done.append((old, tmp, new))
     except Exception as e:
         for old, tmp, new in reversed(done):          # 已经落地的先退回临时名
             try:
-                os.rename(os.path.join(directory, new), os.path.join(directory, tmp))
+                _safe_rename(os.path.join(directory, new), os.path.join(directory, tmp), retries=4, delay=0.1)
             except Exception:
                 pass
         back_to_original()
@@ -522,10 +722,24 @@ def list_entries(directory, include_dirs=False, videos_only=False):
         names = os.listdir(directory)
     except Exception:
         return []
+    with _PENDING_LOCK:
+        pending_copy = set(_PENDING_UNLINK)
     for name in names:
         if skip_entry_name(name):
             continue
         path = os.path.join(directory, name)
+        abs_p = os.path.abspath(path)
+        if abs_p in pending_copy:
+            try:
+                if os.name == "nt":
+                    import ctypes
+                    ctypes.windll.kernel32.SetFileAttributesW(str(abs_p), 128)
+                os.unlink(abs_p)
+                with _PENDING_LOCK:
+                    _PENDING_UNLINK.discard(abs_p)
+            except Exception:
+                pass
+            continue
         if os.path.isfile(path):
             if videos_only and not (is_video_name(name) or not os.path.splitext(name)[1]):
                 continue

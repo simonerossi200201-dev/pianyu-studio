@@ -650,23 +650,40 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
                 pass
 
     def _reap_idle_decoders(self):
-        """每 5 s：超过 PREVIEW_DECODER_IDLE_S 没被取过帧的解码器停掉（再用到时重开 + seek，几十毫秒）。
-        顺带扫一遍所有 CapturePool（播放引擎、叠压引擎、中央监视器）。"""
+        """每 5 s：超过闲置阈值没被取过帧的解码器停掉（再用到时重开 + seek，几十毫秒）。
+        顺带扫一遍所有 CapturePool（播放引擎、叠压引擎、中央监视器）和备用 _cv_caps，避免长期占用外部视频文件。"""
+        win = self.window()
+        is_playing = bool(getattr(win, "_timeline_playing", False)) if win is not None else False
+        idle_thresh = PREVIEW_DECODER_IDLE_S if is_playing else 3.5
         try:
             import time as _time
             now = _time.perf_counter()
             for sid, d in list(self._async_decoders.items()):
-                if now - float(getattr(d, "last_used", now)) > PREVIEW_DECODER_IDLE_S:
+                if now - float(getattr(d, "last_used", now)) > idle_thresh:
                     self._async_decoders.pop(sid, None)
                     self._cv_frame_cache.pop(sid, None)
                     self._stop_decoder_later(d)
+            if not is_playing and self._cv_caps:
+                caps = list(self._cv_caps.values())
+                self._cv_caps.clear()
+                for c in caps:
+                    try:
+                        c.release()
+                    except Exception:
+                        pass
         except Exception:
             pass
         try:
             from cutora.preview.engine import reap_idle_pools
-            reap_idle_pools(PREVIEW_DECODER_IDLE_S)
+            reap_idle_pools(idle_thresh)
         except Exception:
             pass
+        if not is_playing:
+            try:
+                from cutora.render.frame_renderer import cleanup_dbi_video_caps
+                cleanup_dbi_video_caps()
+            except Exception:
+                pass
 
     def closeEvent(self, event):
         if self._preview_fullscreen:

@@ -2119,10 +2119,43 @@ class MainWindow(CommandBodies, QMainWindow):
         except Exception:
             print("[CLI] " + warn)
 
+    def _release_idle_video_handles(self):
+        """当窗口切到后台或最小化且未在播放/导出时，立即释放所有缓存的 VideoCapture 文件句柄，
+        确保用户在外部（如右键表格工具或资源管理器）对视频执行重命名/移动时绝不触发 WinError 32 文件占用。"""
+        if bool(getattr(self, "_timeline_playing", False)):
+            return
+        if bool(getattr(self, "_is_exporting", False)):
+            return
+        try:
+            canvas = getattr(self, "video_canvas", None)
+            if canvas is not None and hasattr(canvas, "_stop_all_decoders"):
+                canvas._stop_all_decoders()
+        except Exception:
+            pass
+        try:
+            from cutora.preview.engine import release_all_pools
+            release_all_pools()
+        except Exception:
+            pass
+        try:
+            from cutora.render.frame_renderer import cleanup_dbi_video_caps
+            cleanup_dbi_video_caps()
+        except Exception:
+            pass
+
     def changeEvent(self, event):
         super().changeEvent(event)
+        try:
+            et = event.type()
+            if et in (QEvent.Type.ActivationChange, QEvent.Type.WindowDeactivate):
+                if not self.isActiveWindow():
+                    self._release_idle_video_handles()
+        except Exception:
+            pass
         if event.type() != QEvent.Type.WindowStateChange:
             return
+        if self.isMinimized():
+            self._release_idle_video_handles()
         if getattr(self, "_badge_transition", False):
             return
         if not self.isMinimized():
