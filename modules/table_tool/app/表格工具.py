@@ -1244,6 +1244,7 @@ class Downloader:
                 "--transfers", "1", "--checkers", "2",
                 "--low-level-retries", "10", "--retries", "1",
                 "--stats", "1s", "--stats-one-line",
+                "--stats-log-level", "NOTICE",
             ]
             err_tail = []
             code = -1
@@ -2189,12 +2190,17 @@ class Handler(BaseHTTPRequestHandler):
     def _send(self, body, ctype, status=200):
         if isinstance(body, str):
             body = body.encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        self.close_connection = True
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+        except OSError:
+            pass
 
     def _deny(self):
         self._send('{"ok":false,"message":"拒绝访问"}', "application/json; charset=utf-8", 403)
@@ -5313,8 +5319,18 @@ function tool_joinSep(){
    ======================================================================= */
 const API_TOKEN="___RCT_SESSION_TOKEN___";
 async function post(url,body){
-  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-Rct-Token':API_TOKEN},body:JSON.stringify(body||{})});
-  return r.json();
+  const payload=JSON.stringify(body||{});
+  let lastErr=null;
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-Rct-Token':API_TOKEN},body:payload,cache:'no-store'});
+      return await r.json();
+    }catch(e){
+      lastErr=e;
+      await new Promise(res=>setTimeout(res,120*(attempt+1)));
+    }
+  }
+  throw lastErr;
 }
 function gridState(){
   /* cols 里的 max（列字符上限）和 master（统一单元格）会随对象一起存进工程文件。
@@ -5333,7 +5349,10 @@ function scheduleSave(){
   clearTimeout(saveTimer);
   $('stSaved').textContent='正在保存…';
   saveTimer=setTimeout(async()=>{
-    markSaved((await post('/api/savegrid',{grid:gridState(),prefs:chromeState()})).updated);
+    try{
+      const d=await post('/api/savegrid',{grid:gridState(),prefs:chromeState()});
+      if(d&&d.updated) markSaved(d.updated);
+    }catch(e){}
   },700);
 }
 let lastSaved='';
@@ -6305,10 +6324,12 @@ function toggleDlLog(){
 function applyDlResults(results){
   if(!results||!results.length) return;
   const map={}; results.forEach(x=>{ if(x&&x.key) map[x.key]=x; });
-  let changed=false;
+  let changed=false, statusChanged=false;
   const updateOne=(r,x)=>{
     const st=x.status||'none', pct=+x.pct||0;
-    if(st==='ok'&&x.remote&&!r.rname){ r.rname=x.remote; if(x.size&&!r.size) r.size=+x.size; changed=true; }
+    const prevSt=(r.ds&&r.ds.status)||'none';
+    if(st!==prevSt) statusChanged=true;
+    if(st==='ok'&&x.remote&&!r.rname){ r.rname=x.remote; if(x.size&&!r.size) r.size=+x.size; changed=true; statusChanged=true; }
     const next={status:st,pct,saved:x.saved||'',msg:x.reason||((st==='fail')?((r.ds||{}).msg||''):'')};
     if(st==='downloading'&&x.reason) next.msg=x.reason;
     if(JSON.stringify(next)!==JSON.stringify(r.ds||{})){ r.ds=next; changed=true; }
@@ -6335,39 +6356,54 @@ function applyDlResults(results){
       else if(qC>0) pst='queued';
       else if(failC>0) pst='fail';
       const pnext={status:pst,pct:avgPct,saved:`${okC}/${tot} 个文件`,msg:failC?`${failC} 项失败`:''};
+      if(((r.ds&&r.ds.status)||'none')!==pst) statusChanged=true;
       if(JSON.stringify(pnext)!==JSON.stringify(r.ds||{})){ r.ds=pnext; changed=true; }
     }
   });
-  if(changed){ renderDlDoc(); dlSave(); }
+  if(changed) renderDlDoc();
+  if(statusChanged) dlSave();
 }
 /* 下载完刷新改名表的文件列表（悄悄刷新，不打断正在下载表里编辑的人） */
 async function refreshMainQuiet(){
-  const d=await post('/api/files',{includeDirs,videosOnly});
-  if(!d||d.ok===false) return;
-  withDoc('main',()=>{ restorable=d.restorable; mergeFiles(d.files,d.entries,d.dirNames); render(); });
-  scheduleSave();
+  try{
+    const d=await post('/api/files',{includeDirs,videosOnly});
+    if(!d||d.ok===false) return;
+    withDoc('main',()=>{ restorable=d.restorable; mergeFiles(d.files,d.entries,d.dirNames); render(); });
+    scheduleSave();
+  }catch(e){}
 }
 function watchDownload(){
+  clearInterval(dlTimer);
   $('dlstat').textContent='正在下载…';
   $('dlStopBtn').style.display='inline-block';
+  let tickBusy=false;
   const tick=async()=>{
-    const s=await post('/api/downloadstatus');
-    applyDlResults(s.results||[]);
-    const logEl=$('dllog');
-    if(logEl){ logEl.textContent=(s.log||[]).join('\n'); logEl.scrollTop=logEl.scrollHeight; }
-    if(s.running){
-      $('dlstat').innerHTML=`下载中　成功 ${s.ok} / ${s.plan}　失败 ${s.fail}`;
-      $('dlcur').textContent=s.current||'';
-    } else if(s.done){
-      clearInterval(dlTimer); dlTimer=null;
+    if(tickBusy) return;
+    tickBusy=true;
+    try{
+      const s=await post('/api/downloadstatus');
+      if(!s) return;
       applyDlResults(s.results||[]);
-      $('dlStopBtn').style.display='none';
-      const failN=+(s.fail||0);
-      $('dlstat').innerHTML=`完成：成功 <b>${s.ok}</b> / ${s.plan}　失败 <b>${failN}</b>`;
-      $('dlcur').textContent=s.message||'';
-      dlSave();
-      toast(failN?('下载结束，失败 '+failN+' 个，原因写在「下载状态」列'):('下载完成，成功 '+s.ok+' 个'));
-      if((dlDest||DIR).toLowerCase()===DIR.toLowerCase() && s.ok) refreshMainQuiet();
+      const logEl=$('dllog');
+      if(logEl){ logEl.textContent=(s.log||[]).join('\n'); logEl.scrollTop=logEl.scrollHeight; }
+      if(s.running){
+        $('dlstat').innerHTML=`下载中　成功 ${s.ok} / ${s.plan}　失败 ${s.fail}`;
+        $('dlcur').textContent=s.current||'';
+      } else if(s.done){
+        clearInterval(dlTimer); dlTimer=null;
+        applyDlResults(s.results||[]);
+        $('dlStopBtn').style.display='none';
+        const failN=+(s.fail||0);
+        $('dlstat').innerHTML=`完成：成功 <b>${s.ok}</b> / ${s.plan}　失败 <b>${failN}</b>`;
+        $('dlcur').textContent=s.message||'';
+        dlSave();
+        toast(failN?('下载结束，失败 '+failN+' 个，原因写在「下载状态」列'):('下载完成，成功 '+s.ok+' 个'));
+        if((dlDest||DIR).toLowerCase()===DIR.toLowerCase() && s.ok) refreshMainQuiet();
+      }
+    }catch(e){
+      /* 忽略偶发本地轮询抖动，下一轮 800ms 自动恢复，绝不弹窗打断下载 */
+    }finally{
+      tickBusy=false;
     }
   };
   dlTimer=setInterval(tick,800); tick();
@@ -6817,28 +6853,38 @@ function toggleUpLog(){
   el.style.display = el.style.display==='block'?'none':'block';
 }
 function watchUpload(){
+  clearInterval(upTimer);
   closeDlg();
   $('upbar').style.display='flex';
   $('upbar').classList.remove('fail');
   $('upstat').textContent='正在上传…';
   $('upcur').textContent='';
+  let tickBusy=false;
   const tick=async()=>{
-    const s=await post('/api/uploadstatus');
-    applyUploadResults(s.results||[]);
-    const logEl=$('uplog'), st=$('upstat'), cur=$('upcur');
-    if(!st){ clearInterval(upTimer); return; }
-    if(logEl){ logEl.textContent=(s.log||[]).join('\n'); logEl.scrollTop=logEl.scrollHeight; }
-    if(s.running){
-      st.innerHTML=`上传中　成功 ${s.ok} / ${s.plan}　失败 ${s.fail}`;
-      if(cur) cur.textContent=s.current||'';
-    } else if(s.done){
-      clearInterval(upTimer); upTimer=null;
+    if(tickBusy) return;
+    tickBusy=true;
+    try{
+      const s=await post('/api/uploadstatus');
+      if(!s) return;
       applyUploadResults(s.results||[]);
-      const failN=+(s.fail||0);
-      st.innerHTML=`完成：成功 <b>${s.ok}</b> / ${s.plan}　失败 <b>${failN}</b>`;
-      if(cur) cur.textContent=s.message||'';
-      $('upbar').classList.toggle('fail', failN>0);
-      toast(failN?('上传结束，失败 '+failN+' 个已保持勾选，可点「只重试失败」'):('上传完成，成功 '+s.ok+' 个'));
+      const logEl=$('uplog'), st=$('upstat'), cur=$('upcur');
+      if(!st){ clearInterval(upTimer); return; }
+      if(logEl){ logEl.textContent=(s.log||[]).join('\n'); logEl.scrollTop=logEl.scrollHeight; }
+      if(s.running){
+        st.innerHTML=`上传中　成功 ${s.ok} / ${s.plan}　失败 ${s.fail}`;
+        if(cur) cur.textContent=s.current||'';
+      } else if(s.done){
+        clearInterval(upTimer); upTimer=null;
+        applyUploadResults(s.results||[]);
+        const failN=+(s.fail||0);
+        st.innerHTML=`完成：成功 <b>${s.ok}</b> / ${s.plan}　失败 <b>${failN}</b>`;
+        if(cur) cur.textContent=s.message||'';
+        $('upbar').classList.toggle('fail', failN>0);
+        toast(failN?('上传结束，失败 '+failN+' 个已保持勾选，可点「只重试失败」'):('上传完成，成功 '+s.ok+' 个'));
+      }
+    }catch(e){
+    }finally{
+      tickBusy=false;
     }
   };
   upTimer=setInterval(tick,800); tick();
