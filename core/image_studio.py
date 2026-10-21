@@ -1908,7 +1908,9 @@ def matte_item(
     engine_used = "point_grabcut"
 
     if mode == "rmbg" and not prefer_fast and not points:
-        rmbg_py = Path(r"D:\0_LLM\tools\venv_rmbg\Scripts\python.exe")
+        rmbg_py = LTX_ROOT / "runtime" / "venv" / "Scripts" / "python.exe"
+        if not rmbg_py.is_file():
+            rmbg_py = Path(r"D:\0_LLM\tools\venv_rmbg\Scripts\python.exe")
         rmbg_script = LTX_ROOT / "modules" / "studio_gateway" / "runners" / "tools" / "rmbg" / "rmbg.py"
         if not rmbg_script.is_file():
             rmbg_script = Path(r"D:\0_LLM\tools\rmbg\rmbg.py")
@@ -2032,7 +2034,9 @@ def upscale_item(
     upscaled_rgb: Optional[np.ndarray] = None
     if use_nomos:
         comfy_py = _resolve_comfy_py()
-        runner = Path(r"D:\0_LLM\tools\upscale\upscale_video.py")
+        runner = LTX_ROOT / "modules" / "studio_gateway" / "runners" / "tools" / "upscale" / "upscale_video.py"
+        if not runner.is_file():
+            runner = Path(r"D:\0_LLM\tools\upscale\upscale_video.py")
         if comfy_py.is_file() and runner.is_file():
             tmp_out = p / "history" / f"_tmp_nomos_{item_id}.png"
             try:

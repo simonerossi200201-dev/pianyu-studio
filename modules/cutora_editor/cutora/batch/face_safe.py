@@ -604,6 +604,14 @@ def calibrate_task_face_safe(
             continue
         clip = tr.clips[0]
         cpath = str(getattr(clip, "path", "") or "")
+        if not cpath and tl is not None:
+            srcs = getattr(tl, "sources", None) or {}
+            sid = getattr(clip, "source_id", None)
+            src_obj = srcs.get(sid) if sid else None
+            if isinstance(src_obj, dict):
+                cpath = str(src_obj.get("path") or "")
+            elif src_obj is not None:
+                cpath = str(getattr(src_obj, "path", "") or "")
         f_info = detect_primary_face_in_video(cpath, sample_count=6, is_main=False)
         src_w = int(f_info.get("w") or 720)
         src_h = int(f_info.get("h") or 1280)

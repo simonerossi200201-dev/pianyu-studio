@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-STUDIO_ROOT = Path(r"D:\0_LTX")
+STUDIO_ROOT = Path(__file__).resolve().parent.parent
 _VENV_SITE = STUDIO_ROOT / "runtime" / "venv" / "Lib" / "site-packages"
 if _VENV_SITE.is_dir() and str(_VENV_SITE) not in sys.path:
     sys.path.insert(0, str(_VENV_SITE))

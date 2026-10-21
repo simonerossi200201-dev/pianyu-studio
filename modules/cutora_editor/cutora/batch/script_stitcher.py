@@ -4027,8 +4027,9 @@ class StitcherDialog(QDialog):
             import sys as _sys
             from pathlib import Path as _Path
             from PySide6.QtCore import QTimer as _QTimer
-            if r"D:\0_LTX" not in _sys.path:
-                _sys.path.insert(0, r"D:\0_LTX")
+            _ltx_root = str(_Path(__file__).resolve().parents[4])
+            if _ltx_root not in _sys.path:
+                _sys.path.insert(0, _ltx_root)
             from core.table_sync import HANDOFF_FILE, discover_orante_batch_tasks, write_order_lock_for_cutora
 
             range_txt = ""
@@ -4374,7 +4375,10 @@ class StitcherDialog(QDialog):
     def _log(self, s):
         self.ed_log.appendPlainText(s)
         try:
-            with open(r"D:\0_LTX\data\cutora_stitch_live.log", "a", encoding="utf-8") as _lf:
+            from pathlib import Path as _Path
+            _log_p = _Path(__file__).resolve().parents[4] / "data" / "cutora_stitch_live.log"
+            _log_p.parent.mkdir(parents=True, exist_ok=True)
+            with open(_log_p, "a", encoding="utf-8") as _lf:
                 _lf.write(f"[{time.strftime('%H:%M:%S')}] {s}\n")
         except Exception:
             pass

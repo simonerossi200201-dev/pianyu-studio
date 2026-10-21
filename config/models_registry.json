@@ -17,7 +17,7 @@
       "license": "LTX-2 Community License",
       "status": "ready",
       "path": "runtime/models/ltx25",
-      "runner": "D:\\0_LLM\\bench\\ltx25\\ltx25_run.py",
+      "runner": "modules/studio_gateway/runners/bench/ltx25/ltx25_run.py",
       "files": [
         "diffusion_models/ltx-2.5-22b-distilled-transformer-nvfp4.safetensors",
         "vae/ltx-2.5-video-vae-bf16.safetensors",
@@ -67,7 +67,7 @@
       "cpu_supported": true,
       "license": "Self-Authored",
       "status": "ready",
-      "runner": "D:\\0_LLM\\tools\\autograde\\autograde.py"
+      "runner": "modules/studio_gateway/runners/tools/autograde/autograde.py"
     },
     {
       "id": "nomos2-4x",
@@ -79,7 +79,7 @@
       "license": "CC-BY-4.0",
       "status": "ready",
       "path": "runtime/models/vision/upscale/4xNomos2_realplksr_dysample.pth",
-      "runner": "D:\\0_LLM\\bench\\ltx25\\nomos2_upscale.py"
+      "runner": "modules/studio_gateway/runners/bench/ltx25/nomos2_upscale.py"
     },
     {
       "id": "flux2-klein-4b",
@@ -91,7 +91,7 @@
       "license": "Apache-2.0",
       "status": "ready",
       "path": "runtime/models/flux2",
-      "runner": "D:\\0_LLM\\bench\\flux2\\flux2_run.py"
+      "runner": "modules/studio_gateway/runners/bench/flux2/flux2_run.py"
     },
     {
       "id": "rmbg-2.0",
@@ -103,7 +103,7 @@
       "license": "CC-BY-NC-4.0 (Internal Non-Commercial)",
       "status": "ready",
       "path": "runtime/models/vision/rmbg2/model.safetensors",
-      "runner": "D:\\0_LLM\\tools\\rmbg\\rmbg.py"
+      "runner": "modules/studio_gateway/runners/tools/rmbg/rmbg.py"
     },
     {
       "id": "asr-faster-whisper",

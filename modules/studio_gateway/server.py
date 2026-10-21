@@ -371,7 +371,7 @@ def _run_ltx25_video(rec: dict[str, Any]) -> None:
                 re_py = _resolve_tool_py(r"D:\0_LLM\audio\venv_resemble\Scripts\python.exe")
                 ve_script = _resolve_runner(
                     "audio/runners/voice_enhance.py",
-                    r"D:\0_LTX\modules\studio_gateway\runners\audio\runners\voice_enhance.py",
+                    str(LTX_ROOT / "modules" / "studio_gateway" / "runners" / "audio" / "runners" / "voice_enhance.py"),
                 )
                 ffmpeg_bin = str(BIN_DIR / "ffmpeg.exe")
                 if not Path(ffmpeg_bin).is_file():
@@ -661,7 +661,7 @@ def _run_audio_enhance(rec: dict[str, Any]) -> None:
     re_py = _resolve_tool_py(r"D:\0_LLM\audio\venv_resemble\Scripts\python.exe")
     re_script = _resolve_runner(
         "audio/runners/voice_enhance.py",
-        r"D:\0_LTX\modules\studio_gateway\runners\audio\runners\voice_enhance.py",
+        str(LTX_ROOT / "modules" / "studio_gateway" / "runners" / "audio" / "runners" / "voice_enhance.py"),
     )
     inp = _validate_local_file(p.get("audio_path") or p.get("video_path"), "输入音视频")
     OUT_DIR.mkdir(parents=True, exist_ok=True)

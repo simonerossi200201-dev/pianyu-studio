@@ -56,8 +56,9 @@ def plan_job(folders, group_mark, order_mark, group_by_folder, scripts):
         try:
             import sys
             from pathlib import Path
-            if r"D:\0_LTX" not in sys.path:
-                sys.path.insert(0, r"D:\0_LTX")
+            _ltx_root = str(Path(__file__).resolve().parents[4])
+            if _ltx_root not in sys.path:
+                sys.path.insert(0, _ltx_root)
             from core.table_sync import discover_orante_batch_tasks, write_order_lock_for_cutora
             for fd in folders:
                 for t in discover_orante_batch_tasks(Path(fd)):
@@ -265,8 +266,9 @@ class StitchSession(QObject):
             try:
                 import sys
                 from pathlib import Path
-                if r"D:\0_LTX" not in sys.path:
-                    sys.path.insert(0, r"D:\0_LTX")
+                _ltx_root = str(Path(__file__).resolve().parents[4])
+                if _ltx_root not in sys.path:
+                    sys.path.insert(0, _ltx_root)
                 from core.table_sync import sync_stitch_missing_to_orante
                 res_mark = sync_stitch_missing_to_orante(
                     missing_map=self.missing_map,

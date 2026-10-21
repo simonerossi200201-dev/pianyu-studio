@@ -134,9 +134,10 @@ def kick(task_id: str, *, manual: bool = False, log=None) -> dict:
             launcher = ""
         elif not launcher:
             launcher = st.DEFAULT_LAUNCHER
+        _ltx_root = Path(__file__).resolve().parents[4]
         can_auto_wake = bool(
             (launcher and Path(launcher).is_file())
-            or Path(r"D:\0_LTX\modules\studio_gateway\server.py").is_file()
+            or (_ltx_root / "modules" / "studio_gateway" / "server.py").is_file()
         )
         if not can_auto_wake:
             remember(task_id)
@@ -144,7 +145,7 @@ def kick(task_id: str, *, manual: bool = False, log=None) -> dict:
             if manual or now - _TOLD_OFFLINE.get(task_id, 0) > TELL_EVERY:
                 _TOLD_OFFLINE[task_id] = now
                 _toast(f"本地模型没开，{task_id} 有 {len(segs)} 段等着",
-                       "双击 D:\\0_LTX\\启动本地算力网关.bat，开好后 1 分钟内会自动开始。")
+                       f"双击 {_ltx_root / '启动本地算力网关.bat'}，开好后 1 分钟内会自动开始。")
             return {"skip": "offline", "segs": segs}
         # 有本地网关或启动脚本：照样开 Job，StudioEngine.connect 会自动唤醒本地模型 LTX（最多等 90 秒）
     from .. import jobs as jobmod

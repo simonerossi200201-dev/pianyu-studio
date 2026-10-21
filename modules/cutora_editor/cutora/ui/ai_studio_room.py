@@ -74,7 +74,19 @@ LTX_ROOT = Path(__file__).resolve().parents[4]
 if str(LTX_ROOT) not in sys.path:
     sys.path.insert(0, str(LTX_ROOT))
 
-LLM_ROOT = Path(r"D:\0_LLM")
+_PORTABLE_RUNNERS = LTX_ROOT / "modules" / "studio_gateway" / "runners"
+LLM_ROOT = _PORTABLE_RUNNERS if _PORTABLE_RUNNERS.is_dir() else Path(r"D:\0_LLM")
+_DEV_LLM_ROOT = Path(r"D:\0_LLM")
+
+
+def _resolve_tool_py(dev_rel: str) -> Path:
+    dev_p = _DEV_LLM_ROOT / dev_rel
+    if dev_p.is_file():
+        return dev_p
+    studio_py = LTX_ROOT / "runtime" / "venv" / "Scripts" / "python.exe"
+    if studio_py.is_file():
+        return studio_py
+    return Path(sys.executable)
 
 
 # ============================================================================
@@ -993,11 +1005,20 @@ def _synthesize_bgm_or_sfx_wav(
 
 
 COMFY_URL = "http://127.0.0.1:8188"
-COMFY_ROOT = LLM_ROOT / "ComfyUI"
-COMFY_PY = COMFY_ROOT / "venv" / "Scripts" / "python.exe"
+COMFY_ROOT = (
+    (LTX_ROOT / "runtime" / "comfyui")
+    if (LTX_ROOT / "runtime" / "comfyui" / "main.py").is_file()
+    else (_DEV_LLM_ROOT / "ComfyUI")
+)
+COMFY_PY = (
+    (COMFY_ROOT / "venv" / "Scripts" / "python.exe")
+    if (COMFY_ROOT / "venv" / "Scripts" / "python.exe").is_file()
+    else _resolve_tool_py(r"ComfyUI\venv\Scripts\python.exe")
+)
 COMFY_INPUT = COMFY_ROOT / "input"
 COMFY_OUTPUT = COMFY_ROOT / "output"
 _FFMPEG_CANDIDATES = (
+    LTX_ROOT / "runtime" / "bin" / "ffmpeg.exe",
     LTX_ROOT / "runtime" / "ffmpeg" / "ffmpeg.exe",
     Path(r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe"),
 )
@@ -1290,7 +1311,7 @@ def execute_ai_card_capability(card: dict, report) -> dict:
         if not in_png.is_file():
             return {"ok": False, "error": "请先在时间线上选择或指定一段要抠像的视频/图片素材。"}
 
-        py_rmbg = LLM_ROOT / "tools" / "venv_rmbg" / "Scripts" / "python.exe"
+        py_rmbg = _resolve_tool_py(r"tools\venv_rmbg\Scripts\python.exe")
         runner_rmbg = LLM_ROOT / "tools" / "rmbg" / "rmbg.py"
         if py_rmbg.is_file() and runner_rmbg.is_file():
             report("⚡ 正在运行 RMBG-2.0 (BiRefNet 1024×1024 FP16) 发丝级抠图...")
@@ -1323,7 +1344,7 @@ def execute_ai_card_capability(card: dict, report) -> dict:
         dur_s = max(4, min(30, strength if strength <= 30 else 12))
         out_wav = out_dir / f"musicgen_{mode}_{stamp}.wav"
         runner = LLM_ROOT / "audio" / "runners" / "musicgen.py"
-        py_exe = LLM_ROOT / "audio" / "venv_chatterbox" / "Scripts" / "python.exe"
+        py_exe = _resolve_tool_py(r"audio\venv_chatterbox\Scripts\python.exe")
         if runner.is_file() and py_exe.is_file():
             report(f"🎵 正在调用 Meta MusicGen 生成 {dur_s}s 原创配乐...")
             subprocess.run(
@@ -1394,14 +1415,14 @@ def execute_ai_card_capability(card: dict, report) -> dict:
                 has_ref = True
 
         if cap_id == "chatterbox_clone":
-            py_exe = LLM_ROOT / "audio" / "venv_chatterbox" / "Scripts" / "python.exe"
+            py_exe = _resolve_tool_py(r"audio\venv_chatterbox\Scripts\python.exe")
             runner = LLM_ROOT / "audio" / "runners" / "chatterbox_tts.py"
             exag = f"{max(0.15, min(1.0, strength / 100.0)):.2f}"
             cmd = [str(py_exe), str(runner), "--text", prompt, "--out", str(out_wav), "--exaggeration", exag]
             if has_ref:
                 cmd += ["--ref", str(ref_wav)]
         else:
-            py_exe = LLM_ROOT / "audio" / "venv_xtts" / "Scripts" / "python.exe"
+            py_exe = _resolve_tool_py(r"audio\venv_xtts\Scripts\python.exe")
             runner = LLM_ROOT / "audio" / "runners" / "xtts_tts.py"
             lang = mode if mode in ("zh-cn", "en", "it", "ja", "es", "fr", "de", "pt", "ru", "ko") else "zh-cn"
             cmd = [str(py_exe), str(runner), "--text", prompt, "--lang", lang, "--out", str(out_wav)]
@@ -1444,11 +1465,12 @@ def execute_ai_card_capability(card: dict, report) -> dict:
             return {"ok": False, "error": "无法从源素材中提取音轨。"}
 
         if mode in ("demucs_vocals", "demucs_no_vocals"):
-            py_demucs = LLM_ROOT / "audio" / "venv_demucs" / "Scripts" / "python.exe"
+            py_demucs = _resolve_tool_py(r"audio\venv_demucs\Scripts\python.exe")
             if py_demucs.is_file():
                 report("🎙️ 正在调用 Meta Demucs (htdemucs) 分离纯净人声与伴奏...")
                 env_d = env_utf8.copy()
-                env_d["TORCH_HOME"] = str(LLM_ROOT / "audio" / "models" / "torch")
+                demucs_models = LTX_ROOT / "runtime" / "models" / "demucs"
+                env_d["TORCH_HOME"] = str(demucs_models if demucs_models.is_dir() else (_DEV_LLM_ROOT / "audio" / "models" / "torch"))
                 subprocess.run(
                     [
                         str(py_demucs),
@@ -1474,7 +1496,7 @@ def execute_ai_card_capability(card: dict, report) -> dict:
                 if cand.is_file():
                     shutil.copy2(cand, out_wav)
         else:
-            py_res = LLM_ROOT / "audio" / "venv_resemble" / "Scripts" / "python.exe"
+            py_res = _resolve_tool_py(r"audio\venv_resemble\Scripts\python.exe")
             runner_res = LLM_ROOT / "audio" / "runners" / "voice_enhance.py"
             sub_mode = "denoise" if mode == "resemble_denoise_only" else "enhance"
             if py_res.is_file() and runner_res.is_file():
@@ -1514,7 +1536,7 @@ def execute_ai_card_capability(card: dict, report) -> dict:
 
     # ── 6. Autograde 3D LUT 智能调色 (15: autograde_lut) ──
     if cap_id == "autograde_lut":
-        py_ag = LLM_ROOT / "tools" / "autograde" / "venv" / "Scripts" / "python.exe"
+        py_ag = _resolve_tool_py(r"tools\autograde\venv\Scripts\python.exe")
         runner_ag = LLM_ROOT / "tools" / "autograde" / "autograde.py"
         out_mp4 = out_dir / f"autograde_{mode}_{stamp}.mp4"
         out_cube = out_dir / f"autograde_{mode}_{stamp}.cube"
@@ -1601,7 +1623,7 @@ def execute_ai_card_capability(card: dict, report) -> dict:
             )
         else:
             # 先用 MediaPipe 提取人脸法线/镜片/嘴唇遮罩 faces.npz
-            py_mp = LLM_ROOT / "tools" / "venv_mediapipe" / "Scripts" / "python.exe"
+            py_mp = _resolve_tool_py(r"tools\venv_mediapipe\Scripts\python.exe")
             face_py = relight_dir / "face_pass.py"
             faces_npz = out_dir / f"_faces_{Path(src_path).stem}.npz"
             if not faces_npz.is_file() and py_mp.is_file() and face_py.is_file():

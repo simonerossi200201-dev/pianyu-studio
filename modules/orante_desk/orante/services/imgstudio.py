@@ -34,8 +34,10 @@ from .. import accounts, config, events, paths, tasks as taskmod
 from ..errors import OranteError
 from ..models import Image as ManifestImage, Manifest, sha1_file
 
-# 确保 D:\0_LTX 在 sys.path 中，以便在 core.image_studio 可用时协同调用
-_LTX_ROOT = Path(r"D:\0_LTX")
+# 确保片语工作室根目录在 sys.path 中，以便在 core.image_studio 可用时协同调用
+_LTX_ROOT = Path(__file__).resolve().parents[4]
+if not (_LTX_ROOT / "studio_launcher.py").is_file() and Path(r"D:\0_LTX").is_dir():
+    _LTX_ROOT = Path(r"D:\0_LTX")
 if _LTX_ROOT.is_dir() and str(_LTX_ROOT) not in sys.path:
     sys.path.insert(0, str(_LTX_ROOT))
 
@@ -127,13 +129,13 @@ DEFAULT_TYPOGRAPHY: dict[str, Any] = {
 }
 
 YUNET_MODEL_PATHS = [
-    Path(r"D:\0_LTX\modules\cutora_editor\cutora\resources\models\yunet.onnx"),
-    Path(r"D:\0_LTX\core\models\yunet.onnx"),
+    _LTX_ROOT / "modules" / "cutora_editor" / "cutora" / "resources" / "models" / "yunet.onnx",
+    _LTX_ROOT / "core" / "models" / "yunet.onnx",
 ]
 
 STICKER_DIRS = [
     Path(r"D:\1_PROJECT\Tiktok_Pic"),
-    Path(r"D:\0_LTX\resources\stickers"),
+    _LTX_ROOT / "resources" / "stickers",
 ]
 
 PROJECT_FILE = "image_studio_project.json"
@@ -1037,8 +1039,10 @@ def _generate_single_image(prompt: str, width: int, height: int, aspect: str,
         except Exception:
             pass
 
-    # 3. 尝试直接调用 D:\0_LTX\modules\studio_gateway\flux2_run.py (若 ComfyUI 8188 在线)
-    flux_script = Path(r"D:\0_LTX\modules\studio_gateway\flux2_run.py")
+    # 3. 尝试直接调用 studio_gateway 下的 flux2_run.py (若 ComfyUI 8188 在线)
+    flux_script = _LTX_ROOT / "modules" / "studio_gateway" / "runners" / "bench" / "flux2" / "flux2_run.py"
+    if not flux_script.is_file():
+        flux_script = _LTX_ROOT / "modules" / "studio_gateway" / "flux2_run.py"
     if flux_script.is_file():
         try:
             urllib.request.urlopen("http://127.0.0.1:8188/system_stats", timeout=1.2).read()

@@ -19,7 +19,7 @@ from typing import Any
 
 __version__ = "3.0.0"
 
-LTX_ROOT = Path(r"D:\0_LTX")
+LTX_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = LTX_ROOT / "config" / "studio.toml"
 MODELS_REGISTRY_PATH = LTX_ROOT / "config" / "models_registry.json"
 BIN_DIR = LTX_ROOT / "runtime" / "bin"
@@ -83,10 +83,31 @@ def _parse_simple_toml(text: str) -> dict[str, Any]:
 
 
 def load_studio_config() -> dict[str, Any]:
-    """读取 D:\\0_LTX\\config\\studio.toml。"""
+    """读取 config/studio.toml 并将相对路径自动解析为当前解压目录绝对路径。"""
     if not CONFIG_PATH.is_file():
         return {}
-    return _parse_simple_toml(CONFIG_PATH.read_text(encoding="utf-8"))
+    cfg = _parse_simple_toml(CONFIG_PATH.read_text(encoding="utf-8"))
+    suite_sec = cfg.get("suite")
+    if isinstance(suite_sec, dict):
+        rd = str(suite_sec.get("root_dir") or ".").strip()
+        if not os.path.isabs(rd) or not Path(rd).exists():
+            suite_sec["root_dir"] = str(LTX_ROOT)
+    paths_sec = cfg.get("paths")
+    if isinstance(paths_sec, dict):
+        for k, v in list(paths_sec.items()):
+            if isinstance(v, str) and v.strip():
+                p = Path(v)
+                if not p.is_absolute():
+                    paths_sec[k] = str((LTX_ROOT / p).resolve())
+                elif not p.exists():
+                    # 自动重定位旧盘符绝对路径到当前 LTX_ROOT
+                    norm = v.replace("\\", "/")
+                    for marker in ("runtime/", "data/", "config/", "modules/"):
+                        if marker in norm:
+                            rel_part = norm[norm.index(marker):]
+                            paths_sec[k] = str((LTX_ROOT / rel_part).resolve())
+                            break
+    return cfg
 
 
 def load_models_registry() -> dict[str, Any]:

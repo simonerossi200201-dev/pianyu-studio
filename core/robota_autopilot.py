@@ -120,7 +120,7 @@ def compile_natural_steps_to_recipe(
         )
 
     # 同步写一份到 robota_hub/data/recipes/ 供 Robota 控制台展示
-    recipes_dir = Path(r"D:\0_LTX\modules\robota_hub\data\recipes")
+    recipes_dir = LTX_ROOT / "modules" / "robota_hub" / "data" / "recipes"
     recipes_dir.mkdir(parents=True, exist_ok=True)
     recipe_obj = {
         "recipe_id": recipe_id,

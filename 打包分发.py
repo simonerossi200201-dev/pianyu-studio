@@ -75,6 +75,8 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "片语工作室 me.png",
     "runtime/bin",
     "runtime/mimalloc",
+    "runtime/venv/Scripts/python.exe",
+    "runtime/venv/Scripts/pythonw.exe",
     "modules/table_tool/app/表格工具.py",
     "modules/table_tool/install.py",
     "modules/table_tool/uninstall.py",
@@ -253,12 +255,16 @@ def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
                     if arc_rel == "runtime/comfyui/venv/pyvenv.cfg":
                         # 自动重写 pyvenv.cfg 使其指向内置的 python312
                         cfg_txt = (
-                            "home = D:\\0_LTX\\runtime\\comfyui\\python312\n"
+                            "home = ..\\python312\n"
                             "implementation = CPython\n"
                             "version_info = 3.12.7\n"
                             "include-system-site-packages = false\n"
                         )
                         zf.writestr(arc_rel, cfg_txt)
+                    elif arc_rel == "runtime/comfyui/venv/Scripts/python.exe" and (LTX_ROOT / "runtime/bin/portable_venv_python.exe").is_file():
+                        zf.write(LTX_ROOT / "runtime/bin/portable_venv_python.exe", arc_rel)
+                    elif arc_rel == "runtime/comfyui/venv/Scripts/pythonw.exe" and (LTX_ROOT / "runtime/bin/portable_venv_pythonw.exe").is_file():
+                        zf.write(LTX_ROOT / "runtime/bin/portable_venv_pythonw.exe", arc_rel)
                     else:
                         zf.write(p, arc_rel)
                     files_added += 1

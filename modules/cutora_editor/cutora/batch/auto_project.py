@@ -80,24 +80,38 @@ DEFAULT_AI_OVERLAY_TEMPLATE = {
 def parse_table_titles(txt_path: str) -> dict[str, str]:
     if not txt_path or not os.path.isfile(txt_path):
         return {}
+    import csv
+    import io
     raw = open(txt_path, "r", encoding="utf-8").read()
     titles: dict[str, str] = {}
-    pattern = re.compile(
-        r"https://drive\.google\.com/drive/folders/[A-Za-z0-9_-]+[^\t]*\t(v\d+)\t(.*?)\thttps://drive\.google\.com/[^\t]+\t",
-        re.DOTALL,
-    )
-    for m in pattern.finditer(raw):
-        vid = m.group(1).strip()
-        t = m.group(2).strip()
-        if t.startswith('"') and t.endswith('"'):
-            t = t[1:-1].strip()
-        t = re.sub(r"\s+", " ", t).strip()
-        titles[vid] = t
+    reader = csv.reader(io.StringIO(raw), delimiter="\t")
+    for raw_row in reader:
+        cols = [c.strip() for c in raw_row if c is not None]
+        if not any(cols):
+            continue
+        for idx, val in enumerate(cols):
+            if re.match(r"^[vV]\d{1,4}$", val.strip()):
+                vid = val.strip().lower()
+                if idx + 1 < len(cols):
+                    t = cols[idx + 1].strip()
+                    if t.startswith('"') and t.endswith('"'):
+                        t = t[1:-1].strip()
+                    t = re.sub(r"\s+", " ", t).strip()
+                    if t:
+                        titles[vid] = t
+                break
     if not titles:
-        for line in raw.splitlines():
-            parts = line.split("\t")
-            if len(parts) >= 2 and re.match(r"^v\d+$", parts[0].strip()):
-                titles[parts[0].strip()] = parts[1].strip().strip('"')
+        pattern = re.compile(
+            r"https://drive\.google\.com/[^\t]+\t(v\d+)\t(.*?)\thttps://drive\.google\.com/[^\t]+\t",
+            re.DOTALL,
+        )
+        for m in pattern.finditer(raw):
+            vid = m.group(1).strip().lower()
+            t = m.group(2).strip()
+            if t.startswith('"') and t.endswith('"'):
+                t = t[1:-1].strip()
+            t = re.sub(r"\s+", " ", t).strip()
+            titles[vid] = t
     return titles
 
 
@@ -117,15 +131,55 @@ def load_clips_mapping(manifest_or_dir: str) -> dict[str, list[str]]:
     mapping: dict[str, list[tuple[int, str]]] = {}
     if manifest_path and os.path.isfile(manifest_path):
         manifest = json.load(open(manifest_path, "r", encoding="utf-8"))
-        batch_prefix = os.path.basename(os.path.dirname(manifest_path)).split("-")[0]
+        manifest_dir = os.path.dirname(manifest_path)
+        batch_prefix = os.path.basename(manifest_dir).split("-")[0]
+
+        # Orante v2 manifest format: "images" + "segments"
+        if manifest.get("images") and manifest.get("segments"):
+            p_to_vid: dict[str, tuple[str, int]] = {}
+            for im in manifest.get("images", []):
+                p_id = str(im.get("p") or "")
+                src = str(im.get("src") or im.get("orig_name") or im.get("file") or "")
+                stem = os.path.splitext(os.path.basename(src))[0]
+                m_multi = re.match(r"^(v\d+)\((\d+)\)$", stem, re.IGNORECASE)
+                m_single = re.match(r"^(v\d+)$", stem, re.IGNORECASE)
+                if m_multi:
+                    p_to_vid[p_id] = (m_multi.group(1).lower(), int(m_multi.group(2)))
+                elif m_single:
+                    p_to_vid[p_id] = (m_single.group(1).lower(), 1)
+            for seg in manifest.get("segments", []):
+                p_ref = str(seg.get("image") or "")
+                if p_ref not in p_to_vid:
+                    continue
+                vid, sub_idx = p_to_vid[p_ref]
+                s_num = int(seg.get("s") or sub_idx)
+                clip_rel = str(seg.get("clip_file") or "")
+                clip_path = os.path.join(manifest_dir, clip_rel) if clip_rel else ""
+                if not clip_path or not os.path.isfile(clip_path):
+                    cand_name = f"{batch_prefix}-s{s_num:03d}-{p_ref}.mp4"
+                    clip_path = os.path.join(clips_dir, cand_name)
+                if not os.path.isfile(clip_path) and os.path.isdir(clips_dir):
+                    for fn in os.listdir(clips_dir):
+                        if f"-s{s_num:03d}-" in fn and fn.endswith(".mp4"):
+                            clip_path = os.path.join(clips_dir, fn)
+                            break
+                if os.path.isfile(clip_path):
+                    mapping.setdefault(vid, []).append((sub_idx * 1000 + s_num, clip_path))
+
+        # Orante v1 manifest format: "items"
         for item in manifest.get("items", []):
             src = str(item.get("source_image") or "")
             stem = os.path.splitext(os.path.basename(src))[0]
-            m = re.match(r"^(v\d+)\((\d+)\)$", stem)
-            if not m:
+            m_multi = re.match(r"^(v\d+)\((\d+)\)$", stem, re.IGNORECASE)
+            m_single = re.match(r"^(v\d+)$", stem, re.IGNORECASE)
+            if m_multi:
+                vid = m_multi.group(1).lower()
+                idx = int(m_multi.group(2))
+            elif m_single:
+                vid = m_single.group(1).lower()
+                idx = 1
+            else:
                 continue
-            vid = m.group(1)
-            idx = int(m.group(2))
             sid = str(item.get("id") or "")
             p_idx = int(sid[1:]) if sid.startswith("s") and sid[1:].isdigit() else idx
             clip_name = f"{batch_prefix}-{sid}-p{p_idx:02d}.mp4"
@@ -143,8 +197,11 @@ def load_clips_mapping(manifest_or_dir: str) -> dict[str, list[str]]:
             if not fn.lower().endswith(".mp4"):
                 continue
             m = re.match(r"^(v\d+)\((\d+)\)\.mp4$", fn, re.IGNORECASE)
+            m1 = re.match(r"^(v\d+)\.mp4$", fn, re.IGNORECASE)
             if m:
                 mapping.setdefault(m.group(1).lower(), []).append((int(m.group(2)), os.path.join(clips_dir, fn)))
+            elif m1:
+                mapping.setdefault(m1.group(1).lower(), []).append((1, os.path.join(clips_dir, fn)))
 
     out: dict[str, list[str]] = {}
     for vid, lst in mapping.items():
@@ -422,6 +479,11 @@ def build_batch_project(
             pass
         os.makedirs(os.path.dirname(path), exist_ok=True)
         cli.atomic_write_json(path, proj_data)
+        try:
+            from cutora.core.history import _record_recent_project
+            _record_recent_project(path)
+        except Exception:
+            pass
         return path
 
     saved_projects = []

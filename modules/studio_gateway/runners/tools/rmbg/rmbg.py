@@ -1,11 +1,18 @@
-﻿# RMBG-2.0 (BRIA, CC BY-NC 4.0, BiRefNet architecture). Usage: rmbg.py <image|folder> [outdir]
+# RMBG-2.0 (BRIA, CC BY-NC 4.0, BiRefNet architecture). Usage: rmbg.py <image|folder> [outdir]
 import sys, os, glob, time, torch
 os.environ["HF_HUB_OFFLINE"] = "1"
 from PIL import Image
 from torchvision import transforms
 from transformers import AutoModelForImageSegmentation
-M = r"D:\0_LLM\tools\rmbg\models\RMBG-2.0"
-src = sys.argv[1]; out = sys.argv[2] if len(sys.argv) > 2 else r"D:\0_LLM\Outputs\rmbg"; os.makedirs(out, exist_ok=True)
+_LTX_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+_CAND_MODELS = [
+    os.path.join(_LTX_ROOT, "runtime", "models", "vision", "rmbg2"),
+    os.path.join(_LTX_ROOT, "runtime", "models", "rmbg2"),
+    r"D:\0_LLM\tools\rmbg\models\RMBG-2.0",
+]
+M = next((c for c in _CAND_MODELS if os.path.isdir(c)), _CAND_MODELS[0])
+_DEFAULT_OUT = os.path.join(_LTX_ROOT, "data", "gateway_outputs", "rmbg")
+src = sys.argv[1]; out = sys.argv[2] if len(sys.argv) > 2 else _DEFAULT_OUT; os.makedirs(out, exist_ok=True)
 files = [src] if os.path.isfile(src) else sorted(sum([glob.glob(os.path.join(src, e)) for e in ("*.png", "*.jpg", "*.jpeg", "*.webp")], []))
 t0 = time.time(); m = AutoModelForImageSegmentation.from_pretrained(M, trust_remote_code=True).eval().half().to("cuda"); print(f"load {time.time()-t0:.1f}s")
 tf = transforms.Compose([transforms.Resize((1024, 1024)), transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])

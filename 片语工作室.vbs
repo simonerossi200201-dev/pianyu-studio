@@ -4,8 +4,19 @@ root = fso.GetParentFolderName(WScript.ScriptFullName)
 shell.CurrentDirectory = root
 py = root & "\runtime\python\pythonw.exe"
 venvPyw = root & "\runtime\venv\Scripts\pythonw.exe"
-If fso.FileExists(py) Then
-    shell.Run """" & py & """ -c ""import sys; sys.path.insert(0, r'" & root & "'); from core.portable import rewrite_pyvenv_cfg; rewrite_pyvenv_cfg(r'" & root & "')""", 0, True
+venvCfg = root & "\runtime\venv\pyvenv.cfg"
+If fso.FileExists(root & "\runtime\python\python.exe") And fso.FolderExists(root & "\runtime\venv") Then
+    On Error Resume Next
+    Set stm = CreateObject("ADODB.Stream")
+    If Err.Number = 0 Then
+        stm.Type = 2
+        stm.Charset = "utf-8"
+        stm.Open
+        stm.WriteText "home = " & root & "\runtime\python" & vbCrLf & "include-system-site-packages = false" & vbCrLf & "version = 3.10.11" & vbCrLf
+        stm.SaveToFile venvCfg, 2
+        stm.Close
+    End If
+    On Error GoTo 0
 End If
 If fso.FileExists(venvPyw) Then
     shell.Run """" & venvPyw & """ """ & root & "\studio_launcher.py""", 1, False

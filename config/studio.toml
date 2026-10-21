@@ -5,7 +5,7 @@
 name = "片语工作室"
 name_en = "Cutora LTX Studio"
 version = "3.0.0"
-root_dir = "D:\\0_LTX"
+root_dir = "."
 license_mode = "internal_non_commercial"
 
 [network]
@@ -53,9 +53,9 @@ prefer_l0_deterministic = true
 enable_recipe_recorder = true
 
 [paths]
-ffmpeg_exe = "D:\\0_LTX\\runtime\\bin\\ffmpeg.exe"
-ffprobe_exe = "D:\\0_LTX\\runtime\\bin\\ffprobe.exe"
-rclone_exe = "D:\\0_LTX\\runtime\\bin\\rclone.exe"
-mimalloc_dll = "D:\\0_LTX\\runtime\\bin\\mimalloc.dll"
-models_root = "D:\\0_LTX\\runtime\\models"
-spine_db = "D:\\0_LTX\\data\\studio_spine.db"
+ffmpeg_exe = "runtime/bin/ffmpeg.exe"
+ffprobe_exe = "runtime/bin/ffprobe.exe"
+rclone_exe = "runtime/bin/rclone.exe"
+mimalloc_dll = "runtime/bin/mimalloc.dll"
+models_root = "runtime/models"
+spine_db = "data/studio_spine.db"

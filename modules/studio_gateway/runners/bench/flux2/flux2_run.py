@@ -21,9 +21,14 @@ a.w = max(256, (int(a.w) // 16) * 16)
 a.h = max(256, (int(a.h) // 16) * 16)
 
 URL = "http://127.0.0.1:8188"
-DEFAULT_OUT = r"D:\0_LLM\Outputs\flux2_test"
-OUT = a.out_dir or DEFAULT_OUT
-COMFY_INPUT_DIRS = [r"D:\0_LLM\ComfyUI\input", r"D:\0_LTX\runtime\comfyui\input"]
+_LTX_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+_PORTABLE_OUT = os.path.join(_LTX_ROOT, "data", "gateway_outputs", "flux2_test")
+DEFAULT_OUT = r"D:\0_LLM\Outputs\flux2_test" if os.path.isdir(r"D:\0_LLM") else _PORTABLE_OUT
+OUT = a.out_dir if (a.out_dir and (os.path.isdir(r"D:\0_LLM") or a.out_dir != r"D:\0_LLM\Outputs\flux2_test")) else DEFAULT_OUT
+COMFY_INPUT_DIRS = [
+    os.path.join(_LTX_ROOT, "runtime", "comfyui", "input"),
+    r"D:\0_LLM\ComfyUI\input",
+]
 
 edit_image_name = a.edit_image
 if a.edit_image:
@@ -88,13 +93,13 @@ while True:
 stop = True; st = h[pid]["status"]; files = []
 for out in h[pid].get("outputs", {}).values():
     for f in out.get("images", []) or []:
-        for out_root in (r"D:\0_LLM\ComfyUI\output", r"D:\0_LTX\runtime\comfyui\output"):
+        for out_root in (os.path.join(_LTX_ROOT, "runtime", "comfyui", "output"), r"D:\0_LLM\ComfyUI\output"):
             cand_out = os.path.join(out_root, f.get("subfolder", ""), f["filename"])
             if os.path.isfile(cand_out):
                 files.append(cand_out)
                 break
         else:
-            files.append(os.path.join(r"D:\0_LLM\ComfyUI\output", f.get("subfolder", ""), f["filename"]))
+            files.append(os.path.join(os.path.join(_LTX_ROOT, "runtime", "comfyui", "output"), f.get("subfolder", ""), f["filename"]))
 
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(DEFAULT_OUT, exist_ok=True)

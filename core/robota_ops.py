@@ -18,7 +18,7 @@ import json
 import sys
 from pathlib import Path
 
-STUDIO_ROOT = Path(r"D:\0_LTX")
+STUDIO_ROOT = Path(__file__).resolve().parent.parent
 if str(STUDIO_ROOT) not in sys.path:
     sys.path.insert(0, str(STUDIO_ROOT))
 

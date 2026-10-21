@@ -21,7 +21,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-STUDIO_ROOT = Path(r"D:\0_LTX")
+_CAND_ROOT = Path(__file__).resolve().parents[4]
+STUDIO_ROOT = _CAND_ROOT if (_CAND_ROOT / "studio_launcher.py").is_file() else Path(r"D:\0_LTX")
 STUDIO_PYTHON = STUDIO_ROOT / "runtime" / "venv" / "Scripts" / "python.exe"
 CUTORA_ROOT = STUDIO_ROOT / "modules" / "cutora_editor"
 RCLONE_EXE = STUDIO_ROOT / "runtime" / "bin" / "rclone.exe"

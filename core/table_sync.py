@@ -290,8 +290,8 @@ def discover_orante_batch_tasks(
     db_candidates = [
         p for p in [
             orante_db_path,
-            Path(r"D:\0_LTX\modules\orante_desk\data\orante.db"),
-            Path(r"D:\0_LTX\data\orante.db"),
+            LTX_ROOT / "modules" / "orante_desk" / "data" / "orante.db",
+            LTX_ROOT / "data" / "orante.db",
             Path(r"D:\0_Dev\Orante\data\orante.db"),
         ]
         if p and p.is_file()
@@ -387,7 +387,7 @@ def write_order_lock_for_cutora(task_dir: Path) -> Path | None:
     return order_file
 
 
-HANDOFF_FILE = Path(r"D:\0_LTX\data\cutora_stitch_handoff.json")
+HANDOFF_FILE = LTX_ROOT / "data" / "cutora_stitch_handoff.json"
 
 
 def prepare_cutora_stitch_handoff(

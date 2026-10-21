@@ -2,11 +2,17 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 set "PYTHONUTF8=1"
-if exist "%~dp0runtime\python\python.exe" (
-    "%~dp0runtime\python\python.exe" -c "import sys; sys.path.insert(0, r'%~dp0'); from core.portable import rewrite_pyvenv_cfg; rewrite_pyvenv_cfg(r'%~dp0')" >nul 2>&1
+set "STUDIO_ROOT=%~dp0"
+if "%STUDIO_ROOT:~-1%"=="\" set "STUDIO_ROOT=%STUDIO_ROOT:~0,-1%"
+if exist "%STUDIO_ROOT%\runtime\python\python.exe" (
+    (
+        echo home = %STUDIO_ROOT%\runtime\python
+        echo include-system-site-packages = false
+        echo version = 3.10.11
+    ) > "%STUDIO_ROOT%\runtime\venv\pyvenv.cfg"
 )
-if exist "%~dp0runtime\venv\Scripts\python.exe" (
-    "%~dp0runtime\venv\Scripts\python.exe" -m core.shortcut
+if exist "%STUDIO_ROOT%\runtime\venv\Scripts\python.exe" (
+    "%STUDIO_ROOT%\runtime\venv\Scripts\python.exe" -m core.shortcut
 ) else (
     python -m core.shortcut
 )

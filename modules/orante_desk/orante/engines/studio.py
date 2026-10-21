@@ -31,8 +31,9 @@ GID_PREFIX = "sz:"
 HTTP_TIMEOUT = 30
 DOWNLOAD_TIMEOUT = 300
 LAUNCH_WAIT = 90
+_LTX_ROOT = Path(__file__).resolve().parents[4]
 # 启动脚本没填时的默认位置（设置里填 off 就不自动启动）
-DEFAULT_LAUNCHER = r"D:\0_LTX\启动本地算力网关.bat"
+DEFAULT_LAUNCHER = str(_LTX_ROOT / "启动本地算力网关.bat")
 
 # 【镜头】行里出现这些词就是运镜：不锁尾帧（锁了最后一帧会跳回首帧），用运镜档
 CAMERA_WORDS = ("平移", "推进", "推近", "拉远", "拉开", "环绕", "摇", "跟拍", "跟随", "升降", "运镜", "移动")
@@ -239,7 +240,7 @@ class StudioEngine(Engine):
         h = health()
         if not h.get("ok"):
             # 优先直接拉起本地算力网关进程（无窗口、2 秒就绪），再兜底启动脚本
-            ltx_root = Path(r"D:\0_LTX")
+            ltx_root = _LTX_ROOT
             ltx_py = ltx_root / "runtime" / "venv" / "Scripts" / "python.exe"
             gw_script = ltx_root / "modules" / "studio_gateway" / "server.py"
             launched = False

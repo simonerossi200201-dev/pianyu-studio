@@ -754,7 +754,8 @@ def _has_unconsumed_stitch_handoff() -> bool:
     try:
         import json as _json
         import os as _os
-        p = r"D:\0_LTX\data\cutora_stitch_handoff.json"
+        from pathlib import Path as _Path
+        p = str(_Path(__file__).resolve().parents[4] / "data" / "cutora_stitch_handoff.json")
         if not _os.path.isfile(p):
             return False
         with open(p, "r", encoding="utf-8") as f:

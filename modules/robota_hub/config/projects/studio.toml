@@ -1,9 +1,4 @@
-id = "studio"
-name = "Studio Zero 影视工作站"
-root = 'D:\0_LLM'
-description = "ComfyUI + MiniMax H3 图生视频。本机 API http://127.0.0.1:7870（启动Studio API.bat），ComfyUI 在 8188。生成时会占满 16GB 显存，必须先卸载 Ollama 模型。"
-rules_file = ""
-test_cmd = 'python test_studio_api.py'
-default_brain = "auto"
-private = false
-notes = "模型权重在 Models_Cache（不要动）；输出在 Outputs\\"
+name = 'studio'
+root = '../../studio_gateway'
+python = '../../../runtime/venv/Scripts/python.exe'
+entry = 'python -m modules.studio_gateway.server'

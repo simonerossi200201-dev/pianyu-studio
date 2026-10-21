@@ -65,7 +65,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-STUDIO_ROOT = Path(r"D:\0_LTX")
+STUDIO_ROOT = Path(__file__).resolve().parent
 if str(STUDIO_ROOT) not in sys.path:
     sys.path.insert(0, str(STUDIO_ROOT))
 

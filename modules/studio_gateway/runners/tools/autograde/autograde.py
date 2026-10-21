@@ -23,7 +23,12 @@ input is never overwritten, all outputs stay inside the output folder.
 import argparse, base64, ipaddress, json, math, os, subprocess, sys, time, urllib.parse, urllib.request
 import numpy as np, cv2
 
-FF_CANDIDATES = [r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe"]   # fixed binary, no PATH lookup
+_LTX_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+FF_CANDIDATES = [
+    os.path.join(_LTX_ROOT, "runtime", "bin", "ffmpeg.exe"),
+    os.path.join(_LTX_ROOT, "runtime", "ffmpeg", "ffmpeg.exe"),
+    r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe",
+]   # fixed binary, no PATH lookup
 LUT_N = 33
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".mts", ".webm"}
 LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)

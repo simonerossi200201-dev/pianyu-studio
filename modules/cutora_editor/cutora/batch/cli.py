@@ -1728,9 +1728,10 @@ def op_stitch(params, cmd):
         raise CliError("不是一个目录: %s" % folder, EXIT_FAIL)
     if "captions" not in params or not params.get("captions"):
         try:
-            if r"D:\0_LTX" not in sys.path:
-                sys.path.insert(0, r"D:\0_LTX")
             from pathlib import Path as _Path
+            _ltx_root = str(_Path(__file__).resolve().parents[4])
+            if _ltx_root not in sys.path:
+                sys.path.insert(0, _ltx_root)
             from core.table_sync import discover_orante_batch_tasks
             _orante_tasks = discover_orante_batch_tasks(_Path(folder))
             if _orante_tasks:
@@ -1878,9 +1879,10 @@ def op_stitch(params, cmd):
     missing_path = os.path.join(out_dir, "缺失文案清单.txt")
     if missing_map:
         try:
-            if r"D:\0_LTX" not in sys.path:
-                sys.path.insert(0, r"D:\0_LTX")
             from pathlib import Path as _Path
+            _ltx_root = str(_Path(__file__).resolve().parents[4])
+            if _ltx_root not in sys.path:
+                sys.path.insert(0, _ltx_root)
             from core.spine_db import SpineDB
             _spine = SpineDB()
             for _gk, _mv in missing_map.items():
@@ -2496,9 +2498,10 @@ def op_batch_export(params, cmd):
     produced = [p for p in artifacts if os.path.isfile(p)]
     if produced:
         try:
-            if r"D:\0_LTX" not in sys.path:
-                sys.path.insert(0, r"D:\0_LTX")
             from pathlib import Path as _Path
+            _ltx_root = str(_Path(__file__).resolve().parents[4])
+            if _ltx_root not in sys.path:
+                sys.path.insert(0, _ltx_root)
             from core.spine_db import SpineDB
             _spine = SpineDB()
             for _vp in produced:
