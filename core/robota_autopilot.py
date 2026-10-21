@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from . import load_studio_config
+from . import LTX_ROOT, load_studio_config
 from .spine_db import SpineDB
 
 # 预置标准原子动作库 (L0 Deterministic Actions)

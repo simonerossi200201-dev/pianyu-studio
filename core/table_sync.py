@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from . import LTX_ROOT
+
 
 # --- 1. 骨架守恒文案归一化 (统一 Orante 与 CUTORA 的 wenan_norm) ---
 

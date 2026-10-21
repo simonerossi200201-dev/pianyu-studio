@@ -23,5 +23,5 @@ If fso.FileExists(venvPyw) Then
 ElseIf fso.FileExists(py) Then
     shell.Run """" & py & """ """ & root & "\studio_launcher.py""", 1, False
 Else
-    shell.Run """" & root & "\片语工作室.bat""", 0, False
+    shell.Run "pythonw.exe """ & root & "\studio_launcher.py""", 1, False
 End If
