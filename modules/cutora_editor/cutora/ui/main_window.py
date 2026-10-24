@@ -2727,11 +2727,11 @@ class MainWindow(CommandBodies, QMainWindow):
             'pos_x': 960, 'pos_y': 1450, 
             'fontsize': 60, 'font_family': DEFAULT_FONT_FAMILY,
             'bold': True, 'italic': False,
-            'color_text': '#000000', 'color_high': '#FF0000', 'color_bg': '#e0c3fc', 'color_shadow': '#000000',
-            'opacity_bg': 191, 'opacity_shadow': 0, 'shadow_enabled': False, 'use_box': True, 
+            'color_text': '#FFFFFF', 'color_high': '#FF2A2A', 'color_bg': '#141A26', 'color_shadow': '#141A26',
+            'opacity_bg': 180, 'opacity_shadow': 0, 'shadow_enabled': False, 'use_box': False, 
             'box_padding_x': 20, 'box_padding_y': 20,
             'box_radius': 20, 'box_blur': 0,
-            'use_stroke': False, 'border_width': 2, 'opacity_outline': 255, 'color_outline': '#000000',
+            'use_stroke': True, 'border_width': 4, 'opacity_outline': 255, 'color_outline': '#141A26',
             'dynamic_box': False, 'color_high_bg': '#FF0000', 'opacity_high_bg': 180, 'dynamic_radius': 5,
             'shadow_blur': 0, 'rotation': 0, 'use_underline': False, 'color_underline': '#000000',
             'high_padding': 5, 'high_offset_y': 0,
@@ -6495,7 +6495,9 @@ class MainWindow(CommandBodies, QMainWindow):
             mixer.switch_task(id(task))
         self._sync_role_faders_from_task()
         from cutora.preview.engine import timeline_duration_sec
-        self._rebuild_preview_wav(immediate=not getattr(self, "_opening_project", False))
+        batch_busy = bool(getattr(self, "is_batch_running", False))
+        if not batch_busy:
+            self._rebuild_preview_wav(immediate=not getattr(self, "_opening_project", False))
         dur_ms = int(timeline_duration_sec(task) * 1000)
         self.timeline.set_data(dur_ms, task)
         if getattr(self, "_opening_project", False):
@@ -6516,9 +6518,10 @@ class MainWindow(CommandBodies, QMainWindow):
         log_subtitle_source("on_click", task)
         self._refresh_task_view(self.curr_idx)
         self._sync_bgm_state(self.media_player.playbackState())
-        self._preview_fx_request(400)
+        if not batch_busy:
+            self._preview_fx_request(400)
         opening = bool(getattr(self, "_opening_project", False))
-        if not opening:
+        if not opening and not batch_busy:
             # _refresh_task_view already presented via sync_ui. A second
             # present here was a duplicate full canvas update on every click.
             gal = getattr(self, "style_gallery", None)
@@ -12131,6 +12134,14 @@ class MainWindow(CommandBodies, QMainWindow):
             return
         if not self.batch_queue:
             self.is_batch_running = False
+            try:
+                release_gpu_models()
+            except Exception:
+                pass
+            try:
+                self._rebuild_preview_wav(immediate=False)
+            except Exception:
+                pass
             if getattr(self, "_queue_ai_active", False):
                 self._queue_ai_active = False
                 if getattr(self, "_queue_mode", False):
@@ -15314,6 +15325,8 @@ class MainWindow(CommandBodies, QMainWindow):
         if _GUARD is None or not hasattr(_GUARD, "system_memory_gb"):
             return True
         try:
+            if hasattr(_GUARD, "purge_ui_memory_before_export"):
+                _GUARD.purge_ui_memory_before_export(self)
             ram_total, ram_avail = _GUARD.system_memory_gb()
             if not (0 < ram_avail < 6.5):
                 return True

@@ -48,7 +48,7 @@ def run() -> int:
         p for p in list_pack_dirs()
         if p.replace("\\", "/").startswith(root)
     ]
-    assert len(packs) == 14, [os.path.basename(p) for p in packs]
+    assert len(packs) >= 14, [os.path.basename(p) for p in packs]
     for path in packs:
         dest = ensure_pack_thumb(path)
         assert dest and os.path.isfile(dest), path

@@ -526,6 +526,10 @@ class AlignmentWorker(QThread):
         if not txt:
             return None, {"missing_ratio": 1.0}
         dur = float(audio_dur) if isinstance(audio_dur, (int, float)) and audio_dur > 0 else 0.0
+        # 防止超长复合片段（> 120s 或超长全文）作为单个 [0, dur] 段送入 Wav2Vec2 CTC Trellis
+        # 导致分配几十 GB 内存/共享显存并拖垮系统；超长音频自动走分段识别 + 分段对齐路径
+        if dur > 120.0 or len(txt) > 1600:
+            return None, {"missing_ratio": 1.0}
         segs = [{"start": 0.0, "end": dur, "text": txt}]
         try:
             aligned = align_transcript(segs, align_model, metadata, audio, device, return_char_alignments=False)

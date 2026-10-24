@@ -379,23 +379,50 @@ def _cuda_mem_gb():
     except Exception:
         return (0.0, 0.0)
 
+def _trim_process_memory():
+    """在 Windows 下将 Python GC / mimalloc / CRT 堆及进程工作集中的空闲页立即归还给操作系统。"""
+    import gc
+    try:
+        gc.collect()
+    except Exception:
+        pass
+    if os.name == "nt":
+        try:
+            import ctypes
+            lib = ctypes.WinDLL("mimalloc.dll")
+            lib.mi_collect.argtypes = [ctypes.c_bool]
+            lib.mi_collect.restype = None
+            lib.mi_collect(True)
+        except Exception:
+            pass
+        try:
+            import ctypes
+            psapi = ctypes.WinDLL("psapi", use_last_error=True)
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            psapi.EmptyWorkingSet(k32.GetCurrentProcess())
+        except Exception:
+            pass
+
+
 def trim_gpu_cache(tag=""):
-    """把 PyTorch allocator 中的空闲显存块归还给驱动。模型保持加载状态。
+    """把 PyTorch allocator 中的空闲显存块与系统内存块归还给驱动和操作系统。模型保持加载状态。
 
     这是一个纯粹的资源回收操作，不改变任何模型状态或推理结果，
     因此可以安全地在任意时刻调用。
     """
     try:
-        if not _torch_loaded() or not torch.cuda.is_available():
-            return
-        before_alloc, before_res = _cuda_mem_gb()
         import gc
         gc.collect()
+        if not _torch_loaded() or not torch.cuda.is_available():
+            _trim_process_memory()
+            return
+        before_alloc, before_res = _cuda_mem_gb()
         torch.cuda.empty_cache()
         try:
             torch.cuda.ipc_collect()
         except Exception:
             pass
+        _trim_process_memory()
         after_alloc, after_res = _cuda_mem_gb()
         freed = before_res - after_res
         if freed > 0.05:
@@ -405,7 +432,7 @@ def trim_gpu_cache(tag=""):
         print(f"[VRAM] 缓存回收失败（已忽略，不影响功能）: {e}")
 
 def release_gpu_models():
-    """彻底卸载 ASR 与对齐模型并归还显存。返回释放的 GB 数。
+    """彻底卸载 ASR 与对齐模型并归还显存与系统内存。返回释放的 GB 数。
 
     下次运行 AI 字幕时会自动重新加载模型（get_whisperx_model /
     get_align_model 本身就是惰性加载），所以功能不受任何影响，
@@ -418,9 +445,14 @@ def release_gpu_models():
         _WHISPERX_MODEL = None
         _WHISPERX_DEVICE = None
         _WHISPERX_DIR = None
-        _ALIGN_CACHE = {}
+        _ALIGN_CACHE.clear()
         _MMS_MODEL = None
         _MMS_META_BASE = None
+    except Exception:
+        pass
+    try:
+        from cutora.asr.clip_worker import close_all_asr_clients
+        close_all_asr_clients()
     except Exception:
         pass
     try:

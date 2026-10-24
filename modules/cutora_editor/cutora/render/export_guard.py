@@ -980,9 +980,26 @@ def top_external_memory_apps(top_n: int = 3, min_gb: float = 0.45) -> list[tuple
 
 
 def purge_ui_memory_before_export(window=None) -> float:
-    """导出前主动清空主界面预览帧缓存、解码器池与临时 QImage/numpy 缓存，释放 0.5~1.5 GB 内存防崩。"""
+    """导出前主动卸载 AI 模型、清空主界面预览帧缓存、音频缓存、历史快照及 mimalloc/Windows 工作集，最大化释放系统可用内存。"""
     import gc
     _, before_avail = system_memory_gb()
+    # 1. 先卸载 AI 识别/对齐模型与子进程（释放数 GB 内存与共享显存）
+    try:
+        from cutora.asr.engine import release_gpu_models
+        release_gpu_models()
+    except Exception:
+        pass
+    try:
+        from cutora.asr.clip_worker import close_all_asr_clients
+        close_all_asr_clients()
+    except Exception:
+        pass
+    try:
+        from cutora.fx.gpu import stop_gui_server
+        stop_gui_server()
+    except Exception:
+        pass
+    # 2. 清空主界面预览画布、音频音轨缓存与冗余历史深拷贝快照
     try:
         if window is not None:
             canvas = getattr(window, "video_canvas", None)
@@ -994,8 +1011,22 @@ def purge_ui_memory_before_export(window=None) -> float:
                     d = getattr(canvas, attr, None)
                     if isinstance(d, dict):
                         d.clear()
+                canvas._scaled_backdrop_cache = None
+                canvas._preview_backdrop = None
+            mixer = getattr(window, "_stem_mixer", None)
+            if mixer is not None and hasattr(mixer, "cache") and hasattr(mixer.cache, "clear"):
+                mixer.cache.clear()
+            hm = getattr(window, "history_mgr", None)
+            if hm is not None:
+                ustack = getattr(hm, "_undo_stack", None)
+                if isinstance(ustack, list) and len(ustack) > 1:
+                    del ustack[:-1]
+                rstack = getattr(hm, "_redo_stack", None)
+                if isinstance(rstack, list):
+                    rstack.clear()
     except Exception:
         pass
+    # 3. 清空全局帧池、波形缓存、ROI 特效缓存与文字图层缓存
     try:
         from cutora.preview.engine import release_all_pools
         release_all_pools()
@@ -1007,13 +1038,30 @@ def purge_ui_memory_before_export(window=None) -> float:
     except Exception:
         pass
     try:
+        from cutora.audio.waveform import get_waveform_cache
+        get_waveform_cache().clear()
+    except Exception:
+        pass
+    try:
+        from cutora.render.textfx import clear_roi_cache
+        clear_roi_cache()
+    except Exception:
+        pass
+    try:
+        from cutora.render.text_layer_paint import clear_static_cache
+        clear_static_cache()
+    except Exception:
+        pass
+    try:
         from cutora.render import split_screen as _ss
         reset_fn = getattr(_ss, "reset_cache", None)
         if callable(reset_fn):
             reset_fn()
     except Exception:
         pass
+    # 4. 触发 Python GC + mimalloc 回收 + Windows 工作集压缩（立即更新系统 ullAvailPhys）
     try:
+        gc.collect()
         gc.collect()
     except Exception:
         pass
@@ -1024,6 +1072,17 @@ def purge_ui_memory_before_export(window=None) -> float:
             lib.mi_collect.argtypes = [ctypes.c_bool]
             lib.mi_collect.restype = None
             lib.mi_collect(True)
+        except Exception:
+            pass
+        try:
+            import ctypes
+            psapi = ctypes.WinDLL("psapi", use_last_error=True)
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            proc_h = k32.GetCurrentProcess()
+            psapi.EmptyWorkingSet(proc_h)
+            k32.SetProcessWorkingSetSizeEx(
+                proc_h, ctypes.c_size_t(-1), ctypes.c_size_t(-1), ctypes.c_uint(0)
+            )
         except Exception:
             pass
     _, after_avail = system_memory_gb()

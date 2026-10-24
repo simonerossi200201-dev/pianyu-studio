@@ -549,12 +549,14 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
     pending = getattr(w, "show_pending_startup_warnings", None)
     if callable(pending):
         QTimer.singleShot(0, pending)
-    # Q181：GPU 像素运算在后台预热（CUDA 上下文 + 自检 + 核预热），省得预览第一次用到抠像 / 调整图层时卡一两秒
-    try:
-        from cutora.fx import gpu as _gpu_fx
-        QTimer.singleShot(1500, _gpu_fx.warm_up_async)
-    except Exception:
-        pass
+    # Q181：GPU 像素运算按需拉起（仅当显式开启 CUTORA_GPU_FX_WARMUP=1 时才在启动时后台常驻进程，
+    # 避免未用到色度抠像/调整图层时白白常驻一个占数 GB 内存/显存的 torch 子进程）
+    if os.environ.get("CUTORA_GPU_FX_WARMUP") == "1":
+        try:
+            from cutora.fx import gpu as _gpu_fx
+            QTimer.singleShot(1500, _gpu_fx.warm_up_async)
+        except Exception:
+            pass
     # Q183：NVENC 并发上限由本机实测（后台线程，几秒钟，按驱动版本缓存；缓存有效就不跑）
     try:
         from cutora.render.export_guard import ensure_nvenc_probe

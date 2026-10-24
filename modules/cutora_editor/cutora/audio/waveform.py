@@ -81,6 +81,8 @@ def generate_peaks(media_path: str,
             "-f", "f32le",
             "-",
         ]
+        chunk_size = max(1, sample_rate // peaks_per_second)
+        block_bytes = chunk_size * 4
         with _FFMPEG_SEMAPHORE:
             proc = _no_window_popen(
                 cmd,
@@ -88,7 +90,9 @@ def generate_peaks(media_path: str,
                 stderr=subprocess.PIPE,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
-            chunks = []
+            peak_blocks = []
+            carry = b""
+            saw_any = False
             deadline = time.time() + 120
             while True:
                 if cancel_event is not None and cancel_event.is_set():
@@ -103,7 +107,18 @@ def generate_peaks(media_path: str,
                 buf = proc.stdout.read(256 * 1024) if proc.stdout is not None else b""
                 if not buf:
                     break
-                chunks.append(buf)
+                saw_any = True
+                data = carry + buf if carry else buf
+                n_full = (len(data) // block_bytes) * block_bytes
+                if n_full > 0:
+                    samples = np.frombuffer(memoryview(data)[:n_full], dtype=np.float32)
+                    reshaped = samples.reshape(-1, chunk_size)
+                    peak_blocks.append(
+                        np.column_stack((reshaped.min(axis=1), reshaped.max(axis=1))).astype(np.float32)
+                    )
+                    carry = data[n_full:]
+                else:
+                    carry = data
             stderr = proc.stderr.read() if proc.stderr is not None else b""
             rc = proc.wait()
         if cancel_event is not None and cancel_event.is_set():
@@ -111,18 +126,13 @@ def generate_peaks(media_path: str,
         if rc != 0:
             logger.warning("FFmpeg failed for %s: %s", media_path, stderr[:200])
             return None
-        raw = b"".join(chunks)
-        if len(raw) < 4:
+        if not saw_any and len(carry) < 4:
             return None
-        samples = np.frombuffer(raw, dtype=np.float32)
-        chunk_size = max(1, sample_rate // peaks_per_second)
-        n_chunks = len(samples) // chunk_size
-        if n_chunks == 0:
+        if not peak_blocks:
+            if len(carry) < 4:
+                return None
             return np.zeros((1, 2), dtype=np.float32)
-        trimmed = samples[:n_chunks * chunk_size].reshape(n_chunks, chunk_size)
-        mins = trimmed.min(axis=1)
-        maxs = trimmed.max(axis=1)
-        return np.column_stack((mins, maxs)).astype(np.float32)
+        return np.vstack(peak_blocks) if len(peak_blocks) > 1 else peak_blocks[0]
     except Exception as exc:
         logger.warning("Error generating peaks: %s", exc)
         return None

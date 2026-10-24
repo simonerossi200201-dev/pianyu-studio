@@ -15,7 +15,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACK_DIR = os.path.join(REPO, "resources", "stylepacks")
 
 EXPECTED_IDS = {
-    "glass-white", "minimal-white", "bar-black", "amber-karaoke", "chant",
+    "basic-white-red", "glass-white", "minimal-white", "bar-black", "amber-karaoke", "chant",
     "podcast-card", "pop-word", "duo-pop", "handwrite-duo", "neon-cyan",
     "chunky-3d", "chat-bubbles", "paper-torn", "lyrics-scroll",
     "cinema-ivory", "docu-left-bar", "editorial-double-line", "glass-champagne",

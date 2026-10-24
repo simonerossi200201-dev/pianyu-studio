@@ -492,7 +492,7 @@ def default_fx() -> dict:
     }
 
 
-DEFAULT_PACK_ID = "glass-white"
+DEFAULT_PACK_ID = "basic-white-red"
 
 
 def bind_default_paint_style(task: dict) -> dict:
@@ -631,7 +631,7 @@ def migrate_v1_bg_to_fx(style: dict) -> dict:
 
 
 def ensure_default_pack(task: dict) -> None:
-    """New / empty-style tasks get glass-white. Never overwrite an existing fx."""
+    """New / empty-style tasks get basic-white-red (or user default pack). Never overwrite an existing fx."""
     if not isinstance(task, dict):
         return
     if task.get("stylepack_id"):
@@ -639,11 +639,12 @@ def ensure_default_pack(task: dict) -> None:
     style = task.get("style") if isinstance(task.get("style"), dict) else {}
     if isinstance(style.get("fx"), dict):
         return
-    pack = None
-    for path in list_pack_dirs():
-        if os.path.basename(path.rstrip("\\/")) == DEFAULT_PACK_ID:
-            pack = load_pack(path)
-            break
+    pack = default_pack()
+    if not pack:
+        for path in list_pack_dirs():
+            if os.path.basename(path.rstrip("\\/")) == DEFAULT_PACK_ID:
+                pack = load_pack(path)
+                break
     if not pack:
         migrate_v1_bg_to_fx(style)
         if "fx" not in style:

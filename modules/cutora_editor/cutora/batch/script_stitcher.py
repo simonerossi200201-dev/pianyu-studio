@@ -3558,6 +3558,11 @@ class AnalyzeWorker(QThread):
                     client.close()
             except Exception:
                 pass
+            try:
+                from cutora.asr.engine import trim_gpu_cache
+                trim_gpu_cache("拼接分析结束")
+            except Exception:
+                pass
 
 # ----------------------------------------------------------------------
 # 人工复核表格

@@ -2207,9 +2207,16 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
                     self._preview_backdrop = None
                     if (prog.width() * prog.height() >= 64
                             and self._task_needs_glass_backdrop(project)):
-                        self._preview_backdrop = prog.scaled(
-                            tw, th, Qt.AspectRatioMode.IgnoreAspectRatio,
-                            Qt.TransformationMode.FastTransformation)
+                        bg_key = (int(prog.cacheKey()), int(tw), int(th))
+                        bg_cached = getattr(self, "_scaled_backdrop_cache", None)
+                        if bg_cached is not None and bg_cached[0] == bg_key:
+                            self._preview_backdrop = bg_cached[1]
+                        else:
+                            scaled_bg = prog.scaled(
+                                tw, th, Qt.AspectRatioMode.IgnoreAspectRatio,
+                                Qt.TransformationMode.FastTransformation)
+                            self._scaled_backdrop_cache = (bg_key, scaled_bg)
+                            self._preview_backdrop = scaled_bg
                 if tl is not None and prog.width() * prog.height() >= 64:
                     # Q116：分屏时也要收命中记录，否则点上下屏的画面选不中片段
                     self._collect_video_clip_hits(project, tl, tw, th)

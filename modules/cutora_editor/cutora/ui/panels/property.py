@@ -4770,8 +4770,43 @@ class PropertyPanel(QWidget):
             if not active_cat or text_preset_store.preset_category_of(r) == active_cat
         ] or rows
 
-        from cutora.ui.text_style_gallery import render_preset_thumb
-        from PySide6.QtGui import QIcon
+        from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+
+        def _fast_combo_swatch(row_dict: dict) -> QIcon:
+            st = (row_dict.get("style") or {}) if isinstance(row_dict, dict) else {}
+            fx = (st.get("fx") or {}) if isinstance(st.get("fx"), dict) else {}
+            bg = (fx.get("bg") or {}) if isinstance(fx.get("bg"), dict) else {}
+            fill = (fx.get("fill") or {}) if isinstance(fx.get("fill"), dict) else {}
+            fill_cols = fill.get("colors") or [st.get("color") or "#FFFFFF"]
+            fg_hex = str(fill_cols[0] if fill_cols else "#FFFFFF")
+            bg_hex = str(bg.get("color") or st.get("bg_color") or "#1E2636")
+            grad_cols = bg.get("grad_colors") or []
+            bg2_hex = str(grad_cols[1]) if len(grad_cols) >= 2 else bg_hex
+            sw_key = ("combo_sw", fg_hex, bg_hex, bg2_hex)
+            cached = getattr(self, "_combo_sw_cache", None)
+            if cached is None:
+                cached = {}
+                self._combo_sw_cache = cached
+            if sw_key in cached:
+                return cached[sw_key]
+            pm = QPixmap(44, 20)
+            pm.fill(Qt.GlobalColor.transparent)
+            p = QPainter(pm)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            p.setPen(QColor("#3E4A61"))
+            p.setBrush(QColor(bg_hex))
+            p.drawRoundedRect(1, 1, 42, 18, 5, 5)
+            if bg2_hex != bg_hex:
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(QColor(bg2_hex))
+                p.drawRoundedRect(22, 2, 20, 16, 4, 4)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(fg_hex))
+            p.drawRoundedRect(10, 7, 24, 6, 3, 3)
+            p.end()
+            ic = QIcon(pm)
+            cached[sw_key] = ic
+            return ic
 
         self.ov_preset_combo.blockSignals(True)
         self.ov_preset_combo.clear()
@@ -4783,8 +4818,7 @@ class PropertyPanel(QWidget):
             cat_tag = "" if active_cat else f"[{cat[:2]}] "
             display_name = f"{prefix}{cat_tag}{name}"
             try:
-                icon = QIcon(render_preset_thumb(row))
-                self.ov_preset_combo.addItem(icon, display_name, pid)
+                self.ov_preset_combo.addItem(_fast_combo_swatch(row), display_name, pid)
             except Exception:
                 self.ov_preset_combo.addItem(display_name, pid)
 

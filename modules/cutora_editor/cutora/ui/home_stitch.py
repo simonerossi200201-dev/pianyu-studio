@@ -1159,6 +1159,9 @@ class HomeStitchBand(QFrame):
         self.bar.setValue(100)
         self.btn_start.setEnabled(True)
         self.btn_start.setText(tr("开始拼接"))
+        if self._session is not None:
+            self._session.cuts_map = None
+            self._session.worker = None
         host = self.window()
         done = getattr(host, "_on_stitcher_done", None)
         if callable(done):

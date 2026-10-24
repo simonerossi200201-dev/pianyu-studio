@@ -158,11 +158,14 @@ class StyleGalleryPanel(QWidget):
         return getattr(self.window, "bus", None)
 
     def reload(self):
+        import os as _os
+        from cutora.subtitle.stylepack import PACK_THUMB
         self._packs = []
         tags = set()
         for path in list_pack_dirs():
             try:
-                ensure_pack_thumb(path)
+                if not _os.path.isfile(_os.path.join(path, PACK_THUMB)):
+                    ensure_pack_thumb(path)
                 pack = sanitize_pack_fonts(load_pack(path))
             except StylepackError:
                 continue
@@ -181,6 +184,10 @@ class StyleGalleryPanel(QWidget):
         self._load_anim_pref()
         self._refill()
         self._refresh_preset_dropdowns()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self.schedule_visible_thumbs)
 
     def _viewport_width(self) -> int:
         vw = self.list.viewport().width()
@@ -239,8 +246,8 @@ class StyleGalleryPanel(QWidget):
             self.list.addItem(self._pack_item(
                 pack, tw, th, t_ms, cw, ch, sample, video))
         self._sync_edit_btns()
-        if not getattr(self, "_defer_thumb_paint", False):
-            self._paint_visible_thumbs()
+        if not getattr(self, "_defer_thumb_paint", False) and self.isVisible():
+            self.schedule_visible_thumbs()
 
     def _frame_context(self):
         task = self._task()
@@ -286,8 +293,9 @@ class StyleGalleryPanel(QWidget):
         return vp.width() >= 40 and vp.height() >= 40
 
     def _thumbs_to_paint(self):
-        """Pack rows to render now: the ones on screen, or every row if the
-        list has no size yet (first layout, before show)."""
+        """Pack rows to render now: only when visible, or at most first 8 on first layout."""
+        if not self.isVisible():
+            return []
         ready = self._viewport_ready()
         vp = self.list.viewport().rect()
         out = []
@@ -303,14 +311,16 @@ class StyleGalleryPanel(QWidget):
                 if rect.height() <= 0 or not rect.intersects(vp):
                     continue
             out.append(it)
+            if not ready and len(out) >= 8:
+                break
         return out
 
     def _on_gallery_scrolled(self, *_args):
         self._reposition_edit_btns()
-        if getattr(self, "_defer_thumb_paint", False):
+        if getattr(self, "_defer_thumb_paint", False) or not self.isVisible():
             return
-        # Newly revealed cards only. Already-cached ones are a dict lookup.
-        self._paint_visible_thumbs()
+        # Newly revealed cards only. Render off-thread so scrolling never stalls UI.
+        self.schedule_visible_thumbs()
 
     def schedule_visible_thumbs(self):
         """Paint the on-screen cards off the UI thread. Click stays responsive."""
