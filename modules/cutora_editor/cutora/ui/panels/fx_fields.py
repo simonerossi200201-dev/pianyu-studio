@@ -1174,6 +1174,10 @@ def save_from_panel(panel, style: dict) -> None:
         if isinstance(prev_d, dict) and isinstance(cur_d, dict):
             if "enabled" in prev_d and "enabled" not in cur_d:
                 cur_d["enabled"] = prev_d["enabled"]
+            if family == "bg":
+                for k_extra in ("ornament", "ornament_color"):
+                    if k_extra in prev_d and k_extra not in cur_d:
+                        cur_d[k_extra] = prev_d[k_extra]
     emph = fx.get("emphasis")
     if isinstance(emph, dict):
         cols = emph.get("colors")

@@ -131,7 +131,7 @@ def test_gallery_has_edit_and_duplicate_for_builtin():
 
 def test_fourteen_builtin_hashes_stable_after_update_attempts():
     before = _builtin_hashes()
-    assert len({rel.split("/")[0] for rel in before}) == 14
+    assert len({rel.split("/")[0] for rel in before}) == 30
     src = os.path.join(BUILTIN, "chant")
     with pytest.raises(StylepackError):
         update_pack_dir(src, {"version": 1, "style": {}})

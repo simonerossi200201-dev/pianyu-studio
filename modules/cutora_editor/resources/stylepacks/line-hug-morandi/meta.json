@@ -1,0 +1,16 @@
+{
+  "name": "抱行圆块·莫兰迪蓝",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "抱行"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Clean modern lines",
+  "description_zh": "贴合每行文字宽度的莫兰迪灰蓝圆角底块"
+}

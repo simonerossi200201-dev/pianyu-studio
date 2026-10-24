@@ -25,6 +25,7 @@ _SKIP_SPEC_PATHS = frozenset({
     "shadow.sigma_em", "shadow.dx_em", "shadow.dy_em", "shadow.alpha",
     "shadow._legacy", "shadow.enabled",
     "stroke.enabled", "glow.enabled", "bg.enabled",
+    "bg.ornament", "bg.ornament_color",
     "line_bar._alpha", "line_bar._use_bg_radius",
     # Kept in sync with colors[0] for old readers; widget is emphasis.colors.
     "emphasis.color",

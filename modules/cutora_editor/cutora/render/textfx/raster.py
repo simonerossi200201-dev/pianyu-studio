@@ -1732,6 +1732,9 @@ def _raster_bg_rect(
         elif spec.bg.kind() == "bubble":
             from cutora.render.textfx.paint_bg import paint_bubble_bg
             paint_bubble_bg(p, layout, spec)
+        if getattr(spec.bg, "ornament", "none") not in ("none", ""):
+            from cutora.render.textfx.paint_bg import paint_bg_ornament
+            paint_bg_ornament(p, layout, spec)
     finally:
         p.end()
     if spec.bg.kind() == "texture" and spec.bg.texture == "paper":

@@ -1,0 +1,16 @@
+{
+  "name": "极客视界·十字微标",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "科技"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Precision in focus",
+  "description_zh": "现代极简十字取景微标框配平滑擦除显现"
+}

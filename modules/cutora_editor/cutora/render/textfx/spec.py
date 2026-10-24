@@ -62,6 +62,12 @@ BG_GRAD_TYPES = ("none", "linear_h", "linear_v", "linear_angle", "center", "fres
 BG_BLEND = ("normal", "multiply", "screen", "overlay", "soft_light")
 BG_ALIGN = ("center", "left", "right", "alternate")
 TEXTURES = ("paper", "linen", "grid")
+BG_ORNAMENTS = (
+    "none", "editorial_lines", "accent_left", "accent_both",
+    "corner_brackets", "jp_brackets", "double_frame", "capsule_ring",
+    "bottom_rule", "top_tag_line", "quote_watermark", "crosshair_hud",
+    "art_deco", "wave_underline", "side_wings",
+)
 JOIN_TYPES = ("round", "miter")
 UNITS = ("segment", "line", "word", "char")
 LETTER_CASES = ("none", "upper")
@@ -377,6 +383,8 @@ class BgSpec:
     # Q129：四边各自向外扩展（em），左 / 上 / 右 / 下。任何 size_mode 都生效，
     # 默认全 0 = 老几何一像素不变。
     grow_em: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    ornament: str = "none"
+    ornament_color: str = ""
     enabled: bool = False
 
     def grow_px(self, em: float) -> tuple[float, float, float, float]:
@@ -893,7 +901,7 @@ def _parse_bg(raw: Any) -> BgSpec:
         "texture", "texture_tint", "align", "line_gap_em",
         "fade", "grad_type", "grad_colors", "grad_angle", "grad_highlight", "blend",
         "size_mode", "width_px", "height_px", "offset_x", "offset_y",
-        "hug_pad_em", "hug_join_em", "grow_em", "enabled",
+        "hug_pad_em", "hug_join_em", "grow_em", "ornament", "ornament_color", "enabled",
     })
     d = take_known(raw, keys, "bg")
     border = d.get("glass_border", True)
@@ -902,6 +910,10 @@ def _parse_bg(raw: Any) -> BgSpec:
         enabled = bool(d.get("enabled"))
     else:
         enabled = bg_type not in ("none", "")
+    orn_c_raw = d.get("ornament_color")
+    orn_c = parse_color(orn_c_raw, "") if (isinstance(orn_c_raw, str) and orn_c_raw.strip()) else ""
+    if is_pure_black(orn_c):
+        orn_c = "#141A26"
     return BgSpec(
         type=bg_type,
         color=parse_color(d.get("color"), DEFAULT_BG),
@@ -954,6 +966,8 @@ def _parse_bg(raw: Any) -> BgSpec:
             "bg.hug_join_em", d.get("hug_join_em", HUG_JOIN_EM_DEFAULT),
             0, HUG_JOIN_EM_MAX, HUG_JOIN_EM_DEFAULT),
         grow_em=_parse_grow(d.get("grow_em")),
+        ornament=pick_enum("bg.ornament", d.get("ornament"), BG_ORNAMENTS, "none"),
+        ornament_color=orn_c,
         enabled=enabled,
     )
 
@@ -1493,6 +1507,8 @@ def expansion_px(spec: FxSpec, em: float, *, for_wrap: bool = False) -> float:
             bg = pad + spec.bg.radius_em * em + 2.0
             if bg_kind == "texture" and spec.bg.texture == "paper":
                 bg += 0.12 * em + 2.0
+            if getattr(spec.bg, "ornament", "none") not in ("none", ""):
+                bg += 0.14 * em + 2.0
         bg += grow
     ext = spec.extrude.depth_em * em
     lb_pad = 0.0

@@ -85,7 +85,7 @@ def render_preset_thumb(row: dict, w: int = THUMB_W, h: int = THUMB_H) -> QPixma
         for x in range(-h, w, 12):
             painter.drawLine(x, h, x + h, 0)
         try:
-            _paint_sample(painter, row, w, h)
+            _paint_sample(painter, row, w, h, backdrop=img.copy())
         except Exception:
             _LOG.exception("preset thumb failed: %s", row.get("id"))
             painter.setPen(QColor(230, 230, 230))
@@ -97,7 +97,9 @@ def render_preset_thumb(row: dict, w: int = THUMB_W, h: int = THUMB_H) -> QPixma
     return pm
 
 
-def _paint_sample(painter: QPainter, row: dict, w: int, h: int) -> None:
+def _paint_sample(
+    painter: QPainter, row: dict, w: int, h: int, backdrop: QImage | None = None,
+) -> None:
     """在 w×h 的小画布上按预设样式画 SAMPLE_TEXT。
 
     缩略图不是 1080 宽的画布：字号按比例缩，把整个样式（描边 / 阴影 / 底板
@@ -110,7 +112,7 @@ def _paint_sample(painter: QPainter, row: dict, w: int, h: int) -> None:
     ov = copy.deepcopy(ov) if isinstance(ov, dict) else {}
     ov["type"] = "text"
     text = str(row.get("text") or "").strip()
-    if not text or len(text) > 14 or "\n" in text:
+    if not text or len(text) > 20 or "\n" in text:
         text = SAMPLE_TEXT
     ov["content"] = text
     ov.pop("rich_content", None)
@@ -119,8 +121,9 @@ def _paint_sample(painter: QPainter, row: dict, w: int, h: int) -> None:
     ov.pop("keyframes", None)
     ov["rotation"] = 0
     ov["opacity"] = 255
-    # 字号：让一行字大约占宽度的 70%，最多占高度的 55%
-    em = max(10.0, min(float(h) * 0.42, float(w) * 0.7 / max(2.0, len(text) * 0.62)))
+    # 字号：让一行字大约占宽度的 70%，最多占高度的 55%（CJK 全角字按 1.12em 计，避免单行文本条在缩略图里断成两行）
+    char_units = sum(1.12 if ord(c) > 0x2E80 else 0.70 for c in text)
+    em = max(10.0, min(float(h) * 0.36, float(w) * 0.70 / max(2.5, char_units)))
     from cutora.subtitle.stylepack import set_fontsize_px
     set_fontsize_px(ov, em, int(w), int(h), user=False)
     ov["fit_mode"] = "none"
@@ -134,7 +137,7 @@ def _paint_sample(painter: QPainter, row: dict, w: int, h: int) -> None:
     fx = ov.get("fx")
     if isinstance(fx, dict):
         fx.pop("anim", None)
-    paint_text_overlay(painter, ov, None, None, video_w=int(w), video_h=int(h))
+    paint_text_overlay(painter, ov, None, backdrop, video_w=int(w), video_h=int(h))
 
 
 def invalidate_thumbs() -> None:

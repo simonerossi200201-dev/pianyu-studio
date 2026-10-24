@@ -18,6 +18,10 @@ EXPECTED_IDS = {
     "glass-white", "minimal-white", "bar-black", "amber-karaoke", "chant",
     "podcast-card", "pop-word", "duo-pop", "handwrite-duo", "neon-cyan",
     "chunky-3d", "chat-bubbles", "paper-torn", "lyrics-scroll",
+    "cinema-ivory", "docu-left-bar", "editorial-double-line", "glass-champagne",
+    "word-pill-follow", "line-hug-morandi", "oriental-brackets", "gold-bottom-rule",
+    "linen-literary", "jade-forest-calm", "capsule-silver-ring", "wave-gold-note",
+    "sentence-bar-glide", "rose-quartz-elegance", "hud-tech-clean", "art-deco-theater",
 }
 NO_KARAOKE_GOLD = ("minimal-white", "bar-black")
 

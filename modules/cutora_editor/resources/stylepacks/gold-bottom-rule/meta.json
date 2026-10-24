@@ -1,0 +1,16 @@
+{
+  "name": "流光底栏·香槟标尺",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "底栏"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Gold horizon",
+  "description_zh": "底部渐隐香槟金标尺线配中心星菱微标"
+}

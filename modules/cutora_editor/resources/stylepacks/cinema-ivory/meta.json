@@ -1,0 +1,16 @@
+{
+  "name": "电影感·暖白柔影",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "电影"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Pure cinema light",
+  "description_zh": "经典电影院线暖白柔影字幕"
+}

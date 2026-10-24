@@ -1,0 +1,16 @@
+{
+  "name": "纪录片·金线导语",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "纪录片"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Voices of nature",
+  "description_zh": "左侧琥珀金竖线+右侧柔化导语底板"
+}

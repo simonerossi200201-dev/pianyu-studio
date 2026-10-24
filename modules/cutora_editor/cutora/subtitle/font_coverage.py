@@ -259,6 +259,11 @@ def _font_path(family: str) -> str | None:
             return files[0] if files else None
         except Exception:
             return None
+    fam = str(family or "").strip()
+    if fam:
+        for key, rels in cov.items():
+            if key.startswith(fam + " ") and rels:
+                return os.path.join(RESOURCES, "fonts", str(rels[0]).replace("/", os.sep))
     return None
 
 
@@ -414,6 +419,21 @@ def _joins_previous(ch: str) -> bool:
     return False
 
 
+def _char_script_fallback(ch: str) -> str | None:
+    if not ch:
+        return None
+    cp = ord(ch)
+    if (0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF
+            or 0xF900 <= cp <= 0xFAFF or 0x3000 <= cp <= 0x303F
+            or 0xFF00 <= cp <= 0xFFEF):
+        return fallback_family_for_script("han")
+    if 0x3040 <= cp <= 0x30FF or 0x31F0 <= cp <= 0x31FF:
+        return fallback_family_for_script("kana")
+    if 0xAC00 <= cp <= 0xD7AF or 0x1100 <= cp <= 0x11FF:
+        return fallback_family_for_script("hangul")
+    return None
+
+
 def _family_for_char(
     ch: str, requested: str, floor: str, script_fb: str,
 ) -> str:
@@ -425,6 +445,9 @@ def _family_for_char(
         return floor
     if script_fb not in (requested, floor) and _char_in_family(script_fb, ch):
         return script_fb
+    char_fb = _char_script_fallback(ch)
+    if char_fb and char_fb not in (requested, floor, script_fb) and _char_in_family(char_fb, ch):
+        return char_fb
     return floor
 
 

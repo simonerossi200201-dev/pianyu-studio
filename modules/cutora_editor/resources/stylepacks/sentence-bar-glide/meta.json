@@ -1,0 +1,16 @@
+{
+  "name": "丝滑底条·整句伴随",
+  "tags": [
+    "竖屏",
+    "横屏",
+    "动效"
+  ],
+  "author": "CUTORA",
+  "license": "OFL-1.1",
+  "aspect": [
+    "9:16",
+    "16:9"
+  ],
+  "sample": "Smooth rhythm flow",
+  "description_zh": "随当前句子平滑绘制暖金进度底栏"
+}
