@@ -41,6 +41,8 @@ INSPECTOR_LAYOUT = [
         _fx_row("bg.color"),
         _fx_row("bg.alpha"),
         _fx_row("bg.radius_em"),
+        _fx_row("bg.ornament"),
+        _fx_row("bg.ornament_color"),
         _fx_row("bg.size_mode"),
         _fx_row("bg.width_px"),
         _fx_row("bg.height_px"),

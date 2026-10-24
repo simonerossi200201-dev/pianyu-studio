@@ -157,17 +157,18 @@ def delete_track_with_content(task, track) -> dict:
                     del rows[i]
                     out["overlays"] += 1
                     break
-    was_first_subs = False
     if ttype in SUBS_TYPES:
-        from cutora.subtitle.track_source import first_subs_track
-        was_first_subs = track is first_subs_track(task)
         out["subs"] = _subs_count(task, track)
     tl.tracks.remove(track)
     out["removed"] = True
-    if was_first_subs:
-        # 工程字幕列表跟着第一条字幕轨走：这条没了 → 换成下一条字幕轨的（没有就清空）
-        from cutora.subtitle.track_source import events_of, first_subs_track
-        nxt = first_subs_track(task)
-        ev = events_of(nxt) if nxt is not None else None
-        task["segments"] = ev if isinstance(ev, list) else []
+    if ttype in SUBS_TYPES and isinstance(task, dict):
+        from cutora.subtitle.track_source import _read_segments, events_of, first_subs_track, iter_subs_tracks
+        rem = list(iter_subs_tracks(task))
+        if len(rem) == 1:
+            ev = events_of(rem[0])
+            task["segments"] = ev if isinstance(ev, list) else []
+        elif len(rem) > 1:
+            task["segments"] = _read_segments(task)
+        else:
+            task["segments"] = []
     return out

@@ -55,6 +55,7 @@ SHORTCUTS = (
     ("track_add_video", "Alt+V", "新建视频轨道", "shortcut_add_video_track"),
     ("track_add_audio", "Alt+A", "新建音频轨道", "shortcut_add_audio_track"),
     ("track_add_text", "Alt+T", "新建文本轨道", "shortcut_add_text_track"),
+    ("track_add_subs", "Alt+S", "新建字幕轨道", "shortcut_add_subs_track"),
     ("track_add_image", "Alt+I", "新建图片轨道", "shortcut_add_image_track"),
     ("track_add_adjust", "Alt+J", "新建调整轨道（纯色 / 局部效果）", "shortcut_add_adjust_track"),
 

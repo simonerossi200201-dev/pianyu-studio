@@ -94,14 +94,12 @@ _TEXT_TEMPLATE_KEYS = [
     "x", "y", "w", "h", "rotation", "opacity"
 ]
 
-def apply_text_template_to_overlay(ov, template):
-    """将文本模板应用到 overlay（不覆盖 id/start/end/type 以及文本和空间等结构属性）。"""
+def apply_text_template_to_overlay(ov, template, preserve_text=True):
+    """将文本模板应用到 overlay（不覆盖 id/start/end/type 以及已有文字内容和空间等结构属性）。"""
     if not isinstance(ov, dict) or not isinstance(template, dict):
         return
     
     # ── 必须保护的所有结构属性 ──
-    # 注意：移除了 'content', 'text', 'content_format', 'rich_content', 'spans'
-    # 以便应用预设时能够恢复预设中保存的独立文本内容。
     structural_keys = {
         "id", "start", "end", "_track_id", "type", "track_index",
         "x", "y", "w", "h", "rotation", "opacity", "text_layout",
@@ -109,7 +107,7 @@ def apply_text_template_to_overlay(ov, template):
     }
     saved_state = {k: ov[k] for k in structural_keys if k in ov}
     
-    # 额外保留原文本内容作为后备，防止预设中完全没有保存过文本导致文字消失
+    # 始终保留用户已有的文本内容，切换预设只应用形式样式，不覆盖已有文字
     orig_text_state = {
         "content": ov.get("content"),
         "text": ov.get("text"),
@@ -117,6 +115,10 @@ def apply_text_template_to_overlay(ov, template):
         "rich_content": ov.get("rich_content"),
         "spans": ov.get("spans")
     }
+    has_orig_text = bool(
+        str(orig_text_state.get("content") or orig_text_state.get("text") or "").strip()
+        or orig_text_state.get("rich_content")
+    )
     
     ov.clear()
     ov.update(copy.deepcopy(template))
@@ -125,8 +127,10 @@ def apply_text_template_to_overlay(ov, template):
     for k, v in saved_state.items():
         ov[k] = v
         
-    # 如果模板中没有任何文本内容，退回使用原本的内容
-    if "content" not in ov and "text" not in ov and "rich_content" not in ov:
+    # 如果原本已有文字（preserve_text=True），或模板中没有任何文本内容，恢复原本的文字内容
+    if (preserve_text and has_orig_text) or ("content" not in ov and "text" not in ov and "rich_content" not in ov):
+        for k in ("content", "text", "content_format", "rich_content", "runs", "spans"):
+            ov.pop(k, None)
         for k, v in orig_text_state.items():
             if v is not None:
                 ov[k] = v

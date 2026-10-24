@@ -148,7 +148,7 @@ class UndoSnapshot:
     def describe(self) -> str:
         return "快照：%d/%d 条视频" % (len(self.copies), len(self.refs))
 
-def struct_equal(a, b, _depth=0) -> bool:
+def struct_equal(a, b, _depth=0, _seen=None) -> bool:
     """结构相等：dict / list / tuple 逐项比，普通对象比 __dict__（Timeline / Track / Clip 没定义 __eq__，
     直接 == 会按身份比，两份深拷贝永远不等）。"""
     if a is b:
@@ -160,26 +160,32 @@ def struct_equal(a, b, _depth=0) -> bool:
         return False
     if ta in (int, float, str, bool, bytes, type(None)):
         return a == b
+    if _seen is None:
+        _seen = set()
+    pair = (id(a), id(b))
+    if pair in _seen:
+        return True
+    _seen.add(pair)
     if ta is dict:
         if len(a) != len(b):
             return False
         for k, v in a.items():
-            if k not in b or not struct_equal(v, b[k], _depth + 1):
+            if k not in b or not struct_equal(v, b[k], _depth + 1, _seen):
                 return False
         return True
     if ta in (list, tuple):
         if len(a) != len(b):
             return False
-        return all(struct_equal(x, y, _depth + 1) for x, y in zip(a, b))
+        return all(struct_equal(x, y, _depth + 1, _seen) for x, y in zip(a, b))
     if ta in (set, frozenset):
         return a == b
     da = getattr(a, "__dict__", None)
     db = getattr(b, "__dict__", None)
     if da is not None and db is not None:
-        return struct_equal(da, db, _depth + 1)
+        return struct_equal(da, db, _depth + 1, _seen)
     slots = getattr(ta, "__slots__", None)
     if slots:
-        return all(struct_equal(getattr(a, n, None), getattr(b, n, None), _depth + 1) for n in slots)
+        return all(struct_equal(getattr(a, n, None), getattr(b, n, None), _depth + 1, _seen) for n in slots)
     try:
         return bool(a == b)
     except Exception:

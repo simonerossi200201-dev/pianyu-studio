@@ -2941,6 +2941,7 @@ class MainWindow(CommandBodies, QMainWindow):
             ("track_add_video", tr("视频轨道"), "video"),
             ("track_add_audio", tr("音频轨道"), "audio"),
             ("track_add_text", tr("文本轨道"), "text"),
+            ("track_add_subs", tr("字幕轨道"), "subs"),
             ("track_add_image", tr("图片轨道"), "image"),
             ("track_add_adjust", tr("调整轨道（纯色 / 局部效果）"), "adjust"),
         ):
@@ -12354,12 +12355,27 @@ class MainWindow(CommandBodies, QMainWindow):
                 except Exception as e:
                     print(f"[Guard] 体检失败，按原设置导出: {e}")
 
-            # ── [v6.2] 前置提示（可勾选不再显示） ────────────────────
+            # ── [v6.2] 前置提示（可勾选不再显示；若剩余内存过少则强制提示先关浏览器再点确定） ──
             if not self._maybe_warn_before_parallel(
                 len(jobs), workers, gpu_workers, plan_notes, plan=plan, font_notes=font_notes
             ):
                 self._parallel_cancelled = True
                 return False
+
+            # 用户在弹窗期间可能按照提示关闭了浏览器和其他程序腾出内存，点确定后重新体检一次以提速
+            if _GUARD is not None and isinstance(plan, dict) and float(plan.get("ram_avail") or 99.0) < 12.0:
+                try:
+                    from cutora.render.export_guard import dominant_canvas
+                    canvas_wh = dominant_canvas([t for t, _p in jobs])
+                    replan = _GUARD.plan_parallel_export(
+                        len(jobs), min(len(jobs), 4), want_gpu, canvas_wh=canvas_wh)
+                    if replan["workers"] >= workers:
+                        workers = replan["workers"]
+                        gpu_workers = replan["gpu_workers"]
+                        enc_threads = replan["enc_threads"]
+                        print(f"[Guard] 用户点击确定后重测内存：可用 {replan['ram_avail']} GB → 升级为 {workers} 进程 / {gpu_workers} 路 GPU")
+                except Exception:
+                    pass
 
             # ── [v6.2] 主界面存活探针 ────────────────────────────────
             # 一个 1 秒的极轻定时器，回调里只记一个时间戳，别的什么都不做。
@@ -12478,12 +12494,19 @@ class MainWindow(CommandBodies, QMainWindow):
     def _maybe_warn_before_parallel(
         self, n_jobs, workers, gpu_workers, notes, plan=None, font_notes=None
     ):
-        """并行导出前的一次性提示。返回 False 表示用户取消了本次导出。"""
+        """并行导出前的一次性提示（当系统剩余内存太少时始终弹窗提醒关闭浏览器等程序）。返回 False 表示用户取消了本次导出。"""
         if getattr(self, "_queue_mode", False):
             return True
+        ram_avail = float((plan or {}).get("ram_avail") or 0.0)
+        if ram_avail <= 0 and _GUARD is not None and hasattr(_GUARD, "system_memory_gb"):
+            try:
+                _rt, ram_avail = _GUARD.system_memory_gb()
+            except Exception:
+                ram_avail = 0.0
+        is_low_ram = (0 < ram_avail < 12.0) and (workers <= 2)
         try:
             s = _load_app_settings()
-            if s.get("parallel_warn_shown"):
+            if s.get("parallel_warn_shown") and not is_low_ram:
                 return True
         except Exception:
             s = {}
@@ -12498,10 +12521,10 @@ class MainWindow(CommandBodies, QMainWindow):
                     "导出期间屏幕右下角会显示实时进度小窗，请勿中途关闭软件。"
                 )
             box = QMessageBox(self)
-            box.setIcon(QMessageBox.Icon.Information)
-            box.setWindowTitle("批量导出准备就绪")
+            box.setIcon(QMessageBox.Icon.Warning if is_low_ram else QMessageBox.Icon.Information)
+            box.setWindowTitle("系统剩余内存偏少 · 请先关闭浏览器及其他程序" if is_low_ram else "批量导出准备就绪")
             box.setText(msg_text)
-            chk = QCheckBox("我知道了，以后不再提示")
+            chk = QCheckBox("我知道了，内存充足时以后不再提示")
             box.setCheckBox(chk)
             box.setStandardButtons(QMessageBox.StandardButton.Ok
                                    | QMessageBox.StandardButton.Cancel)
@@ -13989,8 +14012,12 @@ class MainWindow(CommandBodies, QMainWindow):
             task["timeline"] = tl
         before = list(getattr(tl, "tracks", None) or [])
         self.push_undo(tr("添加轨道"))
-        new_tr = Track(track_type)
-        if str(track_type) in ("audio", "bgm", "sfx"):
+        new_tr = Track("subs" if str(track_type) == "subtitle" else track_type)
+        if str(track_type) in ("subs", "subtitle"):
+            from cutora.subtitle.track_source import set_track_source_id, write_events
+            write_events(new_tr, [])
+            set_track_source_id(new_tr, "__main__")
+        elif str(track_type) in ("audio", "bgm", "sfx"):
             role = "bgm" if str(track_type) == "audio" else str(track_type)
             new_tr.audio_role = role
             if _SFX is not None:
@@ -14003,10 +14030,12 @@ class MainWindow(CommandBodies, QMainWindow):
         self.timeline.update()
         if hasattr(self, "timeline_container"):
             self.timeline_container.track_header.update()
+            if hasattr(self.timeline_container, "update_scroll_range"):
+                self.timeline_container.update_scroll_range()
         return added[-1] if added else None
 
     # ---------------------------------------------------------------
-    # Q115：键盘加轨道（Alt+V 视频 / Alt+A 音频 / Alt+T 文本 / Alt+I 图片）
+    # Q115：键盘加轨道（Alt+V 视频 / Alt+A 音频 / Alt+T 文本 / Alt+S 字幕 / Alt+I 图片）
     # ---------------------------------------------------------------
     def shortcut_add_track(self, track_type):
         """快捷键加轨道：没工程就提示，加完在状态栏报出轨道名字。"""
@@ -14026,6 +14055,10 @@ class MainWindow(CommandBodies, QMainWindow):
         if track is None:
             return None
         tl = _tl_of(self.tasks[self.curr_idx])
+        if hasattr(self, "timeline"):
+            self.timeline.selected_track = track
+        if hasattr(self, "on_timeline_select"):
+            self.on_timeline_select("track", track)
         self.statusBar().showMessage(
             tr("已新建 {name}",
                name=track_display_name(self.timeline, tl, track)), 3000)
@@ -14033,6 +14066,9 @@ class MainWindow(CommandBodies, QMainWindow):
 
     def shortcut_add_video_track(self):
         return self.shortcut_add_track("video")
+
+    def shortcut_add_subs_track(self):
+        return self.shortcut_add_track("subs")
 
     def shortcut_add_adjust_track(self):
         return self.shortcut_add_track("adjust")
@@ -14282,6 +14318,7 @@ class MainWindow(CommandBodies, QMainWindow):
         for title, ttype, sid in (
             (tr("视频"), "video", "track_add_video"),
             (tr("文本"), "text", "track_add_text"),
+            (tr("字幕"), "subs", "track_add_subs"),
             (tr("图片"), "image", "track_add_image"),
             (tr("音频"), "audio", "track_add_audio"),
             (tr("调整（纯色 / 局部效果）"), "adjust", "track_add_adjust"),
@@ -15270,8 +15307,39 @@ class MainWindow(CommandBodies, QMainWindow):
                 suggestions.get("id"), suggestions.get("canvas_wh"),
             )
 
+    def _check_low_memory_before_single_export(self) -> bool:
+        """单条视频导出前检查系统剩余内存；若过低则提示用户先关闭浏览器和其他程序再点确定开始渲染。"""
+        if self._canvas_prompt_is_headless() or getattr(self, "_queue_mode", False):
+            return True
+        if _GUARD is None or not hasattr(_GUARD, "system_memory_gb"):
+            return True
+        try:
+            ram_total, ram_avail = _GUARD.system_memory_gb()
+            if not (0 < ram_avail < 6.5):
+                return True
+            ext_hogs = _GUARD.top_external_memory_apps(top_n=3) if hasattr(_GUARD, "top_external_memory_apps") else []
+            hog_str = "、".join(f"{name}（约 {gb:.1f} GB）" for name, gb in ext_hogs)
+            msg = (
+                f"⚠️ 检测到当前系统剩余可用内存太少（仅剩 {ram_avail:.1f} GB / 总计 {ram_total:.0f} GB）！\n\n"
+                + (f"当前占用内存较多的后台程序：{hog_str}\n\n" if hog_str else "")
+                + "请您现在先把电脑上的所有浏览器（Chrome、Edge 等）和其他暂不使用的程序全部关掉腾出内存来，"
+                "关闭完成后再回来点击下方「确定」按钮开始渲染！"
+            )
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setWindowTitle("系统剩余内存过少 · 请先关闭浏览器及其他程序")
+            box.setText(msg)
+            box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+            from cutora.ui.i18n import localize_message_box
+            localize_message_box(box)
+            return box.exec() == QMessageBox.StandardButton.Ok
+        except Exception:
+            return True
+
     def export_video(self):
         if self.curr_idx < 0: return
+        if not self._check_low_memory_before_single_export():
+            return
         task = self.tasks[self.curr_idx]
         from cutora.model.canvas import canvas_wh
         from cutora.render.export_platform import select_platform

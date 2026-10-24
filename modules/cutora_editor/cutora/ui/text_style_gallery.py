@@ -147,7 +147,7 @@ def invalidate_thumbs() -> None:
 # ─────────────────────────── 画廊控件 ───────────────────────────
 
 class TextStyleGallery(QFrame):
-    """弹出式样式画廊。``style_picked(preset_id)``；``save_requested(name)``。"""
+    """弹出式样式画廊（支持文件夹分类浏览）。``style_picked(preset_id)``；``save_requested(name)``。"""
 
     style_picked = Signal(str)
     save_requested = Signal(str)
@@ -157,19 +157,30 @@ class TextStyleGallery(QFrame):
         self.setObjectName("textStyleGallery")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._rows: list[dict] = []
+        self._current_cat: str = ""
+        self._current_id: str | None = None
+        self._cat_btns: dict[str, QPushButton] = {}
         lay = QVBoxLayout(self)
         lay.setContentsMargins(SPACE_2, SPACE_2, SPACE_2, SPACE_2)
         lay.setSpacing(SPACE_1)
         head = QHBoxLayout()
-        self.lbl_title = QLabel(tr("文本样式"))
+        self.lbl_title = QLabel(tr("🎨 文本样式画廊（点击切换样式 · 文字内容保持不变）"))
         self.lbl_title.setObjectName("ctxLabel")
         head.addWidget(self.lbl_title)
         head.addStretch(1)
-        self.bt_save = QPushButton(tr("把当前文本存为样式…"))
+        self.bt_save = QPushButton(tr("＋ 把当前文本存为样式…"))
         self.bt_save.setToolTip(tr("用画布上选中的那条文本的样式新建一个预设（不存正文）"))
         self.bt_save.clicked.connect(self._on_save)
         head.addWidget(self.bt_save)
         lay.addLayout(head)
+
+        # 文件夹分类导航栏
+        self.cat_host = QWidget()
+        self.cat_bar = QHBoxLayout(self.cat_host)
+        self.cat_bar.setContentsMargins(0, 2, 0, 2)
+        self.cat_bar.setSpacing(6)
+        lay.addWidget(self.cat_host)
+
         self.list = QListWidget()
         self.list.setObjectName("textStyleList")
         self.list.setViewMode(QListWidget.ViewMode.IconMode)
@@ -182,23 +193,78 @@ class TextStyleGallery(QFrame):
         self.list.setSpacing(SPACE_1)
         self.list.itemClicked.connect(self._on_item)
         lay.addWidget(self.list, 1)
-        self.setMinimumWidth((THUMB_W + SPACE_2 * 2 + SPACE_1) * 3 + SPACE_2 * 2 + 24)
-        self.setMinimumHeight(THUMB_H * 2 + 140)
+        self.setMinimumWidth((THUMB_W + SPACE_2 * 2 + SPACE_1) * 3 + SPACE_2 * 2 + 32)
+        self.setMinimumHeight(THUMB_H * 3 + 160)
 
-    # ── 数据 ──
-    def reload(self, current_id: str | None = None) -> int:
-        from cutora.subtitle import text_preset as store
-        self._rows = list(store.list_presets())
+    def _rebuild_cat_buttons(self) -> None:
+        from cutora.subtitle.text_preset import list_preset_categories, preset_category_of
+        while self.cat_bar.count():
+            item = self.cat_bar.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        self._cat_btns.clear()
+        cats = list_preset_categories(self._rows)
+        counts: dict[str, int] = {"": len(self._rows)}
+        for r in self._rows:
+            c = preset_category_of(r)
+            counts[c] = counts.get(c, 0) + 1
+        all_specs = [("", f"📂 全部 ({counts['']})")] + [
+            (c, f"📁 {c} ({counts.get(c, 0)})") for c in cats
+        ]
+        for cat_key, label in all_specs:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            is_sel = (cat_key == self._current_cat)
+            btn.setChecked(is_sel)
+            btn.setStyleSheet(
+                "QPushButton { padding: 5px 12px; border-radius: 6px; font-weight: 600; "
+                "background: %s; color: %s; border: 1px solid %s; }"
+                "QPushButton:hover { background: #2D3748; }"
+                % (
+                    "#3B82F6" if is_sel else "#1E2430",
+                    "#FFFFFF" if is_sel else "#CBD5E1",
+                    "#60A5FA" if is_sel else "#334155",
+                )
+            )
+            btn.clicked.connect(lambda _checked=False, ck=cat_key: self.set_category(ck))
+            self.cat_bar.addWidget(btn)
+            self._cat_btns[cat_key] = btn
+        self.cat_bar.addStretch(1)
+
+    def set_category(self, category: str) -> None:
+        self._current_cat = str(category or "")
+        self._rebuild_cat_buttons()
+        self._populate_list(self._current_id)
+
+    def _populate_list(self, current_id: str | None = None) -> int:
+        from cutora.subtitle.text_preset import preset_category_of
         self.list.clear()
+        shown = 0
         for row in self._rows:
+            if self._current_cat and preset_category_of(row) != self._current_cat:
+                continue
             item = QListWidgetItem(QIcon(render_preset_thumb(row)), str(row.get("name") or row.get("id")))
             item.setData(Qt.ItemDataRole.UserRole, str(row.get("id") or ""))
-            item.setToolTip(str(row.get("name") or ""))
+            cat = preset_category_of(row)
+            item.setToolTip(f"【{cat}】{row.get('name') or ''}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
             self.list.addItem(item)
+            shown += 1
             if current_id and str(row.get("id")) == str(current_id):
                 self.list.setCurrentItem(item)
-        return len(self._rows)
+        return shown
+
+    # ── 数据 ──
+    def reload(self, current_id: str | None = None, category: str | None = None) -> int:
+        from cutora.subtitle import text_preset as store
+        self._rows = list(store.list_presets())
+        self._current_id = current_id
+        if category is not None:
+            self._current_cat = str(category)
+        self._rebuild_cat_buttons()
+        return self._populate_list(current_id)
 
     def rows(self) -> list[dict]:
         return list(self._rows)

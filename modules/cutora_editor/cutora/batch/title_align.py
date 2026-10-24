@@ -274,7 +274,10 @@ def _align_title(segments, title: str) -> dict:
     w0, w1 = words[owner[j0]], words[owner[j1]]
     out["start"] = float(w0["start"])
     out["end"] = float(w1["end"])
-    out["said"] = _join_words([w["text"] for w in words[owner[j0]: owner[j1] + 1]])
+    out["said"] = ensure_sentence_punctuation(
+        _join_words([w["text"] for w in words[owner[j0]: owner[j1] + 1]]),
+        words[owner[j0]: owner[j1] + 1],
+    )
     at_end = (len(speech_toks) - 1 - j1) <= 1
     if tail_missing >= 1 and at_end and score < MATCH_GOOD and n_hit >= min(3, n):
         out.update(how="window_short",
@@ -298,6 +301,19 @@ def _align_title(segments, title: str) -> dict:
 
 # ------------------------------------------------------------------ 原话
 
+_QUESTION_STARTERS = frozenset({
+    "is", "are", "was", "were", "do", "does", "did",
+    "can", "could", "will", "would", "shall", "should",
+    "may", "might", "have", "has", "had",
+    "who", "what", "where", "when", "why", "how", "whom", "whose", "which",
+})
+_CLAUSE_CONJUNCTIONS = frozenset({
+    "but", "because", "although", "though", "while", "whereas",
+    "unless", "since", "so", "yet", "however", "therefore",
+})
+_COMMA_PAUSE_S = 0.24
+
+
 def _join_words(texts) -> str:
     out = ""
     for t in texts:
@@ -310,21 +326,83 @@ def _join_words(texts) -> str:
     return out
 
 
+def _infer_end_punct(text: str) -> str:
+    s = str(text or "").strip()
+    if not s:
+        return ""
+    body = s.rstrip("\"'”’)] ")
+    if not body:
+        return ""
+    if body[-1] in ".!?…。！？;；:：":
+        return ""
+    if _CJK.search(body):
+        if body.endswith(("吗", "呢", "吧")) or any(q in body for q in ("为什么", "怎么", "哪里", "谁", "多少", "几")):
+            return "？"
+        return "。"
+    toks = re.findall(r"[A-Za-z0-9']+", body.lower())
+    if toks and toks[0] in _QUESTION_STARTERS:
+        # "when god begins to lift you up" -> subordinate clause if not followed by auxiliary, so only question if short or aux
+        if toks[0] in ("is", "are", "was", "were", "do", "does", "did", "can", "could", "will", "would", "shall", "should", "may", "might"):
+            return "?"
+        if len(toks) >= 2 and toks[1] in ("is", "are", "was", "were", "do", "does", "did", "can", "could", "will", "would", "shall", "should", "may", "might", "have", "has", "had"):
+            return "?"
+    return "."
+
+
+def ensure_sentence_punctuation(text: str, words_slice: list[dict] | None = None) -> str:
+    """确保识别出的口播原句带有准确标点符号（尤其是句尾句号/问号、句中停顿逗号及句首大写）。"""
+    if words_slice and not any(ch in str(text or "") for ch in ".!?…。！？,，"):
+        parts: list[str] = []
+        n_w = len(words_slice)
+        for idx, w in enumerate(words_slice):
+            tok = str(w.get("text") or "").strip()
+            if not tok:
+                continue
+            if tok == "i":
+                tok = "I"
+            elif tok.startswith("i'") and len(tok) > 2:
+                tok = "I'" + tok[2:]
+            if idx == 0 and tok and tok[0].isalpha() and tok[0].islower():
+                tok = tok[0].upper() + tok[1:]
+            # 句中明显停顿或转折连词前补逗号（不在句首句尾加）
+            if 2 <= idx <= n_w - 2 and parts and not parts[-1].endswith((",", "，", ".", "!", "?", "。", "！", "？")):
+                try:
+                    gap = float(w.get("start") or 0.0) - float(words_slice[idx - 1].get("end") or 0.0)
+                except (TypeError, ValueError):
+                    gap = 0.0
+                low = tok.lower().strip(".,!?")
+                if gap >= _COMMA_PAUSE_S or (gap >= 0.10 and low in _CLAUSE_CONJUNCTIONS):
+                    parts[-1] = parts[-1] + ("，" if _CJK.search(parts[-1]) else ",")
+            parts.append(tok)
+        s = _join_words(parts)
+    else:
+        s = str(text or "").strip()
+        if s and s[0].isalpha() and s[0].islower():
+            s = s[0].upper() + s[1:]
+        s = re.sub(r"\bi\b", "I", s)
+    if not s:
+        return ""
+    punct = _infer_end_punct(s)
+    return s + punct
+
+
 def spoken_sentences(segments, pause: float = SENTENCE_PAUSE_S,
                      max_words: int = SENTENCE_MAX_WORDS) -> list[dict]:
-    """按停顿把口播切成句子：[{start, end, text}]。模型给的词没有标点，只能靠停顿。"""
+    """按停顿把口播切成句子：[{start, end, text}]，并自动补齐准确的句末句号/问号与句中逗号。"""
     words = _words_of(segments)
     out = []
     cur: list[dict] = []
     for w in words:
         if cur and (w["start"] - cur[-1]["end"] >= pause or len(cur) >= max_words):
+            raw = _join_words(x["text"] for x in cur)
             out.append({"start": cur[0]["start"], "end": cur[-1]["end"],
-                        "text": _join_words(x["text"] for x in cur)})
+                        "text": ensure_sentence_punctuation(raw, cur)})
             cur = []
         cur.append(w)
     if cur:
+        raw = _join_words(x["text"] for x in cur)
         out.append({"start": cur[0]["start"], "end": cur[-1]["end"],
-                    "text": _join_words(x["text"] for x in cur)})
+                    "text": ensure_sentence_punctuation(raw, cur)})
     return out
 
 
@@ -337,7 +415,7 @@ def split_punctuated(text: str) -> list[str]:
     for piece in _SENT_SPLIT.split(str(text or "").strip()):
         piece = piece.strip()
         if piece:
-            out.append(piece)
+            out.append(ensure_sentence_punctuation(piece))
     return out
 
 
@@ -382,8 +460,74 @@ def sentences_with_times(segments, sents) -> list[dict]:
                     j0, j1 = cursor + js[0], cursor + js[-1]
                     start, end = words[owner[j0]]["start"], words[owner[j1]]["end"]
                     cursor = j1 + 1
-            out.append({"start": float(start), "end": float(max(end, start)), "text": piece})
+            out.append({"start": float(start), "end": float(max(end, start)),
+                        "text": ensure_sentence_punctuation(piece)})
     return out
+
+
+def punctuate_words_for_display(words: list[dict], sentences: list[dict] | None = None) -> list[dict]:
+    """将词列表与带标点句子对齐，使每个词在点词条（TranscriptStrip）中也带准确的句号/问号/逗号与句首大写。"""
+    w_list = [dict(w) for w in (words or []) if isinstance(w, dict) and str(w.get("text") or "").strip()]
+    if not w_list:
+        return []
+    sents = list(sentences or []) or spoken_sentences(w_list)
+    n = len(w_list)
+    # 1. 先按句子起止时间把句首大写和句末标点(. / ? / !)标到对应词上
+    used_ends: set[int] = set()
+    for s in sents:
+        st_txt = ensure_sentence_punctuation(str(s.get("text") or ""))
+        if not st_txt:
+            continue
+        end_p = _end_punct(st_txt) or _infer_end_punct(st_txt) or "."
+        try:
+            sa, sb = float(s.get("start") or 0.0), float(s.get("end") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        in_span = [
+            i for i, w in enumerate(w_list)
+            if float(w.get("end") or 0.0) >= sa - 0.04 and float(w.get("start") or 0.0) <= sb + 0.04
+        ]
+        if not in_span:
+            continue
+        i_first, i_last = in_span[0], in_span[-1]
+        t0 = str(w_list[i_first].get("text") or "")
+        if t0 and t0[0].isalpha() and t0[0].islower():
+            w_list[i_first]["text"] = t0[0].upper() + t0[1:]
+        tl = str(w_list[i_last].get("text") or "")
+        if tl and tl[-1] not in ".!?…。！？,，":
+            w_list[i_last]["text"] = tl + end_p
+        used_ends.add(i_last)
+        # 如果句子内部有带逗号的词（来自 Whisper 原句），同步逗号到对应位置的词
+        raw_tokens_with_punct = st_txt.split()
+        if len(raw_tokens_with_punct) == len(in_span):
+            for idx_k, raw_tok in zip(in_span, raw_tokens_with_punct):
+                w_list[idx_k]["text"] = raw_tok
+
+    # 2. 对剩余词修正代词 I，并在明显停顿处补句号或逗号
+    for i, w in enumerate(w_list):
+        txt = str(w.get("text") or "")
+        if txt == "i":
+            w["text"] = "I"
+        elif txt.startswith("i'") and len(txt) > 2:
+            w["text"] = "I'" + txt[2:]
+        if i < n - 1 and i not in used_ends:
+            try:
+                gap = float(w_list[i + 1].get("start") or 0.0) - float(w.get("end") or 0.0)
+            except (TypeError, ValueError):
+                gap = 0.0
+            cur_t = str(w.get("text") or "")
+            if gap >= SENTENCE_PAUSE_S and cur_t and cur_t[-1] not in ".!?…。！？":
+                w["text"] = cur_t.rstrip(",，") + "."
+                nxt_t = str(w_list[i + 1].get("text") or "")
+                if nxt_t and nxt_t[0].isalpha() and nxt_t[0].islower():
+                    w_list[i + 1]["text"] = nxt_t[0].upper() + nxt_t[1:]
+            elif gap >= _COMMA_PAUSE_S and cur_t and cur_t[-1] not in ".!?…。！？,，":
+                w["text"] = cur_t + ","
+    # 确保最后一个词有句末标点
+    last_t = str(w_list[-1].get("text") or "")
+    if last_t and last_t[-1] not in ".!?…。！？":
+        w_list[-1]["text"] = last_t.rstrip(",，") + _infer_end_punct(last_t)
+    return w_list
 
 
 def sentences_in_span(sentences, start, end, pad: float = 0.15) -> list[dict]:

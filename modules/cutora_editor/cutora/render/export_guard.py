@@ -1058,30 +1058,30 @@ def friendly_export_dialog_text(
     hog_str = "、".join(f"{name}（约 {gb:.1f} GB）" for name, gb in ext_hogs)
 
     is_low_hw = (0 < ram_total <= 12.5) or cpu <= 4
-    is_tight_ram = (0 < ram_avail < 11.5) and workers <= 2
+    is_tight_ram = (0 < ram_avail < 12.0) and workers <= 2
 
     if is_low_hw:
         sections.append(
-            "⚠️ 当前电脑硬件配置不足提示：\n"
-            f"· 问题原因：检测到您的电脑硬件配置偏低（总内存约 {ram_total:.0f} GB，处理器 {cpu} 线程"
+            "⚠️ 当前电脑硬件配置与剩余内存不足提示：\n"
+            f"· 问题原因：检测到您的电脑硬件配置偏低（总内存约 {ram_total:.0f} GB，当前仅剩 {ram_avail:.1f} GB 可用，处理器 {cpu} 线程"
             + ("，且未启用独立显卡加速" if not gpu_workers else "")
             + "），当前电脑硬件不足以支撑多通道高速并行渲染。\n"
-            "· 解决办法：系统已自动为您切换为【单通道安全导出模式】以防卡死或闪退。"
-            + (f"建议先关闭后台的 {hog_str} 等软件以腾出内存；" if hog_str else "导出期间请关闭浏览器、微信等其他软件；")
-            + "如需日常大批量高速剪辑，建议升级电脑至 32GB 内存与 NVIDIA 独立显卡（8GB 显存以上）。"
+            "· 解决办法：请您现在先把电脑上的所有浏览器（Chrome、Edge 等）和其他暂不使用的程序全部关掉腾出内存来，关闭完成后再回来点击「确定」开始渲染！"
+            + (f"（当前占用内存较多的程序：{hog_str}）" if hog_str else "")
+            + "\n· 系统已自动为您切换为【单通道安全导出模式】以防卡死或闪退；如需日常大批量高速剪辑，建议升级电脑至 32GB 内存与 NVIDIA 独立显卡（8GB 显存以上）。"
         )
     elif is_tight_ram:
         if hog_str:
             sections.append(
-                "💡 电脑可用内存偏低提示：\n"
-                f"· 问题原因：您的电脑总内存为 {ram_total:.0f} GB，但当前仅剩 {ram_avail:.1f} GB 可用，主要是后台软件（{hog_str}）占用了大量内存。为防止内存耗尽导致软件崩溃，已自动降为 {workers} 路安全导出。\n"
-                "· 如何解决提速：您可以先点击「取消」，关闭浏览器、微信等暂不使用的后台程序后再点击导出，即可释放内存、大幅提升导出速度！"
+                "⚠️ 系统剩余可用内存太少提示：\n"
+                f"· 问题原因：您的电脑总内存为 {ram_total:.0f} GB，但当前仅剩 {ram_avail:.1f} GB 可用，主要是后台程序（{hog_str}）占用了大量内存。\n"
+                "· 解决办法：请您现在先把电脑上的所有浏览器（Chrome、Edge 等）和其他程序全部关掉腾出内存来，再回来点击下方「确定」开始渲染！（点击确定时系统会自动重新检测您刚腾出的内存并全速渲染）"
             )
         else:
             sections.append(
-                "💡 电脑可用内存偏低提示：\n"
-                f"· 问题原因：当前系统剩余可用内存较少（仅剩 {ram_avail:.1f} GB / 总计 {ram_total:.0f} GB），为防止内存不足导致闪退，已自动限制为 {workers} 路安全导出。\n"
-                "· 如何解决提速：建议关闭暂不使用的后台软件（如浏览器、聊天工具等）以释放内存，导出会更快更稳。"
+                "⚠️ 系统剩余可用内存太少提示：\n"
+                f"· 问题原因：当前系统剩余可用内存太少（仅剩 {ram_avail:.1f} GB / 总计 {ram_total:.0f} GB），直接渲染容易降低速度或引发内存不足。\n"
+                "· 解决办法：请您现在先把电脑上的所有浏览器（Chrome、Edge 等）和其他程序全部关掉腾出内存来，再回来点击下方「确定」开始渲染！（点击确定时系统会自动重新检测您刚腾出的内存并全速渲染）"
             )
     elif not gpu_workers:
         sections.append(

@@ -42,6 +42,7 @@ from cutora.ui.theme.tokens import (
 from cutora.ui.panels.fx_schema import (
     ALIGN_ITEMS,
     BG_GRAD_ITEMS,
+    BG_ORNAMENT_ITEMS,
     BG_SIZE_MODE_ITEMS,
     BG_TYPE_ITEMS,
     EMPH_ANIM_ITEMS,
@@ -218,6 +219,22 @@ _MISSING = object()
 
 def _on_fx(panel) -> None:
     panel._fx_dirty = True
+    orn_cb = getattr(panel, "fx_bg_ornament", None)
+    bg_cb = getattr(panel, "fx_bg_type", None)
+    if (orn_cb is not None and bg_cb is not None
+            and (orn_cb.currentData() or "none") != "none"
+            and (bg_cb.currentData() or "none") == "none"):
+        idx_box = bg_cb.findData("box")
+        if idx_box >= 0:
+            bg_cb.blockSignals(True)
+            bg_cb.setCurrentIndex(idx_box)
+            bg_cb.blockSignals(False)
+        for toggle_attr in ("ov_bg_enable", "sub_box"):
+            tg = getattr(panel, toggle_attr, None)
+            if tg is not None and hasattr(tg, "isChecked") and not tg.isChecked():
+                tg.blockSignals(True)
+                tg.setChecked(True)
+                tg.blockSignals(False)
     _sync_glass_toggle(panel)
     _sync_overlay_bg(panel)
     _sync_fill_mode(panel)
@@ -471,6 +488,12 @@ def mount_overlay_bg(panel, form) -> None:
     add_float(panel, "fx_bg_alpha", "bg.alpha", form, "背景透明度", 0, 1, 0.05, 2)
     add_float(
         panel, "fx_bg_radius_em", "bg.radius_em", form, "圆角 (em)", 0, 1, 0.05, 2)
+    add_enum(
+        panel, "fx_bg_ornament", BG_ORNAMENT_ITEMS, "bg.ornament",
+        form, "线条与边框装饰")
+    add_color(
+        panel, "fx_bg_ornament_color", "bg.ornament_color",
+        form, "装饰线条颜色")
     add_enum(
         panel, "fx_bg_size_mode", BG_SIZE_MODE_ITEMS, "bg.size_mode",
         form, "尺寸")

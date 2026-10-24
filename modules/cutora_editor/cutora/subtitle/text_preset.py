@@ -366,7 +366,40 @@ def _sanitize_preset(raw: dict, *, builtin: bool = False) -> dict[str, Any]:
         "created_at": str(src.get("created_at") or _now()),
         "updated_at": str(src.get("updated_at") or src.get("created_at") or _now()),
     }
+    cat = str(src.get("category") or "").strip()
+    if cat:
+        out["category"] = cat
     return out
+
+
+DEFAULT_BUILTIN_CATEGORY_1 = "01·艺术线框与通透质感"
+DEFAULT_BUILTIN_CATEGORY_2 = "02·实心渐变与清晰底条"
+DEFAULT_USER_CATEGORY = "03·我的自定义预设"
+
+
+def preset_category_of(row: dict | None) -> str:
+    if not isinstance(row, dict):
+        return DEFAULT_BUILTIN_CATEGORY_1
+    cat = str(row.get("category") or "").strip()
+    if cat:
+        return cat
+    pid = str(row.get("id") or "")
+    if pid.startswith("tp_solid_"):
+        return DEFAULT_BUILTIN_CATEGORY_2
+    if not row.get("builtin", True):
+        return DEFAULT_USER_CATEGORY
+    return DEFAULT_BUILTIN_CATEGORY_1
+
+
+def list_preset_categories(rows: list[dict] | None = None) -> list[str]:
+    items = rows if rows is not None else list_presets()
+    seen: list[str] = []
+    for r in items:
+        c = preset_category_of(r)
+        if c and c not in seen:
+            seen.append(c)
+    seen.sort()
+    return seen
 
 
 def load_builtin() -> list[dict]:
@@ -388,7 +421,7 @@ def list_presets() -> list[dict]:
     for row in load_user():
         by_id[row["id"]] = row
     rows = list(by_id.values())
-    rows.sort(key=lambda r: (0 if r.get("builtin") else 1, str(r.get("name") or "")))
+    rows.sort(key=lambda r: (0 if r.get("builtin") else 1, preset_category_of(r), str(r.get("name") or "")))
     return rows
 
 

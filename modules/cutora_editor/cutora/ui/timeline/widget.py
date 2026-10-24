@@ -1544,12 +1544,12 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
 
     # === NLE Gen-2: 分类型轨道绘制方法 ===
 
-    def _paint_subs_track(self, painter, row_y, row_h, visible_left, visible_right):
+    def _paint_subs_track(self, painter, row_y, row_h, visible_left, visible_right, track_obj=None):
         """绘制字幕轨道内容。"""
         from cutora.subtitle.layout import is_over_cps, is_overlong, layout_caps
         from cutora.ui.theme.tokens import current
         segs = self.task_data.get('segments', [])
-        layout = self._normalize_segments()
+        layout = self._normalize_segments(track_obj=track_obj)
         sel_min_x, sel_max_x = 99999999, -1
         has_selection = len(self.selected_indices) > 0
         tok = current()
@@ -2926,11 +2926,27 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             QToolTip.showText(event.globalPosition().toPoint(), self._format_time_label(hover_sec), self)
             self._last_hover_sec = hover_sec
 
-    def _normalize_segments(self):
+    def _normalize_segments(self, track_obj=None):
         if not self.task_data:
             return []
         segs = self.task_data.get('segments', [])
         indexed = list(enumerate(segs))
+        if track_obj is not None:
+            tl = _tl_of(self.task_data)
+            subs_tracks = [
+                t for t in (getattr(tl, "tracks", None) or [])
+                if getattr(t, "type", None) in ("subs", "subtitle")
+            ] if tl is not None else []
+            if len(subs_tracks) > 1:
+                tid = str(getattr(track_obj, "id", "") or "")
+                is_first = (track_obj is subs_tracks[0])
+                indexed = [
+                    (idx, seg) for idx, seg in indexed
+                    if isinstance(seg, dict) and (
+                        str(seg.get("_track_id") or "") == tid
+                        or (is_first and not seg.get("_track_id"))
+                    )
+                ]
         indexed.sort(key=lambda x: x[1].get('start', 0))
         min_dur = 0.05
         prev_end = None
@@ -3051,7 +3067,7 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                         painter.save()
                         try:
                             if t_type in ("subs", "subtitle"):
-                                self._paint_subs_track(painter, row_y, row_h, visible_left, visible_right)
+                                self._paint_subs_track(painter, row_y, row_h, visible_left, visible_right, track_obj=t_obj)
                             elif t_type == "audio":
                                 self._paint_audio_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
                             elif t_type == "text":
@@ -4315,10 +4331,18 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                     return
 
         segs = self.task_data.get('segments', [])
-        layout = self._normalize_segments()
         tracks = self._track_positions()
-        # NLE Gen-2: 动态查找轨道位置（音频轨道在下方按行逐条检测）
-        subs_row = self._row_for_type(tracks, "subs")
+        # NLE Gen-2: 动态查找轨道位置（支持多条字幕轨道）
+        subs_track_at_y = None
+        subs_row = None
+        for t_obj_s, row_y_s, row_h_s in tracks.get("rows", []):
+            if getattr(t_obj_s, "type", "") in ("subs", "subtitle") and (row_y_s <= y <= row_y_s + row_h_s):
+                subs_track_at_y = t_obj_s
+                subs_row = (row_y_s, row_h_s)
+                break
+        if subs_row is None:
+            subs_row = self._row_for_type(tracks, "subs")
+        layout = self._normalize_segments(track_obj=subs_track_at_y)
         subs_top = subs_row[0] if subs_row else -999
         subs_bottom = (subs_row[0] + subs_row[1]) if subs_row else -999
         clicked_idx = -1
@@ -4766,6 +4790,8 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             self._reset_selection()
         self._publish_selection()
         self.selected_track = self._pos_to_track(y)
+        if getattr(self.selected_track, "type", "") in ("subs", "subtitle"):
+            self.item_selected.emit("track", self.selected_track)
         if (ctrl_empty or (subs_top <= y <= subs_bottom)) and self.can_edit_track("subs"):
             # Start rubberband
             self.mode = 'rubberband'

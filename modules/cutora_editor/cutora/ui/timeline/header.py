@@ -608,6 +608,7 @@ class TrackHeaderPanel(QWidget):
         self.unsetCursor()
         self.update()
         if not live or target is None:
+            self.track_action.emit(drag, "name")
             return
         dst, after = target
         if dst is drag:

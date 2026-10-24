@@ -25,7 +25,6 @@ _SKIP_SPEC_PATHS = frozenset({
     "shadow.sigma_em", "shadow.dx_em", "shadow.dy_em", "shadow.alpha",
     "shadow._legacy", "shadow.enabled",
     "stroke.enabled", "glow.enabled", "bg.enabled",
-    "bg.ornament", "bg.ornament_color",
     "line_bar._alpha", "line_bar._use_bg_radius",
     # Kept in sync with colors[0] for old readers; widget is emphasis.colors.
     "emphasis.color",
@@ -59,6 +58,8 @@ FX_FIELD_WIDGETS: dict[str, str] = {
     "bg.color": "fx_bg_color",
     "bg.alpha": "fx_bg_alpha",
     "bg.radius_em": "fx_bg_radius_em",
+    "bg.ornament": "fx_bg_ornament",
+    "bg.ornament_color": "fx_bg_ornament_color",
     "bg.pad_em": "fx_bg_pad_em",
     "bg.grow_em": "fx_bg_grow_em",
     "bg.size_mode": "fx_bg_size_mode",
@@ -159,6 +160,8 @@ FX_LABELS: dict[str, str] = {
     "bg.color": "背景色",
     "bg.alpha": "背景透明度",
     "bg.radius_em": "圆角 (em)",
+    "bg.ornament": "线条与边框装饰",
+    "bg.ornament_color": "装饰线条颜色",
     "bg.pad_em": "内边距 (em)",
     "bg.grow_em": "四边扩展 (em)",
     "bg.size_mode": "尺寸",
@@ -256,6 +259,23 @@ SHADOW_LIGHT_ITEMS = (("平行光", "parallel"), ("点光", "point"))
 BG_TYPE_ITEMS = (
     ("无", "none"), ("色块", "box"), ("毛玻璃", "glass"),
     ("纹理", "texture"), ("气泡", "bubble"),
+)
+BG_ORNAMENT_ITEMS = (
+    ("无装饰", "none"),
+    ("上下对称金线 (Editorial)", "editorial_lines"),
+    ("左侧竖条引号 (Accent Left)", "accent_left"),
+    ("左右双侧竖条 (Accent Both)", "accent_both"),
+    ("四角取景折线 (Corner Brackets)", "corner_brackets"),
+    ("日系双直角括号 (「」Brackets)", "jp_brackets"),
+    ("古典内嵌双线框 (Double Frame)", "double_frame"),
+    ("胶囊高光环线 (Capsule Ring)", "capsule_ring"),
+    ("底部中心金线+菱形 (Bottom Rule)", "bottom_rule"),
+    ("顶部标题横线缺口 (Top Tag Line)", "top_tag_line"),
+    ("双引号暗纹水印 (Quote Watermark)", "quote_watermark"),
+    ("科技十字准星角标 (HUD Crosshair)", "crosshair_hud"),
+    ("流金岁月菱形角花 (Art Deco)", "art_deco"),
+    ("底部灵动波浪线 (Wave Underline)", "wave_underline"),
+    ("左右对称横翼线 (Side Wings)", "side_wings"),
 )
 BG_SIZE_MODE_ITEMS = (
     ("贴合文字", "fit_text"),

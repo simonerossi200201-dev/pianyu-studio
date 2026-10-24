@@ -901,9 +901,20 @@ def build_text_tab(dlg, host, picker, preset_combo=None):
         cell.setText(text or "")
         cell.setToolTip(tip or text or "")
 
-    def _transcript_tip(segs):
-        words = [str((s or {}).get("text") or "").strip() for s in segs or []]
-        text = " ".join(w for w in words if w)
+    def _transcript_tip(segs, task=None):
+        sents = _sentences_of(task) if task is not None else []
+        if not sents and segs:
+            from cutora.batch.title_align import spoken_sentences
+            try:
+                sents = spoken_sentences(segs)
+            except Exception:
+                sents = []
+        if sents:
+            text = " ".join(str(x.get("text") or "").strip() for x in sents if str(x.get("text") or "").strip())
+        else:
+            from cutora.batch.title_align import ensure_sentence_punctuation
+            words = [str((s or {}).get("text") or "").strip() for s in segs or []]
+            text = ensure_sentence_punctuation(" ".join(w for w in words if w), segs)
         if not text:
             return ""
         try:
@@ -931,12 +942,12 @@ def build_text_tab(dlg, host, picker, preset_combo=None):
               "manual": "手填", "fallback": "未定位，用默认时长"}
 
     def _said_text_for(plan, task):
-        """这一行「视频原话」该显示什么：对上了就是标题对应的那几句，没对上就是开头的几句。"""
+        """这一行「视频原话」该显示什么：对上了就是标题对应的那几句，没对上就是开头的几句（必带准确标点与句号）。"""
+        from cutora.batch.title_align import ensure_sentence_punctuation, sentences_in_span
         sents = _sentences_of(task)
         if not sents:
-            said = str(plan.get("said") or "")
+            said = ensure_sentence_punctuation(str(plan.get("said") or ""))
             return said, said
-        from cutora.batch.title_align import sentences_in_span
         reason = str(plan.get("reason") or "")
         picked = []
         if reason in ("matched", "partial") and plan.get("start") is not None:
@@ -945,8 +956,8 @@ def build_text_tab(dlg, host, picker, preset_combo=None):
             from cutora.batch.text_batch import split_sentences
             k = max(1, len(split_sentences(str(plan.get("text") or ""))))
             picked = sents[:k]
-        text = " ".join(str(x["text"]) for x in picked).strip()
-        full = "\n".join("%.1f–%.1fs  %s" % (x["start"], x["end"], x["text"]) for x in sents[:12])
+        text = " ".join(ensure_sentence_punctuation(str(x["text"])) for x in picked).strip()
+        full = "\n".join("%.1f–%.1fs  %s" % (x["start"], x["end"], ensure_sentence_punctuation(str(x["text"]))) for x in sents[:12])
         return text, full
 
     def _replacement_for(row):
@@ -1011,7 +1022,7 @@ def build_text_tab(dlg, host, picker, preset_combo=None):
             segs = _segments_of(task) if task is not None else []
             cell = table.item(r, COL_STATE)
             if cell is not None:
-                cell.setToolTip(_transcript_tip(segs))
+                cell.setToolTip(_transcript_tip(segs, task=task))
             busy, busy_warn = _locate_label(task)
             text = str(plan.get("text") or "").strip()
             said, said_tip = _said_text_for(plan, task) if (task is not None and segs) else ("", "")
@@ -1048,14 +1059,14 @@ def build_text_tab(dlg, host, picker, preset_combo=None):
                     label = "已定位 %d%%，%d 处词不同  %s" % (score, len(diff), span)
                     _set_state(r, label + tail, warn=True, reason="matched")
                     if cell is not None:
-                        cell.setToolTip("标题 → 口播：\n" + diff_note(diff) + "\n\n" + _transcript_tip(segs))
+                        cell.setToolTip("标题 → 口播：\n" + diff_note(diff) + "\n\n" + _transcript_tip(segs, task=task))
                 else:
                     _set_state(r, "已定位  %s%s" % (span, tail), warn=tpl_bad, reason="matched")
             elif how == "partial":
                 _set_state(r, "基本吻合 %d%%，%d 处词不同  %s%s" % (score, len(diff), span, tail),
                            warn=True, reason="partial")
                 if cell is not None:
-                    cell.setToolTip("标题 → 口播：\n" + diff_note(diff) + "\n\n" + _transcript_tip(segs))
+                    cell.setToolTip("标题 → 口播：\n" + diff_note(diff) + "\n\n" + _transcript_tip(segs, task=task))
             elif how == "picked":
                 _set_state(r, "手选词  %s%s" % (span, tail), reason="picked")
             elif how == "manual":
@@ -1619,7 +1630,9 @@ def build_text_tab(dlg, host, picker, preset_combo=None):
         if plan.get("start") is not None and str(plan.get("how") or "") in ("matched", "partial", "picked"):
             auto = (plan.get("start"), plan.get("end"))
         pick = _pick_of(row)
-        strip.set_words(words, auto_span=auto, picked=pick)
+        from cutora.batch.title_align import punctuate_words_for_display
+        disp_words = punctuate_words_for_display(words, _sentences_of(task))
+        strip.set_words(disp_words, auto_span=auto, picked=pick)
         lbl_strip.setText(
             ("第 %d 行 · 手选了 %.1f–%.1fs，" % (row + 1, pick[0], pick[1]) if pick else
              "第 %d 行 · " % (row + 1)) + "按住鼠标拖过标题对应的那几个词，起止就定在这几个词上")

@@ -115,6 +115,8 @@ SAMPLES = {
     "bg.color": "#0B1A33",
     "bg.alpha": 0.4,
     "bg.radius_em": 0.6,
+    "bg.ornament": "editorial_lines",
+    "bg.ornament_color": "#D4AF37",
     "bg.pad_em": [0.8, 0.3],
     "bg.size_mode": "fixed",
     "bg.width_px": 640,

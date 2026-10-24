@@ -86,12 +86,139 @@ def hydrate_track(tr) -> None:
     if tr is None or isinstance(tr, dict):
         return
     extra = getattr(tr, "_extra", None) or {}
+    if isinstance(extra, dict):
+        if "source_track_id" in extra and not getattr(tr, "source_track_id", None):
+            tr.source_track_id = str(extra.get("source_track_id") or "__main__")
+        if "manual_script" in extra and getattr(tr, "manual_script", None) is None:
+            tr.manual_script = str(extra.get("manual_script") or "")
     ev = getattr(tr, EVENTS_KEY, None)
     if ev is None and isinstance(extra, dict):
         ev = extra.get(EVENTS_KEY)
     if ev is None:
         return
     write_events(tr, ev if isinstance(ev, list) else [])
+
+
+def get_track_source_id(tr) -> str:
+    """Return the target track id for subtitle transcription ('__main__' = main video)."""
+    if tr is None:
+        return "__main__"
+    if isinstance(tr, dict):
+        return str(tr.get("source_track_id") or "__main__")
+    val = getattr(tr, "source_track_id", None)
+    if not val:
+        extra = getattr(tr, "_extra", None)
+        if isinstance(extra, dict):
+            val = extra.get("source_track_id")
+    return str(val or "__main__")
+
+
+def set_track_source_id(tr, source_id: str) -> None:
+    """Persist target track id on the subtitle track (attribute + _extra)."""
+    sid = str(source_id or "__main__")
+    if tr is None:
+        return
+    if isinstance(tr, dict):
+        tr["source_track_id"] = sid
+        return
+    tr.source_track_id = sid
+    extra = getattr(tr, "_extra", None)
+    if not isinstance(extra, dict):
+        extra = {}
+        tr._extra = extra
+    extra["source_track_id"] = sid
+
+
+def get_track_manual_script(tr) -> str:
+    """Return user-pasted manual subtitle script stored on this subtitle track."""
+    if tr is None:
+        return ""
+    if isinstance(tr, dict):
+        return str(tr.get("manual_script") or "")
+    val = getattr(tr, "manual_script", None)
+    if val is None:
+        extra = getattr(tr, "_extra", None)
+        if isinstance(extra, dict):
+            val = extra.get("manual_script")
+    return str(val or "")
+
+
+def set_track_manual_script(tr, script: str) -> None:
+    """Persist user-pasted manual subtitle script on this subtitle track."""
+    txt = str(script or "")
+    if tr is None:
+        return
+    if isinstance(tr, dict):
+        tr["manual_script"] = txt
+        return
+    tr.manual_script = txt
+    extra = getattr(tr, "_extra", None)
+    if not isinstance(extra, dict):
+        extra = {}
+        tr._extra = extra
+    extra["manual_script"] = txt
+
+
+def get_track_segments(task, tr) -> list:
+    """Return the subtitle segments belonging to a specific subs track ``tr``."""
+    if tr is None:
+        return []
+    ev = events_of(tr)
+    if isinstance(ev, list):
+        return ev
+    if isinstance(task, dict) and tr is first_subs_track(task):
+        tid = str(getattr(tr, "id", "") or "")
+        return [
+            s for s in (task.get("segments") or [])
+            if isinstance(s, dict) and str(s.get("_track_id") or "") in ("", tid)
+        ]
+    return []
+
+
+def set_track_segments(task, tr, segs) -> list:
+    """Write ``segs`` to a specific subs track ``tr`` and sync ``task['segments']``."""
+    segs = [dict(s) if isinstance(s, dict) else s for s in (segs or []) if isinstance(s, dict)]
+    tid = str(getattr(tr, "id", "") or "") if tr is not None else ""
+    subs_tracks = list(iter_subs_tracks(task)) if isinstance(task, dict) else []
+    if tid and len(subs_tracks) > 1:
+        for s in segs:
+            s["_track_id"] = tid
+    elif tid:
+        for s in segs:
+            s.setdefault("_track_id", tid)
+    try:
+        from cutora.subtitle.seg_ids import ensure_segment_ids
+        ensure_segment_ids({"segments": segs})
+    except Exception:
+        pass
+    if tr is not None:
+        write_events(tr, segs)
+    if not isinstance(task, dict):
+        return segs
+    if len(subs_tracks) <= 1:
+        task["segments"] = segs
+        return segs
+    # Ensure all subs tracks have hydrated event lists before merging
+    for other in subs_tracks:
+        if other is not tr and events_of(other) is None:
+            other_id = str(getattr(other, "id", "") or "")
+            existing = [
+                s for s in (task.get("segments") or [])
+                if isinstance(s, dict) and str(s.get("_track_id") or "") in (other_id, "" if other is subs_tracks[0] else other_id)
+            ]
+            write_events(other, existing)
+    combined = _read_segments(task)
+    combined.sort(key=lambda s: float(s.get("start") or 0.0))
+    try:
+        from cutora.subtitle.seg_ids import ensure_segment_ids
+        ensure_segment_ids({"segments": combined})
+    except Exception:
+        pass
+    if isinstance(task.get("segments"), list):
+        task["segments"][:] = combined
+    else:
+        task["segments"] = combined
+    return segs
 
 
 def _clip_text(clip) -> str:
@@ -195,7 +322,22 @@ def set_segments(task, segs) -> list:
         ensure_segment_ids({"segments": segs})
     except Exception:
         pass
-    tr = first_subs_track(task)
+    subs_tracks = list(iter_subs_tracks(task))
+    if len(subs_tracks) > 1:
+        by_id = {str(getattr(t, "id", "") or ""): t for t in subs_tracks}
+        buckets = {id(t): [] for t in subs_tracks}
+        first_t = subs_tracks[0]
+        for s in segs:
+            if not isinstance(s, dict):
+                continue
+            tid = str(s.get("_track_id") or "")
+            target_t = by_id.get(tid, first_t)
+            buckets[id(target_t)].append(s)
+        for t in subs_tracks:
+            write_events(t, buckets[id(t)])
+        task["segments"] = segs
+        return segs
+    tr = subs_tracks[0] if subs_tracks else None
     if tr is None and segs:
         tr = _ensure_subs_track(task)
     if tr is not None:
@@ -208,13 +350,17 @@ def bind_segments(task) -> list:
     """On load: track wins. If the track is empty, migrate ``task['segments']`` onto it."""
     if not isinstance(task, dict):
         return []
-    tr = first_subs_track(task)
-    if tr is not None:
-        hydrate_track(tr)
+    subs_tracks = list(iter_subs_tracks(task))
+    for t in subs_tracks:
+        hydrate_track(t)
+    tr = subs_tracks[0] if subs_tracks else None
     track_segs = _read_segments(task)
     derived = list(task.get("segments") or [])
     if track_segs:
-        live = events_of(first_subs_track(task))
+        if len(subs_tracks) > 1:
+            task["segments"] = list(track_segs)
+            return task["segments"]
+        live = events_of(tr)
         if isinstance(live, list):
             task["segments"] = live
             return [s for s in live if isinstance(s, dict)]

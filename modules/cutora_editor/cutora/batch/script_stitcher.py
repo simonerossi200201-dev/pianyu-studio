@@ -1748,6 +1748,11 @@ def transcribe_clip(model, align_model, metadata, audio, dur, language,
                              f"(原 {m1['hit']}词/{m1['ratio'] * 100:.0f}%), "
                              f"采用兜底结果")
                         words = w2
+                        if status is not None and segs2:
+                            status["raw_segments"] = [
+                                {"start": float(sg.get("start") or 0.0), "end": float(sg.get("end") or 0.0),
+                                 "text": str(sg.get("text") or "").strip()}
+                                for sg in segs2 if isinstance(sg, dict) and str(sg.get("text") or "").strip()]
                     else:
                         _say(f"    · 兜底转录命中{m2['hit']}词/"
                              f"{m2['ratio'] * 100:.0f}%, 未超过原结果, 保持原样")
@@ -1756,6 +1761,11 @@ def transcribe_clip(model, align_model, metadata, audio, dur, language,
                     _say(f"    ✓ 兜底转录拿到 {len(w2)} 个词 "
                          f"(原 {len(words)} 个), 采用兜底结果")
                     words = w2
+                    if status is not None and segs2:
+                        status["raw_segments"] = [
+                            {"start": float(sg.get("start") or 0.0), "end": float(sg.get("end") or 0.0),
+                             "text": str(sg.get("text") or "").strip()}
+                            for sg in segs2 if isinstance(sg, dict) and str(sg.get("text") or "").strip()]
                 else:
                     _say(f"    · 兜底转录 {len(w2)} 个词, 未超过原结果, 保持原样")
             except Exception as e:
