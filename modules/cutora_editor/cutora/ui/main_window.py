@@ -3327,6 +3327,8 @@ class MainWindow(CommandBodies, QMainWindow):
         self.welcome_page.open_recent.connect(lambda p: self.open_project(p))
         self.welcome_page.import_v6.connect(self._welcome_import_v6)
         self.welcome_page.files_dropped.connect(self._welcome_drop)
+        self.welcome_page.enter_editor.connect(self._welcome_enter_editor)
+        self.welcome_page.restore_backup.connect(self._welcome_restore_backup)
         self.editor_host = play_w
         self.shell_stack = QStackedWidget()
         self.shell_stack.setMinimumHeight(60)
@@ -3403,10 +3405,12 @@ class MainWindow(CommandBodies, QMainWindow):
             self.restoreState(QByteArray.fromHex(str(raw).encode("ascii")))
         self._restore_layout_sizes(s)
         self._sync_safe_zone_actions(s)
-        if not self.project_path and not self.tasks:
-            self.show_welcome()
-        else:
-            self.show_editor()
+        if not getattr(self, "_timeline_template", None):
+            try:
+                self._ensure_timeline_template()
+            except Exception:
+                pass
+        self.show_editor()
         if bool(s.get("api_enabled", True)):
             try:
                 from cutora.api import DEFAULT_PORT
@@ -3750,6 +3754,31 @@ class MainWindow(CommandBodies, QMainWindow):
         self.set_ui_mode("quick")
         self.show_editor()
         self.on_drop(paths)
+
+    def _welcome_enter_editor(self):
+        if not getattr(self, "_timeline_template", None):
+            try:
+                self._ensure_timeline_template()
+            except Exception:
+                pass
+        self.show_editor()
+
+    def _welcome_restore_backup(self):
+        from cutora.core.autosave import leftover_for, list_backups, untitled_leftover
+        left = (getattr(self, "_autosave_leftover", None)
+                or leftover_for(getattr(self, "project_path", None))
+                or untitled_leftover())
+        if not left:
+            baks = list_backups()
+            left = baks[0] if baks else None
+        if left and os.path.isfile(left):
+            try:
+                self.command_autosave_restore(path=left)
+                self.show_editor()
+            except Exception as exc:
+                QMessageBox.warning(self, "恢复备份", "恢复自动保存失败：%s" % exc)
+        else:
+            self._welcome_enter_editor()
 
     def _welcome_import_v6(self):
         from cutora.core.migrate_user_data import find_import_sources, import_from
@@ -8008,6 +8037,8 @@ class MainWindow(CommandBodies, QMainWindow):
                     "height": int(first_tl.height or DEFAULT_TIMELINE_HEIGHT),
                     "fps": float(first_tl.fps or DEFAULT_TIMELINE_FPS)
                 }
+            if hasattr(self, "shell_stack") and self.shell_stack.currentIndex() == 0:
+                self.show_editor()
         else:
             self.curr_idx = -1
             self.text_input.blockSignals(True); self.text_input.setText(""); self.text_input.blockSignals(False)
@@ -12269,8 +12300,16 @@ class MainWindow(CommandBodies, QMainWindow):
             gpu_workers = None
             enc_threads = 0
             plan_notes = []
+            plan = None
+            font_notes = []
             if _GUARD is not None:
                 try:
+                    try:
+                        freed_ram = _GUARD.purge_ui_memory_before_export(self)
+                        if freed_ram > 0.05:
+                            print(f"[Guard] 导出前已清理预览缓存，释放 {freed_ram:.2f} GB 内存")
+                    except Exception:
+                        pass
                     if want_gpu:
                         try:
                             freed = release_gpu_models()
@@ -12292,30 +12331,33 @@ class MainWindow(CommandBodies, QMainWindow):
                     gpu_workers = plan["gpu_workers"]
                     enc_threads = plan["enc_threads"]
                     plan_notes.extend(plan.get("notes") or [])
+                    log_only_notes = list(plan_notes)
                     try:
                         _mem_note = _GUARD.memory_hogs_note()
                         if _mem_note:
-                            plan_notes.append(_mem_note)
+                            log_only_notes.append(_mem_note)
                         _mem_note2 = _GUARD.gui_memory_note()
                         if _mem_note2:
-                            plan_notes.append(_mem_note2)
+                            log_only_notes.append(_mem_note2)
                     except Exception:
                         pass
                     try:
-                        plan_notes.extend(
-                            _GUARD.font_coverage_notes([t for t, _p in jobs]))
+                        font_notes = list(_GUARD.font_coverage_notes([t for t, _p in jobs]) or [])
+                        log_only_notes.extend(font_notes)
                     except Exception:
-                        pass
+                        font_notes = []
                     print(f"[Guard] 导出前体检：内存可用 {plan['ram_avail']}/{plan['ram_total']} GB，"
                           f"CPU {plan['cpu']} 核 → {workers} 个进程 / {gpu_workers} 路 GPU 编码 / "
                           f"每进程 FFmpeg {enc_threads} 线程")
-                    for _n in plan_notes:
+                    for _n in log_only_notes:
                         print(f"[Guard]   · {_n}")
                 except Exception as e:
                     print(f"[Guard] 体检失败，按原设置导出: {e}")
 
             # ── [v6.2] 前置提示（可勾选不再显示） ────────────────────
-            if not self._maybe_warn_before_parallel(len(jobs), workers, gpu_workers, plan_notes):
+            if not self._maybe_warn_before_parallel(
+                len(jobs), workers, gpu_workers, plan_notes, plan=plan, font_notes=font_notes
+            ):
                 self._parallel_cancelled = True
                 return False
 
@@ -12433,7 +12475,9 @@ class MainWindow(CommandBodies, QMainWindow):
         except Exception:
             pass
 
-    def _maybe_warn_before_parallel(self, n_jobs, workers, gpu_workers, notes):
+    def _maybe_warn_before_parallel(
+        self, n_jobs, workers, gpu_workers, notes, plan=None, font_notes=None
+    ):
         """并行导出前的一次性提示。返回 False 表示用户取消了本次导出。"""
         if getattr(self, "_queue_mode", False):
             return True
@@ -12444,22 +12488,19 @@ class MainWindow(CommandBodies, QMainWindow):
         except Exception:
             s = {}
         try:
-            extra = ("\n\n本次体检结论：\n· " + "\n· ".join(notes)) if notes else ""
+            if _GUARD is not None and hasattr(_GUARD, "friendly_export_dialog_text"):
+                msg_text = _GUARD.friendly_export_dialog_text(
+                    n_jobs, workers, gpu_workers or 0, plan=plan, font_notes=font_notes
+                )
+            else:
+                msg_text = (
+                    f"即将批量导出 {n_jobs} 个视频（开启 {workers} 个导出通道）。\n\n"
+                    "导出期间屏幕右下角会显示实时进度小窗，请勿中途关闭软件。"
+                )
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Icon.Information)
-            box.setWindowTitle("并行导出即将开始")
-            box.setText(
-                f"即将用 {workers} 个渲染进程同时导出 {n_jobs} 个视频"
-                + (f"（其中 {gpu_workers} 路使用 GPU 编码）" if gpu_workers else "（全部使用 CPU 编码）")
-                + "。\n\n"
-                "⚠ 导出期间主界面可能会「未响应」甚至变成一块白板。\n"
-                "这是 Windows 在主进程忙不过来时给窗口套的假图，\n"
-                "**导出并没有停止**。\n\n"
-                "屏幕右下角会出现一个独立的「导出监视器」小窗，\n"
-                "它是单独的进程，主界面白板时它照样准确显示进度。\n"
-                "输出目录里也会有一个「导出进行中.lock」文件同步更新。\n\n"
-                "请以监视器为准：只要还在出新的 _sub.mp4，就不要强关软件、\n"
-                "更不要重启电脑。" + extra)
+            box.setWindowTitle("批量导出准备就绪")
+            box.setText(msg_text)
             chk = QCheckBox("我知道了，以后不再提示")
             box.setCheckBox(chk)
             box.setStandardButtons(QMessageBox.StandardButton.Ok

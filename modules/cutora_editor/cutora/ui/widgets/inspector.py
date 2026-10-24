@@ -83,6 +83,7 @@ def inspector_row_of(widget):
 def _cap_combo(widget) -> None:
     # Expanding up to the cap: every dropdown shares one right edge instead
     # of hugging its current text (which made widths jump row to row).
+    widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     widget.setMaximumWidth(INSPECTOR_COMBO_MAX_W)
     widget.setMinimumWidth(0)
     widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -92,6 +93,7 @@ def _cap_combo(widget) -> None:
 
 
 def _cap_spin(widget) -> None:
+    widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     widget.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
     widget.setMaximumWidth(INSPECTOR_SPIN_WIDTH)
     widget.setMinimumWidth(0)
@@ -124,6 +126,11 @@ class InspectorLimitFilter(QObject):
 
 
 def install_inspector_limits(root: QWidget) -> None:
+    try:
+        from cutora.ui.wheel_guard import install_wheel_guard
+        install_wheel_guard()
+    except Exception:
+        pass
     apply_inspector_limits(root)
     filt = getattr(root, "_inspector_limit_filter", None)
     if filt is None:
@@ -1715,6 +1722,17 @@ class ColorWheel(QWidget):
 
     def wheelEvent(self, event):
         if event is None:
+            return
+        mods = event.modifiers() if hasattr(event, "modifiers") else Qt.KeyboardModifier.NoModifier
+        if not (mods & Qt.KeyboardModifier.AltModifier):
+            try:
+                from cutora.ui.wheel_guard import _scroll_enclosing_area
+                if _scroll_enclosing_area(self, event):
+                    event.accept()
+                    return
+            except Exception:
+                pass
+            event.ignore()
             return
         delta = 0
         if hasattr(event, "angleDelta"):

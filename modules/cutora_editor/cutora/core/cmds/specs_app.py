@@ -89,7 +89,7 @@ def build() -> list:
             "把当前工程写回 project_path。若尚未指定路径则失败，应改用 project.save_as。"
             "命令体不弹成功/失败对话框。失败常见原因：未打开工程、磁盘只读。",
             H_GUI + ":cmd_project_save",
-            requires_project=True,
+            requires_project=False,
         ),
         spec(
             "project.save_as", "另存工程",
@@ -98,7 +98,7 @@ def build() -> list:
             H_GUI + ":cmd_project_save_as",
             params={"path": s("string", "目标 .asproj.json 路径")},
             required=["path"],
-            requires_project=True,
+            requires_project=False,
         ),
         spec(
             "project.close", "关闭工程",

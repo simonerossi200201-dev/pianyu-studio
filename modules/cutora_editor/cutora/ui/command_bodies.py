@@ -180,17 +180,22 @@ class CommandBodies:
 
     def command_project_save(self):
         if not self.project_path:
-            raise CommandError("尚未指定工程路径，请用 project.save_as")
+            raise CommandError("当前工程尚未选择保存位置，请使用「另存工程」指定保存路径。")
         return self._save_project_quiet(self.project_path)
 
     def command_project_save_as(self, path):
         if not path:
-            raise CommandError("缺少保存路径")
+            raise CommandError("请选择工程文件的保存路径。")
         from cutora.core.brand import ensure_save_extension
         self.project_path = ensure_save_extension(path)
         return self._save_project_quiet(self.project_path)
 
     def _save_project_quiet(self, path):
+        if not getattr(self, "_timeline_template", None) and hasattr(self, "_ensure_timeline_template"):
+            try:
+                self._ensure_timeline_template()
+            except Exception:
+                pass
         from cutora.model.project_media import collect_missing
         missing = collect_missing(getattr(self, "tasks", None) or [])
         if missing:
@@ -2139,18 +2144,29 @@ class CommandBodies:
             get_logger("cutora.autosave").exception("恢复自动备份后落盘正式工程失败")
 
     def command_autosave_restore(self, path=None):
-        from cutora.core.autosave import leftover_for, project_payload, read_snapshot
+        from cutora.core.autosave import (
+            is_untitled, leftover_for, list_backups, project_payload, read_snapshot, untitled_leftover,
+        )
         t_deb = getattr(self, "_autosave_debounce", None)
         if t_deb is not None:
             t_deb.stop()
-        src = path or leftover_for(self.project_path)
+        src = (
+            path
+            or getattr(self, "_autosave_leftover", None)
+            or leftover_for(self.project_path)
+            or untitled_leftover()
+        )
         if not src or not os.path.isfile(src):
-            raise CommandError("没有可恢复的自动保存")
+            baks = list_backups(self.project_path)
+            src = baks[0] if baks else None
+        if not src or not os.path.isfile(src):
+            raise CommandError("没有找到可恢复的自动保存备份文件。")
         raw = read_snapshot(src)
         data = project_payload(raw)
         meta = raw.get("_autosave") or {}
-        if meta.get("project") and not self.project_path:
-            self.project_path = meta["project"]
+        meta_proj = str(meta.get("project") or "").strip()
+        if meta_proj and not is_untitled(meta_proj) and not self.project_path:
+            self.project_path = meta_proj
         if self.project_path:
             try:
                 from cutora.model.project_media import resolve_relative_paths
@@ -2162,9 +2178,40 @@ class CommandBodies:
             _normalize_project_data(data)
         except Exception:
             pass
+        if not getattr(self, "_timeline_template", None) and hasattr(self, "_ensure_timeline_template"):
+            try:
+                self._ensure_timeline_template()
+            except Exception:
+                pass
+        if hasattr(self, "show_editor"):
+            try:
+                self.show_editor()
+            except Exception:
+                pass
         if hasattr(self, "apply_project_data"):
             self.apply_project_data(data)
+        if hasattr(self, "show_editor"):
+            try:
+                self.show_editor()
+            except Exception:
+                pass
         self._persist_restored_project(self.project_path)
+        try:
+            from cutora.core.brand import format_window_title
+            if hasattr(self, "setWindowTitle"):
+                self.setWindowTitle(format_window_title(self.project_path, dirty=not bool(self.project_path)))
+            bar = getattr(self, "statusBar", None)
+            if callable(bar):
+                n_tasks = len(getattr(self, "tasks", None) or [])
+                bar().showMessage(
+                    "已恢复自动备份（共 %d 条视频）%s" % (
+                        n_tasks,
+                        "" if self.project_path else "，请按 Ctrl+S 保存为正式工程文件",
+                    ),
+                    12000,
+                )
+        except Exception:
+            pass
         return {"path": src, "restored": True, "project": self.project_path}
 
     def _show_autosave_failure(self, exc):

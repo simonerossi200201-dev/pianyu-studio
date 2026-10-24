@@ -51,6 +51,8 @@ class WelcomePage(QWidget):
     open_recent = Signal(str)
     import_v6 = Signal()
     files_dropped = Signal(list)
+    enter_editor = Signal()
+    restore_backup = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -168,6 +170,14 @@ class WelcomePage(QWidget):
         row.addWidget(mark, 0, Qt.AlignmentFlag.AlignTop)
         row.addLayout(title_col)
         row.addStretch(1)
+        self.btn_enter_editor = QPushButton(tr("收起欢迎页 · 直接进入剪辑台  ✕"))
+        self.btn_enter_editor.setObjectName("btnPrimary")
+        self.btn_enter_editor.setFixedHeight(H_OPEN)
+        self.btn_enter_editor.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_enter_editor.setToolTip(tr("关闭欢迎页并直接进入剪辑界面（快捷键 Esc，随时可从底部「欢迎页」图标重新打开）"))
+        bind_icon(self.btn_enter_editor, "film", size=16)
+        self.btn_enter_editor.clicked.connect(self.enter_editor.emit)
+        row.addWidget(self.btn_enter_editor, 0, Qt.AlignmentFlag.AlignVCenter)
         self.mark_label = mark
         return row
 
@@ -250,6 +260,15 @@ class WelcomePage(QWidget):
         self.btn_open.clicked.connect(self.open_project.emit)
         left.addWidget(self.btn_open)
 
+        self.btn_restore_backup = QPushButton(tr("恢复上次自动备份"))
+        self.btn_restore_backup.setObjectName("btnSecondary")
+        self.btn_restore_backup.setFixedHeight(H_OPEN)
+        self.btn_restore_backup.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_restore_backup.setToolTip(tr("立即恢复并打开上次未保存或意外退出时的自动备份工程"))
+        bind_icon(self.btn_restore_backup, "rotate-ccw", size=16)
+        self.btn_restore_backup.clicked.connect(self.restore_backup.emit)
+        left.addWidget(self.btn_restore_backup)
+
         # 次要入口：不跟「打开项目」等宽，贴着文字收窄，视觉上退一级。
         self.btn_v6 = QPushButton(tr("导入 AutoSub v6 设置"))
         self.btn_v6.setFixedHeight(H_LINK)
@@ -296,6 +315,13 @@ class WelcomePage(QWidget):
         return right
 
     def reload_recent(self) -> None:
+        try:
+            from cutora.core.autosave import leftover_for, list_backups, untitled_leftover
+            has_bak = bool(leftover_for(None) or untitled_leftover() or list_backups())
+            if hasattr(self, "btn_restore_backup"):
+                self.btn_restore_backup.setVisible(has_bak)
+        except Exception:
+            pass
         self.recent_list.clear()
         items = _get_recent_projects() or []
         if not items:
@@ -342,3 +368,10 @@ class WelcomePage(QWidget):
         if paths:
             self.files_dropped.emit(paths)
         event.acceptProposedAction()
+
+    def keyPressEvent(self, event) -> None:
+        if event is not None and event.key() == Qt.Key.Key_Escape:
+            self.enter_editor.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)

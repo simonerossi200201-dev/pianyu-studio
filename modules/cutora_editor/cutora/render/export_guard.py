@@ -916,6 +916,194 @@ def memory_hogs_note(top_n: int = 6) -> str:
     return head + "全机占内存前 %d：%s" % (len(top), "、".join(parts))
 
 
+_FRIENDLY_PROC_NAMES = {
+    "chrome.exe": "Chrome 浏览器",
+    "msedge.exe": "Edge 浏览器",
+    "msedgewebview2.exe": "Edge 网页后台组件",
+    "firefox.exe": "火狐浏览器",
+    "quark.exe": "夸克浏览器",
+    "360se.exe": "360 浏览器",
+    "360chrome.exe": "360 极速浏览器",
+    "qqbrowser.exe": "QQ 浏览器",
+    "wechat.exe": "微信",
+    "weixin.exe": "微信",
+    "wechatappex.exe": "微信小程序组件",
+    "qq.exe": "QQ",
+    "dingtalk.exe": "钉钉",
+    "feishu.exe": "飞书",
+    "lark.exe": "飞书",
+    "jianyingpro.exe": "剪映专业版",
+    "capcut.exe": "CapCut",
+    "premiere.exe": "Premiere Pro",
+    "afterfx.exe": "After Effects",
+    "resolve.exe": "达芬奇调色",
+    "photoshop.exe": "Photoshop",
+    "wps.exe": "WPS 办公软件",
+    "winword.exe": "Word 文档",
+    "excel.exe": "Excel 表格",
+    "powerpnt.exe": "PowerPoint",
+    "steam.exe": "Steam 游戏平台",
+    "steamwebhelper.exe": "Steam 后台网页",
+    "baidunetdisk.exe": "百度网盘",
+    "aliyundrive.exe": "阿里云盘",
+}
+
+
+def top_external_memory_apps(top_n: int = 3, min_gb: float = 0.45) -> list[tuple[str, float]]:
+    """返回占用内存最高的外部软件列表 [(通俗中文名, 占用GB), ...]，供用户提示弹窗使用。"""
+    g = 1024.0 ** 3
+    agg: dict[str, float] = {}
+    my_pid = os.getpid()
+    try:
+        import psutil
+        for p in psutil.process_iter(["pid", "name", "memory_info"]):
+            try:
+                if p.info["pid"] == my_pid:
+                    continue
+                rss = float(p.info["memory_info"].rss)
+                raw_name = (p.info["name"] or "").strip()
+                if not raw_name:
+                    continue
+                low = raw_name.lower()
+                if low in ("system", "memory compression", "registry", "svchost.exe", "dwm.exe", "explorer.exe"):
+                    continue
+                if "cutora" in low or low in ("python.exe", "pythonw.exe", "ffmpeg.exe", "ffprobe.exe"):
+                    continue
+                label = _FRIENDLY_PROC_NAMES.get(low, raw_name[:-4] if low.endswith(".exe") else raw_name)
+                agg[label] = agg.get(label, 0.0) + rss
+            except Exception:
+                continue
+    except Exception:
+        pass
+    out = [(name, val / g) for name, val in sorted(agg.items(), key=lambda kv: -kv[1]) if (val / g) >= min_gb]
+    return out[:top_n]
+
+
+def purge_ui_memory_before_export(window=None) -> float:
+    """导出前主动清空主界面预览帧缓存、解码器池与临时 QImage/numpy 缓存，释放 0.5~1.5 GB 内存防崩。"""
+    import gc
+    _, before_avail = system_memory_gb()
+    try:
+        if window is not None:
+            canvas = getattr(window, "video_canvas", None)
+            if canvas is not None:
+                stop_fn = getattr(canvas, "_stop_all_decoders", None)
+                if callable(stop_fn):
+                    stop_fn()
+                for attr in ("_cv_frame_cache", "_img_cache", "_overlay_img_cache", "_sub_cache"):
+                    d = getattr(canvas, attr, None)
+                    if isinstance(d, dict):
+                        d.clear()
+    except Exception:
+        pass
+    try:
+        from cutora.preview.engine import release_all_pools
+        release_all_pools()
+    except Exception:
+        pass
+    try:
+        from cutora.media.frame_cache import cache as _fc
+        _fc().clear()
+    except Exception:
+        pass
+    try:
+        from cutora.render import split_screen as _ss
+        reset_fn = getattr(_ss, "reset_cache", None)
+        if callable(reset_fn):
+            reset_fn()
+    except Exception:
+        pass
+    try:
+        gc.collect()
+    except Exception:
+        pass
+    if os.name == "nt":
+        try:
+            import ctypes
+            lib = ctypes.WinDLL("mimalloc.dll")
+            lib.mi_collect.argtypes = [ctypes.c_bool]
+            lib.mi_collect.restype = None
+            lib.mi_collect(True)
+        except Exception:
+            pass
+    _, after_avail = system_memory_gb()
+    return max(0.0, after_avail - before_avail)
+
+
+def friendly_export_dialog_text(
+    n_jobs: int,
+    workers: int,
+    gpu_workers: int,
+    plan: dict | None = None,
+    font_notes: list[str] | None = None,
+) -> str:
+    """生成给普通用户看的通俗易懂的导出前提示（绝不含 numpy / QImage / mimalloc / _sub.mp4 等开发术语）。"""
+    plan = plan or {}
+    ram_total = float(plan.get("ram_total") or 0.0)
+    ram_avail = float(plan.get("ram_avail") or 0.0)
+    cpu = int(plan.get("cpu") or (os.cpu_count() or 8))
+    if ram_total <= 0 or ram_avail <= 0:
+        ram_total, ram_avail = system_memory_gb()
+
+    gpu_str = f"已开启显卡硬件加速（{gpu_workers} 路 GPU）" if gpu_workers else "当前使用 CPU 渲染"
+    if workers > 1:
+        head = f"即将为您批量导出 {n_jobs} 个视频（同时开启 {workers} 个通道加速，{gpu_str}）。"
+    else:
+        head = f"即将为您按顺序导出 {n_jobs} 个视频（当前为单通道稳定导出模式，{gpu_str}）。"
+
+    sections = [head]
+
+    # 判断是否存在硬件不足或后台软件占满内存的情况
+    ext_hogs = top_external_memory_apps(top_n=3)
+    hog_str = "、".join(f"{name}（约 {gb:.1f} GB）" for name, gb in ext_hogs)
+
+    is_low_hw = (0 < ram_total <= 12.5) or cpu <= 4
+    is_tight_ram = (0 < ram_avail < 11.5) and workers <= 2
+
+    if is_low_hw:
+        sections.append(
+            "⚠️ 当前电脑硬件配置不足提示：\n"
+            f"· 问题原因：检测到您的电脑硬件配置偏低（总内存约 {ram_total:.0f} GB，处理器 {cpu} 线程"
+            + ("，且未启用独立显卡加速" if not gpu_workers else "")
+            + "），当前电脑硬件不足以支撑多通道高速并行渲染。\n"
+            "· 解决办法：系统已自动为您切换为【单通道安全导出模式】以防卡死或闪退。"
+            + (f"建议先关闭后台的 {hog_str} 等软件以腾出内存；" if hog_str else "导出期间请关闭浏览器、微信等其他软件；")
+            + "如需日常大批量高速剪辑，建议升级电脑至 32GB 内存与 NVIDIA 独立显卡（8GB 显存以上）。"
+        )
+    elif is_tight_ram:
+        if hog_str:
+            sections.append(
+                "💡 电脑可用内存偏低提示：\n"
+                f"· 问题原因：您的电脑总内存为 {ram_total:.0f} GB，但当前仅剩 {ram_avail:.1f} GB 可用，主要是后台软件（{hog_str}）占用了大量内存。为防止内存耗尽导致软件崩溃，已自动降为 {workers} 路安全导出。\n"
+                "· 如何解决提速：您可以先点击「取消」，关闭浏览器、微信等暂不使用的后台程序后再点击导出，即可释放内存、大幅提升导出速度！"
+            )
+        else:
+            sections.append(
+                "💡 电脑可用内存偏低提示：\n"
+                f"· 问题原因：当前系统剩余可用内存较少（仅剩 {ram_avail:.1f} GB / 总计 {ram_total:.0f} GB），为防止内存不足导致闪退，已自动限制为 {workers} 路安全导出。\n"
+                "· 如何解决提速：建议关闭暂不使用的后台软件（如浏览器、聊天工具等）以释放内存，导出会更快更稳。"
+            )
+    elif not gpu_workers:
+        sections.append(
+            "💡 硬件加速提示：\n"
+            "· 当前未检测到可用的 NVIDIA 独立显卡（或显存已被占满），本次导出将使用 CPU 处理，耗时会比独立显卡稍长，画质不受影响。"
+        )
+
+    if font_notes:
+        sections.append(
+            "🔤 字体自动兼容提示：\n"
+            "· 部分字幕包含当前字体不支持的特殊字符，系统已自动匹配内置替补字体，避免出现乱码或方框。"
+        )
+
+    sections.append(
+        "📌 导出期间温馨提示：\n"
+        "· 屏幕右下角会自动弹出独立的「导出进度小窗」，实时显示已完成数量和预计剩余时间。\n"
+        "· 导出期间如果主界面暂时无法点击属于正常现象，请以右下角进度小窗为准，耐心等待提示「导出全部完成」，中途请勿强制关闭软件。"
+    )
+
+    return "\n\n".join(sections)
+
+
 def gui_memory_note() -> str:
     """主界面进程的内存都花在哪：RSS、Python 堆里 numpy 数组 / QImage 的总量（按持有者粗分）、帧缓存。
     走一遍 gc.get_objects() 大概几十到几百毫秒，只在导出前体检时做一次。"""

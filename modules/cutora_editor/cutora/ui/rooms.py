@@ -121,9 +121,10 @@ class PageButton(QAbstractButton):
 
 
 class PageBar(QWidget):
-    """一排页面按钮，居中。"""
+    """一排页面按钮，居中。左侧带精巧的「欢迎向导」收起/展开图标按钮。"""
 
     page_clicked = Signal(str)
+    welcome_toggled = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -132,6 +133,10 @@ class PageBar(QWidget):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(8, 2, 8, 2)
         lay.setSpacing(4)
+        self.welcome_btn = PageButton("welcome", "欢迎向导", "home", self)
+        self.welcome_btn.setToolTip("展开 / 收起欢迎页（新建项目、打开最近工程、恢复自动备份）")
+        self.welcome_btn.clicked.connect(lambda _c=False: self.welcome_toggled.emit())
+        lay.addWidget(self.welcome_btn)
         lay.addStretch(1)
         self._lay = lay
         self.buttons: dict[str, PageButton] = {}
@@ -294,6 +299,7 @@ class RoomHost(QObject):
         self._switching = False
         self.bar = PageBar()
         self.bar.page_clicked.connect(self.enter)
+        self.bar.welcome_toggled.connect(self.toggle_welcome)
         self.toolbar = QToolBar("页面", win)
         self.toolbar.setObjectName("pageBar")
         self.toolbar.setMovable(False)
@@ -325,6 +331,23 @@ class RoomHost(QObject):
         return room.widget if room is not None else None
 
     # ── 切换 ──
+    def _is_on_welcome(self) -> bool:
+        win = self.win
+        welcome = getattr(win, "welcome_page", None)
+        stack = getattr(win, "shell_stack", None)
+        return bool(stack is not None and welcome is not None and stack.currentWidget() is welcome)
+
+    def toggle_welcome(self) -> None:
+        """点击底部「欢迎向导」图标：在欢迎页与剪辑台之间一键收起/展开。"""
+        win = self.win
+        if self._is_on_welcome():
+            if hasattr(win, "show_editor"):
+                win.show_editor()
+        else:
+            if hasattr(win, "show_welcome"):
+                win.show_welcome()
+        self._sync_bar_visible()
+
     def enter(self, key: str, **kw) -> bool:
         """进某个房间（``edit`` = 回剪辑）。kw 交给房间的 factory / on_enter。"""
         if self._switching:
@@ -332,6 +355,11 @@ class RoomHost(QObject):
         if key != EDIT and key not in self.rooms:
             return False
         if key == self.current:
+            if key == EDIT and self._is_on_welcome():
+                if hasattr(self.win, "show_editor"):
+                    self.win.show_editor()
+                self._sync_bar_visible()
+                return True
             room = self.rooms.get(key)
             if room is not None and room.on_enter is not None and room.widget is not None and kw:
                 room.on_enter(room.widget, **kw)
@@ -548,12 +576,15 @@ class RoomHost(QObject):
             self.bar.set_badge(key, room.widget is not None and room.keep_alive and key != self.current)
 
     def _sync_bar_visible(self):
-        win = self.win
-        welcome = getattr(win, "welcome_page", None)
-        stack = getattr(win, "shell_stack", None)
-        on_welcome = bool(stack is not None and welcome is not None
-                          and stack.currentWidget() is welcome and self.current == EDIT)
-        self.toolbar.setVisible(not on_welcome)
+        on_welcome = self._is_on_welcome() and self.current == EDIT
+        self.toolbar.setVisible(True)
+        wbtn = getattr(self.bar, "welcome_btn", None)
+        if wbtn is not None:
+            wbtn.setChecked(on_welcome)
+        if on_welcome:
+            self.bar.set_current("")
+        else:
+            self.bar.set_current(self.current)
 
 
 def _scroll_box(widget):

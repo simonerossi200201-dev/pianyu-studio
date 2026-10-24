@@ -492,6 +492,11 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
     # Q164：全程序的下拉框一展开就看得到全部选项（不再被截掉、要滚轮才看得到）
     from cutora.ui.theme.combo_popup import install as _install_combo_popup
     _install_combo_popup(app)
+    try:
+        from cutora.ui.wheel_guard import install_wheel_guard as _install_wheel_guard
+        _install_wheel_guard(app)
+    except Exception:
+        pass
 
     # Q170：字体体检的结果（或者「风险字体还没体检」）要在打开任何工程之前就位 → 会卡死的字体从第一帧起就不画
     try:

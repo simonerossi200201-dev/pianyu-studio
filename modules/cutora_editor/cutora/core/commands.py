@@ -172,7 +172,7 @@ class CommandBus:
             raise NeedsGui()
         if spec.requires_project and not _has_project(window):
             raise CommandError(
-                "命令 %s 需要已打开的工程。请先 project.open / project.new。" % name,
+                "当前还没有导入视频或打开工程，请先导入视频或新建/打开工程后再使用「%s」功能。" % (spec.title_zh or name),
                 code="needs_project",
             )
         env = ctx or Context()
