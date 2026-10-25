@@ -1059,10 +1059,16 @@ def purge_ui_memory_before_export(window=None) -> float:
             reset_fn()
     except Exception:
         pass
-    # 4. 触发 Python GC + mimalloc 回收 + Windows 工作集压缩（立即更新系统 ullAvailPhys）
+    # 4. 触发 Python GC + Rust 原生缓冲池清理与内核工作集压缩 + mimalloc 回收（立即更新系统 ullAvailPhys）
     try:
         gc.collect()
         gc.collect()
+    except Exception:
+        pass
+    try:
+        from cutora.core.rust_engine import rust_arena_clear, rust_trim_working_set
+        rust_arena_clear()
+        rust_trim_working_set()
     except Exception:
         pass
     if os.name == "nt":

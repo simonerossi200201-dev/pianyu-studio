@@ -1,4 +1,0 @@
-name = 'studio'
-root = '../../studio_gateway'
-python = '../../../runtime/venv/Scripts/python.exe'
-entry = 'python -m modules.studio_gateway.server'

@@ -401,6 +401,8 @@ def run_apply_refresh_suite() -> int:
 def test_stylepack_apply_reloads_panel_and_survives_heartbeat():
     import subprocess
     py = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
+    if not os.path.isfile(py):
+        py = sys.executable
     proc = subprocess.run(
         [py, os.path.join(REPO, "tests", "test_t04e_stylepack.py"), "--apply-refresh"],
         cwd=REPO,

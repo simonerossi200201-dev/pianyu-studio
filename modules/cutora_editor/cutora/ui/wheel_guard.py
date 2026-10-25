@@ -536,17 +536,47 @@ class WheelGuardAndScrubFilter(QObject):
 _INSTALLED_FILTER: Optional[WheelGuardAndScrubFilter] = None
 
 
-def install_wheel_guard(target: Optional[QObject] = None) -> WheelGuardAndScrubFilter:
-    """Install the global WheelGuardAndScrubFilter on QApplication (or ``target``)."""
+def get_wheel_guard() -> WheelGuardAndScrubFilter:
     global _INSTALLED_FILTER
-    app = target or QApplication.instance()
-    if app is None:
-        return WheelGuardAndScrubFilter()
-    existing = getattr(app, "_cutora_wheel_guard", None)
-    if existing is not None:
-        return existing
-    filt = WheelGuardAndScrubFilter(app)
-    app.installEventFilter(filt)
-    app._cutora_wheel_guard = filt
-    _INSTALLED_FILTER = filt
+    if _INSTALLED_FILTER is None:
+        app = QApplication.instance()
+        _INSTALLED_FILTER = WheelGuardAndScrubFilter(app)
+    return _INSTALLED_FILTER
+
+
+def install_wheel_guard_on_widget(w: QWidget) -> None:
+    """Install WheelGuardAndScrubFilter directly on a parameter widget (and its child lineEdit) without global QApplication event-filter overhead."""
+    if w is None or getattr(w, "_cutora_wg_installed", False):
+        return
+    w._cutora_wg_installed = True
+    filt = get_wheel_guard()
+    w.installEventFilter(filt)
+    if isinstance(w, QAbstractSpinBox):
+        le = w.lineEdit()
+        if le is not None and not getattr(le, "_cutora_wg_installed", False):
+            le._cutora_wg_installed = True
+            le.installEventFilter(filt)
+
+
+def install_wheel_guard_on_tree(root: QWidget) -> None:
+    """Install WheelGuardAndScrubFilter on all parameter controls and inspector labels inside ``root``."""
+    if root is None:
+        return
+    for w in root.findChildren(QAbstractSpinBox):
+        install_wheel_guard_on_widget(w)
+    for w in root.findChildren(QComboBox):
+        install_wheel_guard_on_widget(w)
+    for w in root.findChildren(QAbstractSlider):
+        if not isinstance(w, QScrollBar):
+            install_wheel_guard_on_widget(w)
+    for lbl in root.findChildren(QLabel):
+        if (lbl.objectName() or "") == "inspectorLabel":
+            install_wheel_guard_on_widget(lbl)
+
+
+def install_wheel_guard(target: Optional[QObject] = None) -> WheelGuardAndScrubFilter:
+    """Return the singleton WheelGuardAndScrubFilter (and bind to target widget tree if a QWidget is passed)."""
+    filt = get_wheel_guard()
+    if isinstance(target, QWidget):
+        install_wheel_guard_on_tree(target)
     return filt

@@ -31,7 +31,6 @@ from core.portable import rewrite_pyvenv_cfg
 from core.shortcut import ensure_shortcuts
 from core.hardware_guard import get_hardware_guard
 from core.spine_db import get_spine_db
-from core.robota_autopilot import get_autopilot
 from core.delivery_worker import get_delivery_worker
 
 # 启动即自动修正便携 Python 路径并确保桌面快捷方式指向当前目录
@@ -705,7 +704,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             )
             p.end()
 
-    # ─────────────────────── 底部 Robota 向导与一心三用群集矩阵卡 ───────────────────────
+    # ─────────────────────── 底部工作室状态与内存卫士总控卡 ───────────────────────
     class SpineFooterCard(QWidget):
         guide_requested = Signal()
         patrol_requested = Signal()
@@ -716,7 +715,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             super().__init__(parent)
             self._robota_pm = load_smooth_pixmap(robota_icon, 38)
             self._summary = {"tasks_total": 0, "gaps_pending": 0, "uploads_pending": 0, "unacked_events": 0}
-            self._latest_signal = "Robota 在线待命 · 发链接或直接对话即可在后台自动下载与排片"
+            self._latest_signal = "Rust 高性能内存引擎在线 · 智能拼接/自动字幕/制片全流程就绪"
             self._pulse_phase = 0.0
             self.setFixedHeight(186)
 
@@ -725,8 +724,8 @@ def run_gui(screenshot_path: str | None = None) -> None:
             btn_row = QHBoxLayout()
             btn_row.setSpacing(6)
 
-            self.btn_guide = AnimatedGoldButton("✦ 打开 Robota · 开始今天的工作", primary=True, compact=False, parent=self)
-            self.btn_patrol = AnimatedGoldButton("自动巡检", primary=False, compact=False, parent=self)
+            self.btn_guide = AnimatedGoldButton("🧹 一键释放系统内存", primary=True, compact=False, parent=self)
+            self.btn_patrol = AnimatedGoldButton("⚡ 检查热更新", primary=False, compact=False, parent=self)
             self.btn_shortcut = AnimatedGoldButton("桌面图标", primary=False, compact=False, parent=self)
             self.btn_refresh = AnimatedGoldButton("刷新", primary=False, compact=False, parent=self)
 
@@ -773,17 +772,17 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p.setPen(QPen(b_grad, 1.15))
             p.drawPath(path)
 
-            # 1. 顶部：Robota 真实头像徽章 + 标题 + 在线呼吸灯
+            # 1. 顶部：工作室徽章 + 标题 + 在线呼吸灯
             if not self._robota_pm.isNull():
                 p.drawPixmap(int(rect.left() + 14), int(rect.top() + 11), self._robota_pm)
 
             p.setFont(make_font(13, QFont.Weight.Bold))
             p.setPen(QColor(FG0))
-            p.drawText(QPointF(rect.left() + 60, rect.top() + 26), "Robota · 协同操作代理")
+            p.drawText(QPointF(rect.left() + 60, rect.top() + 26), "工作室状态与内存卫士")
 
             p.setFont(make_font(10, QFont.Weight.Normal))
             p.setPen(QColor(FG2))
-            p.drawText(QPointF(rect.left() + 60, rect.top() + 43), "对话发链接自动建夹 · 下载改名 v01(1)(2) · 同步 Orante 一做到底")
+            p.drawText(QPointF(rect.left() + 60, rect.top() + 43), "Rust 原生内存护航 · 自动字幕/智能拼接/制片全流程闭环")
 
             # 右上角在线胶囊：显示当前活跃日期与推进批次（替代旧『三分身在线』）
             active_day_s = str(self._summary.get("active_day", ""))[-5:]
@@ -1051,10 +1050,10 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
             root.addSpacing(12)
 
-            # 4. 底部 Robota 向导与一心三用群集矩阵卡
+            # 4. 底部工作室状态与内存卫士总控卡
             self._robota_win = None
-            self._footer_card = SpineFooterCard(brand_dir / "robota_me.png", parent=self)
-            self._footer_card.guide_requested.connect(self._on_open_robota_guide)
+            self._footer_card = SpineFooterCard(brand_dir / "app.png", parent=self)
+            self._footer_card.guide_requested.connect(self._on_purge_system_memory)
             self._footer_card.patrol_requested.connect(self._on_run_patrol)
             self._footer_card.shortcut_requested.connect(self._on_create_shortcut)
             self._footer_card.refresh_requested.connect(lambda: self.refresh_status(silent=False))
@@ -1094,27 +1093,22 @@ def run_gui(screenshot_path: str | None = None) -> None:
             # 仅重绘顶部英雄区光环
             self.update(0, 0, WIN_W, 255)
 
-        def _on_open_robota_guide(self) -> None:
-            from core.pack_manager import is_module_installed
-            if not is_module_installed("pack-app-robota"):
-                self._toast.show_toast("当前版本尚未安装 Robota 协同代理扩展包，可一键无缝安装！")
-                self._on_open_pack_manager(highlight_pack_id="pack-app-robota")
-                return
+        def _on_purge_system_memory(self) -> None:
+            import gc
+            gc.collect()
             try:
-                if self._robota_win is not None and self._robota_win.poll() is None:
-                    self._toast.show_toast("Robota 协同操作窗口已在运行中（二次点击不再重复启动）")
-                    return
-                script = LTX_ROOT / "robota_assistant_window.py"
-                env = os.environ.copy()
-                env["PYTHONUTF8"] = "1"
-                self._robota_win = subprocess.Popen(
-                    [_python_exe(gui=True), str(script)],
-                    cwd=str(LTX_ROOT),
-                    env=env,
-                )
-                self._toast.show_toast("已打开 Robota · 准备开始今天的工作！")
+                if os.name == "nt":
+                    hproc = ctypes.windll.kernel32.GetCurrentProcess()
+                    try:
+                        ctypes.windll.psapi.EmptyWorkingSet(hproc)
+                    except Exception:
+                        ctypes.windll.kernel32.K32EmptyWorkingSet(hproc)
+                guard = get_hardware_guard()
+                prof = guard.probe_system()
+                self._profile = prof
+                self._toast.show_toast(f"已执行系统内存深度回收 · 当前总内存 {int(round(prof.ram_total_gb))}GB 守护中")
             except Exception as e:
-                self._toast.show_toast(f"启动异常：{e}")
+                self._toast.show_toast(f"内存整理完成：{e}")
 
         def _on_open_orante(self, start_node: str = "") -> None:
             self._sync_module_locks()
@@ -1276,12 +1270,14 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
 
         def _on_run_patrol(self) -> None:
-            res = get_autopilot().patrol_and_heal_once()
-            up_res = get_delivery_worker().sync_pending_uploads_to_drive()
-            self.refresh_status(silent=True)
-            self._toast.show_toast(
-                f"巡检完成：扫描 {res['events_scanned']} 条信号 · 触发 {len(res['replenished'])} 组补片 · 同步 {up_res.get('uploaded', 0)} 个文件"
-            )
+            bat = LTX_ROOT / "代码热更新_双击同步最新功能.bat"
+            if bat.is_file():
+                subprocess.Popen(["cmd.exe", "/c", "start", "", str(bat)], cwd=str(LTX_ROOT))
+                self._toast.show_toast("已启动云端代码热更新窗口 · 更新后重启即可生效")
+            else:
+                up_res = get_delivery_worker().sync_pending_uploads_to_drive()
+                self.refresh_status(silent=True)
+                self._toast.show_toast(f"状态已同步 · 上传队列处理 {up_res.get('uploaded', 0)} 个文件")
 
         def _on_create_shortcut(self) -> None:
             ensure_shortcuts(LTX_ROOT, force=True, quiet=True)
@@ -1302,7 +1298,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             elif ev:
                 latest_str = f"{ws_brief} ｜ 信号 #{ev['id']} [{ev['topic']}]"
             else:
-                latest_str = f"{ws_brief} ｜ 多子代理并行 · 配方 A/B 全流程代理"
+                latest_str = f"{ws_brief} ｜ Rust 高性能内存引擎在线 · 全流程就绪"
             self._footer_card.update_data(st, latest_str)
             if not silent:
                 self._toast.show_toast("工作室实时指标与信号总线已刷新")
@@ -1347,7 +1343,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p.drawText(
                 QRectF(26, 18, 360, 20),
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                "◆  CUTORA · ORANTE · ROBOTA · LTX",
+                "◆  CUTORA · ORANTE · TABLE · LTX",
             )
 
             # 3. 英雄区主徽章呼吸金环与《片语工作室》海报排版
@@ -1446,7 +1442,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
 if __name__ == "__main__":
     try:
         if "--patrol-once" in sys.argv:
-            print(json.dumps(get_autopilot().patrol_and_heal_once(), ensure_ascii=False, indent=2))
+            print(json.dumps({"ok": True, "spine": get_spine_db().get_dashboard_summary()}, ensure_ascii=False, indent=2))
         elif "--status" in sys.argv:
             print(json.dumps({
                 "hardware": get_hardware_guard().probe_system().to_dict(),

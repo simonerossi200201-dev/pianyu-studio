@@ -30,12 +30,18 @@ from cutora.ui.panels.style_thumbs import (
 
 ANIM_PREF_KEY = APPLY_ANIMATION_KEY
 
+import threading as _threading
+import time as _time
+_THUMB_RENDER_LOCK = _threading.Lock()
 
-def _render_thumbs_offthread(spec: dict) -> dict:
+
+def _render_thumbs_offthread(spec: dict, cancel_check=None) -> dict:
     """Grab one frame and paint the visible cards. QImage only, no QPixmap."""
     from cutora.ui.panels.style_thumbs import (
         grab_video_frame, neutral_frame, render_pack_image,
     )
+    if cancel_check is not None and cancel_check():
+        return {"base": None, "frames": []}
     video = spec.get("video") or ""
     cw = int(spec.get("cw") or 0)
     ch = int(spec.get("ch") or 0)
@@ -48,6 +54,8 @@ def _render_thumbs_offthread(spec: dict) -> dict:
         base = base.copy()
     frames = []
     for job in spec.get("jobs") or []:
+        if cancel_check is not None and cancel_check():
+            break
         pack = job.get("pack") or {}
         try:
             img = render_pack_image(
@@ -60,6 +68,7 @@ def _render_thumbs_offthread(spec: dict) -> dict:
             "pack": pack,
             "image": img.copy(),
         })
+        _time.sleep(0.001)
     return {"base": base, "frames": frames}
 
 
@@ -382,6 +391,8 @@ class StyleGalleryPanel(QWidget):
             "jobs": jobs,
         }
 
+        panel_ref = self
+
         class _Job(QRunnable):
             def __init__(self, spec, bus, gen):
                 super().__init__()
@@ -391,13 +402,21 @@ class StyleGalleryPanel(QWidget):
                 self.setAutoDelete(True)
 
             def run(self):
+                cancel_fn = lambda: self.gen != int(getattr(panel_ref, "_thumb_gen", 0))
+                if cancel_fn():
+                    return
                 payload = None
                 try:
-                    payload = _render_thumbs_offthread(self.spec)
+                    with _THUMB_RENDER_LOCK:
+                        if cancel_fn():
+                            return
+                        payload = _render_thumbs_offthread(self.spec, cancel_check=cancel_fn)
                 except Exception:
                     from cutora.core.log import get_logger
                     get_logger("cutora.ui.panels.style_gallery").exception(
                         "gallery thumb job failed")
+                if cancel_fn():
+                    return
                 try:
                     self.bus.ready.emit(self.gen, payload)
                 except RuntimeError:

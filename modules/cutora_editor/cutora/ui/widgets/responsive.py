@@ -151,6 +151,14 @@ def configure_scroll(scroll: QScrollArea) -> None:
 
 def harden_widget(root: QWidget) -> None:
     """Walk a page: no horizontal min-width traps, forms wrap, buttons elide."""
+    if getattr(root, "_cutora_hardened", False):
+        return
+    root._cutora_hardened = True
+    try:
+        from cutora.ui.wheel_guard import install_wheel_guard_on_tree
+        install_wheel_guard_on_tree(root)
+    except Exception:
+        pass
     for sa in root.findChildren(QScrollArea):
         configure_scroll(sa)
     for w in root.findChildren(QWidget):

@@ -16,6 +16,7 @@
       "resources/brand",
       "modules/table_tool",
       "modules/cutora_editor",
+      "modules/orante_desk",
       "modules/studio_gateway",
       "runtime/bin",
       "runtime/ffmpeg",
@@ -26,17 +27,12 @@
     "included_model_paths": [
       "runtime/models/model_paths.json",
       "runtime/models/mediapipe",
-      "runtime/models/vision/mediapipe",
       "runtime/models/asr_large-v3-turbo",
       "runtime/models/asr_small",
       "runtime/models/align_wav2vec2",
       "runtime/models/matte_sam21_base_plus",
       "runtime/models/matte_sam21_large",
-      "runtime/models/vision/matte_sam21_base_plus",
-      "runtime/models/vision/matte_sam21_large",
       "runtime/models/rmbg2",
-      "runtime/models/vision/rmbg2",
-      "runtime/models/vision/dpt_hybrid",
       "runtime/models/dpt_hybrid",
       "runtime/models/demucs",
       "runtime/models/resemble_enhance"
@@ -52,7 +48,7 @@
       "min_vram_gb": 0.0,
       "cpu_supported": true,
       "approx_size_gb": 0.02,
-      "description": "片语工作室『01 Orante 2.0 制片台』独立软件模块（含 Grok / Google Flow / 本地 LTX-2.5 批量视频生成调度、分镜排片、首尾帧接力、缺片回流补生与 Chrome 协同插件）。仅使用 CUTORA 的精简版用户可随时按需一键安装。",
+      "description": "片语工作室『01 Orante 2.0 制片台』独立软件模块（含 Grok / Google Flow / 本地 LTX-2.5 批量视频生成调度、分镜排片、首尾帧接力、缺片回流补生与 Chrome 协同插件）。现已默认内置于标准核心底座。",
       "cloud_fallback": "内置 Chrome 扩展与云端 Grok/Flow 通道",
       "model_ids": ["app-orante"],
       "paths": [
@@ -62,28 +58,6 @@
       ],
       "required_markers": [
         "modules/orante_desk/orante/__main__.py"
-      ]
-    },
-    {
-      "id": "pack-app-robota",
-      "name": "Robota 协同操作代理软件模块包 (自动建夹 · 下载改名 · 闭环巡检)",
-      "short_name": "Robota 协同代理",
-      "category": "app_module",
-      "tier": 1,
-      "min_vram_gb": 0.0,
-      "cpu_supported": true,
-      "approx_size_gb": 0.01,
-      "description": "片语工作室『Robota · 协同操作代理』独立软件模块（含自然语言对话控制台、发网盘链接自动建夹、下载改名 v01(1)(2)、跨窗口 SpineDB 巡检与自动补片闭环）。精简版用户可按需一键安装。",
-      "cloud_fallback": "手动通过右键表格工具与 Orante 操作",
-      "model_ids": ["app-robota"],
-      "paths": [
-        "modules/robota_hub/robota",
-        "modules/robota_hub/config",
-        "robota_assistant_window.py"
-      ],
-      "required_markers": [
-        "robota_assistant_window.py",
-        "modules/robota_hub/robota"
       ]
     },
     {

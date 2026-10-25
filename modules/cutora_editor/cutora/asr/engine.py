@@ -380,10 +380,15 @@ def _cuda_mem_gb():
         return (0.0, 0.0)
 
 def _trim_process_memory():
-    """在 Windows 下将 Python GC / mimalloc / CRT 堆及进程工作集中的空闲页立即归还给操作系统。"""
+    """在 Windows 下将 Python GC / mimalloc / Rust 原生缓冲池及进程工作集中的空闲页立即归还给操作系统。"""
     import gc
     try:
         gc.collect()
+    except Exception:
+        pass
+    try:
+        from cutora.core.rust_engine import rust_trim_working_set
+        rust_trim_working_set()
     except Exception:
         pass
     if os.name == "nt":
@@ -457,8 +462,8 @@ def release_gpu_models():
         pass
     try:
         # Q152-D：AI 抠像的 SAM 2.1 也一起卸
-        from cutora.fx.segment import release_models as _release_sam
-        _release_sam()
+        from cutora.fx.segment import release_sam2_models
+        release_sam2_models()
     except Exception:
         pass
     try:

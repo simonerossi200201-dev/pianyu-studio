@@ -7,8 +7,11 @@ import os
 import shutil
 import subprocess
 
+import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VENV_PY = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
+if not os.path.isfile(VENV_PY):
+    VENV_PY = sys.executable
 
 
 def test_q34_pack_thumbs(tmp_path):

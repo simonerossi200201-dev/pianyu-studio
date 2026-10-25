@@ -40,11 +40,9 @@ ALLOWED_EXTRACT_PREFIXES = (
     "runtime/models/",
     "runtime/comfyui/",
     "modules/orante_desk/",
-    "modules/robota_hub/",
 )
 ALLOWED_EXTRACT_EXACT = {
     "pack_receipt.json",
-    "robota_assistant_window.py",
 }
 
 

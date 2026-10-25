@@ -81,6 +81,9 @@ def inspector_row_of(widget):
 
 
 def _cap_combo(widget) -> None:
+    if getattr(widget, "_cutora_capped", False):
+        return
+    widget._cutora_capped = True
     # Expanding up to the cap: every dropdown shares one right edge instead
     # of hugging its current text (which made widths jump row to row).
     widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -93,6 +96,9 @@ def _cap_combo(widget) -> None:
 
 
 def _cap_spin(widget) -> None:
+    if getattr(widget, "_cutora_capped", False):
+        return
+    widget._cutora_capped = True
     widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     widget.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
     widget.setMaximumWidth(INSPECTOR_SPIN_WIDTH)
@@ -104,20 +110,22 @@ def _cap_spin(widget) -> None:
 
 
 class InspectorLimitFilter(QObject):
-    """Re-apply max-width caps after Qt lays the panel out."""
+    """Re-apply max-width caps once when Qt first shows the panel."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._busy = False
+        self._done = False
 
     def eventFilter(self, obj, event):
-        if self._busy or event is None:
+        if self._done or self._busy or event is None:
             return False
-        if event.type() not in (QEvent.Type.Show, QEvent.Type.Resize):
+        if event.type() != QEvent.Type.Show:
             return False
         if not isinstance(obj, QWidget):
             return False
         self._busy = True
+        self._done = True
         try:
             apply_inspector_limits(obj)
         finally:
@@ -126,12 +134,12 @@ class InspectorLimitFilter(QObject):
 
 
 def install_inspector_limits(root: QWidget) -> None:
+    apply_inspector_limits(root)
     try:
-        from cutora.ui.wheel_guard import install_wheel_guard
-        install_wheel_guard()
+        from cutora.ui.wheel_guard import install_wheel_guard_on_tree
+        install_wheel_guard_on_tree(root)
     except Exception:
         pass
-    apply_inspector_limits(root)
     filt = getattr(root, "_inspector_limit_filter", None)
     if filt is None:
         filt = InspectorLimitFilter(root)

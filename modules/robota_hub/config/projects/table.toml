@@ -1,4 +1,0 @@
-name = 'table'
-root = '../../table_tool'
-python = '../../../runtime/venv/Scripts/python.exe'
-entry = 'python app/表格工具.py'

@@ -112,10 +112,18 @@ def generate_peaks(media_path: str,
                 n_full = (len(data) // block_bytes) * block_bytes
                 if n_full > 0:
                     samples = np.frombuffer(memoryview(data)[:n_full], dtype=np.float32)
-                    reshaped = samples.reshape(-1, chunk_size)
-                    peak_blocks.append(
-                        np.column_stack((reshaped.min(axis=1), reshaped.max(axis=1))).astype(np.float32)
-                    )
+                    try:
+                        from cutora.core.rust_engine import rust_waveform_peaks_f32
+                        r_peaks = rust_waveform_peaks_f32(samples, chunk_size)
+                    except Exception:
+                        r_peaks = None
+                    if r_peaks is not None:
+                        peak_blocks.append(r_peaks)
+                    else:
+                        reshaped = samples.reshape(-1, chunk_size)
+                        peak_blocks.append(
+                            np.column_stack((reshaped.min(axis=1), reshaped.max(axis=1))).astype(np.float32)
+                        )
                     carry = data[n_full:]
                 else:
                     carry = data

@@ -43,6 +43,12 @@ def backend_name() -> str:
     return str(os.environ.get("CUTORA_MATTE_BACKEND") or "sam2").strip().lower()
 
 
+def release_sam2_models() -> None:
+    """主动卸载已加载的 SAM 2.1 模型权重，立即释放内存与显存。"""
+    with _MODEL_LOCK:
+        _LOADED.clear()
+
+
 def _group_prompts(prompts):
     by_obj: dict = {}
     for p in prompts or []:
@@ -125,7 +131,20 @@ class Sam2Backend:
         if self.model_dir:
             return self.model_dir
         from cutora.asr.models import get_model, model_folder, verify_model
+        # 无独立显卡或显存 < 6GB 时优先使用轻快版 matte-sam21-base-plus，若请求的 large 未安装也自动回退 base-plus
+        dev, _dt, _note = pick_device()
+        vfree = vram_free_gb()
+        if self.model_id == "matte-sam21-large" and (dev == "cpu" or (vfree is not None and vfree < 5.5)):
+            bp = get_model("matte-sam21-base-plus")
+            if bp is not None and verify_model(bp) == "ready":
+                self.model_id = "matte-sam21-base-plus"
         row = get_model(self.model_id)
+        if row is None or verify_model(row) != "ready":
+            if self.model_id != "matte-sam21-base-plus":
+                bp = get_model("matte-sam21-base-plus")
+                if bp is not None and verify_model(bp) == "ready":
+                    self.model_id = "matte-sam21-base-plus"
+                    row = bp
         if row is None:
             raise RuntimeError("未登记的模型 %s" % self.model_id)
         if verify_model(row) != "ready":

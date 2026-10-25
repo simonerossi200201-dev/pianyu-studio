@@ -55,7 +55,7 @@ class _TlsRoiCache:
     def _c(self) -> RoiCache:
         c = getattr(_TLS, "roi", None)
         if c is None:
-            c = RoiCache(64)
+            c = RoiCache(28)
             _TLS.roi = c
         return c
 
@@ -92,3 +92,8 @@ ROI_CACHE = _TlsRoiCache()
 
 def clear_roi_cache() -> None:
     ROI_CACHE.clear()
+    try:
+        from cutora.core.rust_engine import rust_arena_clear
+        rust_arena_clear()
+    except Exception:
+        pass

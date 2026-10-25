@@ -1,4 +1,0 @@
-name = 'orante'
-root = '../../orante_desk'
-python = '../../../runtime/venv/Scripts/python.exe'
-entry = 'python -m orante'

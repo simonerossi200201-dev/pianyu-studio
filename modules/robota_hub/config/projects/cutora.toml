@@ -1,5 +1,0 @@
-name = 'cutora'
-root = '../../cutora_editor'
-python = '../../../runtime/venv/Scripts/python.exe'
-entry = 'python -m cutora'
-mcp = []
