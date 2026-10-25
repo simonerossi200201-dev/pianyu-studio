@@ -46,7 +46,22 @@ class ExportRenderer:
                 t_dur = float(ov.get("transition_duration", anim_engine.DEFAULT_TRANSITION_DURATION) or 0.0)
                 if (t - s) <= t_dur + 0.05 or (e - t) <= t_dur + 0.05:
                     return None
-            if ov.get("fx"):
+            fx = ov.get("fx")
+            if isinstance(fx, dict) and fx:
+                fx_anim = fx.get("anim") or {}
+                if (
+                    str(fx_anim.get("in", "none") or "none") != "none"
+                    or str(fx_anim.get("out", "none") or "none") != "none"
+                    or str(fx_anim.get("loop", "none") or "none") != "none"
+                ):
+                    return None
+                fx_bg = fx.get("bg") or {}
+                if fx_bg.get("enabled") and str(fx_bg.get("type", "") or "") == "glass":
+                    return None
+                fx_emph = fx.get("emphasis") or {}
+                if str(fx_emph.get("anim", "none") or "none") != "none":
+                    return None
+            elif fx:
                 return None
             text_ids.append((
                 id(ov),
@@ -220,7 +235,9 @@ class ExportRenderer:
         if canvas is None or canvas.width() != w or canvas.height() != h:
             canvas = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
         _t_other = time.perf_counter() if _probe.on() else 0.0
-        canvas.fill(Qt.GlobalColor.black)
+        _defer_clear = bool(draw_background and getattr(draw_background, "_handles_canvas_clear", False))
+        if not _defer_clear:
+            canvas.fill(Qt.GlobalColor.black)
         painter = QPainter(canvas)
         try:
             # Fast 导出：关闭昂贵的渲染 hint（对字幕/混合模式影响很小，但能显著提速）
@@ -228,8 +245,12 @@ class ExportRenderer:
             if _probe.on():
                 _probe.add_ms("other", time.perf_counter() - _t_other)
             if draw_background:
-                painter._canvas_cleared_black = True
+                painter._canvas_cleared_black = not _defer_clear
+                painter._canvas_needs_clear = _defer_clear
                 draw_background(painter)
+                if getattr(painter, "_canvas_needs_clear", False):
+                    painter.fillRect(0, 0, w, h, Qt.GlobalColor.black)
+                    painter._canvas_needs_clear = False
                 painter._canvas_cleared_black = False
             if backdrop is None and isinstance(task_data, dict):
                 backdrop = task_data.pop("_fx_backdrop", None)

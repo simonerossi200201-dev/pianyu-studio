@@ -595,6 +595,13 @@ def _quantize_partition(weights, hard):
     """
     if not weights:
         return []
+    try:
+        from cutora.core.rust_engine import rust_quantize_partition
+        rq = rust_quantize_partition(weights, bool(hard))
+        if rq is not None:
+            return rq
+    except Exception:
+        pass
     if hard:
         owner = np.full(weights[0].shape, -1, np.int16)
         for i, wgt in enumerate(weights):
@@ -1320,7 +1327,29 @@ def _build_border_overlay(split, cache):
                 bp.restore()
     finally:
         bp.end()
-    return (bkey, bx0, by0, bimg.copy())
+    bw, bh = bimg.width(), bimg.height()
+    strips = []
+    try:
+        bpl = bimg.bytesPerLine()
+        arr = np.frombuffer(bimg.constBits(), dtype=np.uint8, count=bh * bpl).reshape(bh, bpl)
+        alpha = arr[:, 3:bw * 4:4]
+        tile = 128
+        for ty0 in range(0, bh, tile):
+            ty1 = min(bh, ty0 + tile)
+            for tx0 in range(0, bw, tile):
+                tx1 = min(bw, tx0 + tile)
+                sub_a = alpha[ty0:ty1, tx0:tx1]
+                if not np.any(sub_a):
+                    continue
+                ys_nz, xs_nz = np.nonzero(sub_a)
+                ry0 = ty0 + int(ys_nz.min())
+                ry1 = ty0 + int(ys_nz.max()) + 1
+                rx0 = tx0 + int(xs_nz.min())
+                rx1 = tx0 + int(xs_nz.max()) + 1
+                strips.append((bx0 + rx0, by0 + ry0, bimg.copy(rx0, ry0, rx1 - rx0, ry1 - ry0)))
+    except Exception:
+        strips = [(bx0, by0, bimg.copy())]
+    return (bkey, strips)
 
 
 def _draw_borders(painter, split, cache, composed):
@@ -1347,7 +1376,8 @@ def _draw_borders(painter, split, cache, composed):
             except Exception:
                 pass
         if ov is not None:
-            painter.drawImage(int(ov[1]), int(ov[2]), ov[3])
+            for sx, sy, simg in ov[1]:
+                painter.drawImage(int(sx), int(sy), simg)
             return
 
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -1586,6 +1616,32 @@ def _blit_masked(painter, img, origin, mask, scratch, spans=None, img_opaque=Fal
         solid_rects = [_rect(a, b) for a, b in (spans.get("solid") or ())]
         band_rects = [_rect(a, b) for a, b in (spans.get("band") or ())]
 
+    from PySide6.QtGui import QImage as _QImage
+    dev = painter.device()
+    is_premasked = bool(getattr(img, "_is_premasked_cell", False))
+    if (
+        isinstance(dev, _QImage)
+        and painter.worldTransform().isIdentity()
+        and (img_opaque or is_premasked)
+    ):
+        try:
+            from cutora.core.rust_engine import rust_blit_cell_spans
+            if rust_blit_cell_spans(
+                img,
+                mask,
+                dev,
+                solid_rects,
+                band_rects,
+                ox,
+                oy,
+                img_opaque=True,
+                premasked=is_premasked,
+            ):
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+                return
+        except Exception:
+            pass
+
     if solid_rects:
         painter.setCompositionMode(
             QPainter.CompositionMode.CompositionMode_Source
@@ -1600,18 +1656,26 @@ def _blit_masked(painter, img, origin, mask, scratch, spans=None, img_opaque=Fal
             for r in band_rects:
                 painter.drawImage(QPoint(ox + r.x(), oy + r.y()), img, r)
         else:
-            sp = QPainter(scratch)
-            try:
-                sp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+            done_rust = False
+            if isinstance(dev, _QImage) and painter.worldTransform().isIdentity():
+                try:
+                    from cutora.core.rust_engine import rust_blit_masked_band_plus
+                    done_rust = rust_blit_masked_band_plus(img, mask, dev, band_rects, ox, oy)
+                except Exception:
+                    done_rust = False
+            if not done_rust:
+                sp = QPainter(scratch)
+                try:
+                    sp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+                    for r in band_rects:
+                        sp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+                        sp.drawImage(r.topLeft(), img, r)
+                        sp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+                        sp.drawImage(r.topLeft(), mask, r)
+                finally:
+                    sp.end()
                 for r in band_rects:
-                    sp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-                    sp.drawImage(r.topLeft(), img, r)
-                    sp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-                    sp.drawImage(r.topLeft(), mask, r)
-            finally:
-                sp.end()
-            for r in band_rects:
-                painter.drawImage(QPoint(ox + r.x(), oy + r.y()), scratch, r)
+                    painter.drawImage(QPoint(ox + r.x(), oy + r.y()), scratch, r)
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
 
@@ -1945,13 +2009,36 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
         and not later_cids
         and not want_plate
         and str(border_style(sp)) != "glass"
-        and getattr(painter, "_canvas_cleared_black", False)
+        and (getattr(painter, "_canvas_cleared_black", False) or getattr(painter, "_canvas_needs_clear", False))
         and len(cell_renders) == len(all_cell_ids)
         and isinstance(dev, QImage)
         and dev.width() == w
         and dev.height() == h
         and painter.worldTransform().isIdentity()
     )
+    band_jobs = []
+    defer_band_clear = False
+    if getattr(painter, "_canvas_needs_clear", False):
+        painter._canvas_needs_clear = False
+        if direct_canvas:
+            can_partial = True
+            for cid, _tr in cell_renders:
+                geom = cells.get(cid)
+                spans = geom.get("spans") if geom else None
+                if not spans or not spans.get("rects"):
+                    can_partial = False
+                    break
+                brects = spans.get("band") or ()
+                if brects:
+                    ox, oy = geom["origin"]
+                    band_jobs.append((ox, oy, brects))
+            if can_partial:
+                defer_band_clear = True
+            else:
+                dev.fill(0xFF000000)
+        elif isinstance(dev, QImage):
+            dev.fill(0xFF000000)
+        painter._canvas_cleared_black = True
     op = None
     if direct_canvas:
         op = painter
@@ -1963,6 +2050,24 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
     if quiet is not None:
         quiet.__enter__()
     lazy_clear = bool(getattr(paint_one, "_supports_lazy_clear", False))
+    fast_lookup = getattr(paint_one, "_fast_cell_lookup", None) if (not per_cell and not contain and not direct_band) else None
+    pending_cell_blits = [] if (direct_canvas and not later_cids) else None
+
+    def _flush_deferred_blits():
+        nonlocal defer_band_clear
+        if defer_band_clear or pending_cell_blits:
+            from cutora.core.rust_engine import rust_exec_split_blits, rust_zero_band_rects
+            if pending_cell_blits:
+                if not rust_exec_split_blits(dev, band_jobs if defer_band_clear else None, pending_cell_blits):
+                    if defer_band_clear and not rust_zero_band_rects(dev, band_jobs):
+                        dev.fill(0xFF000000)
+                pending_cell_blits.clear()
+                defer_band_clear = False
+            elif defer_band_clear:
+                if not rust_zero_band_rects(dev, band_jobs):
+                    dev.fill(0xFF000000)
+                defer_band_clear = False
+
     try:
         if op is not None and not direct_canvas:
             op.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
@@ -2002,77 +2107,148 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                 geom["_dirty"] = False
             cx, cy, cw, ch = geom["content"]
             lw, lh = layer.width(), layer.height()
-            lp = QPainter(layer)
-            try:
-                lp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-                if cx or cy:
-                    lp.translate(cx, cy)
-                lp._split_layer_rect = (-float(cx), -float(cy), float(lw), float(lh))
-                lp._split_target_layer = layer
-                lp._split_layer_img = layer if (use_lazy and geom.get("_dirty", True)) else None
-                lp._split_covered_all = False
-                lp._split_drew = None
-                lp._split_filled = False
-                lp._split_qimg = None
-                lp._split_direct_img = None
-                lp._split_loop_bake = None
-                lp._accepts_direct_cell_img = not per_cell
-                if per_cell:
+            fast_res = fast_lookup(tr, cw, ch, lw, lh, cx, cy) if fast_lookup is not None else None
+            if fast_res is not None:
+                f_kind, f_val = fast_res
+                direct_bgr = f_val if f_kind == "bgr" else None
+                direct_img = f_val if f_kind == "img" else None
+                cell_opaque = True
+                bake_req = None
+                lp = None
+            else:
+                lp = QPainter(layer)
+                try:
+                    lp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+                    if cx or cy:
+                        lp.translate(cx, cy)
+                    lp._split_layer_rect = (-float(cx), -float(cy), float(lw), float(lh))
+                    lp._split_target_layer = layer
+                    lp._split_cell_mask = geom.get("mask")
+                    lp._split_layer_img = layer if (use_lazy and geom.get("_dirty", True)) else None
+                    lp._split_covered_all = False
+                    lp._split_drew = None
+                    lp._split_filled = False
+                    lp._split_qimg = None
+                    lp._split_direct_img = None
+                    lp._split_direct_bgr = None
+                    lp._split_loop_bake = None
+                    lp._accepts_direct_cell_img = not per_cell
+                    if per_cell:
+                        try:
+                            lp.drawImage(0, 0, _blur_plate(tr, cw, ch, paint_one, bd))
+                        except Exception:
+                            logger.exception("分屏格子 %s 的模糊背景绘制失败", cid)
+                    if contain:
+                        _call_with_fit(tr, "fit", lambda lp=lp, tr=tr, cw=cw, ch=ch: paint_one(lp, tr, cw, ch))
+                    else:
+                        paint_one(lp, tr, cw, ch)
+                except Exception:
+                    geom["_dirty"] = True
+                    logger.exception("分屏格子 %s 绘制失败", cid)
+                    raise
+                finally:
+                    lp.end()
+                if getattr(lp, "_split_drew", None) is False and not per_cell:
+                    if direct_canvas:
+                        _flush_deferred_blits()
+                        ox, oy = int(geom["origin"][0]), int(geom["origin"][1])
+                        spans = geom.get("spans")
+                        srects = (spans.get("solid") or ()) if (spans and spans.get("rects")) else ()
+                        for r in srects:
+                            op.fillRect(ox + r.x(), oy + r.y(), r.width(), r.height(), 0xFF000000)
+                    continue
+                direct_bgr = getattr(lp, "_split_direct_bgr", None)
+                direct_img = getattr(lp, "_split_direct_img", None)
+                cell_opaque = bool(getattr(lp, "_split_covered_all", False) or getattr(lp, "_split_filled", False))
+                bake_req = getattr(lp, "_split_loop_bake", None)
+            if direct_bgr is not None and not direct_band and bake_req is None:
+                skip_mask = False
+                if later_cids:
+                    shared_with_band = False
+                    for d in sp.get("dividers") or []:
+                        neg = _cell_ids(d.get("neg_cell"))
+                        pos = _cell_ids(d.get("pos_cell"))
+                        if cid in neg or cid in pos:
+                            others = (set(neg) | set(pos)) - {cid}
+                            if others & part_cids:
+                                shared_with_band = True
+                                break
+                    if not shared_with_band:
+                        skip_mask = True
+                spans = None if skip_mask else geom.get("spans")
+                if spans and spans.get("rects") and isinstance(op.device(), QImage) and op.worldTransform().isIdentity():
+                    ox, oy = int(geom["origin"][0]), int(geom["origin"][1])
+                    if pending_cell_blits is not None:
+                        pending_cell_blits.append((
+                            "bgr",
+                            direct_bgr,
+                            None if skip_mask else geom.get("mask"),
+                            spans.get("solid") or (),
+                            spans.get("band") or (),
+                            ox,
+                            oy,
+                        ))
+                        continue
                     try:
-                        lp.drawImage(0, 0, _blur_plate(tr, cw, ch, paint_one, bd))
+                        from cutora.core.rust_engine import rust_blit_bgr_cell_spans
+                        if rust_blit_bgr_cell_spans(
+                            direct_bgr,
+                            None if skip_mask else geom.get("mask"),
+                            op.device(),
+                            spans.get("solid") or (),
+                            spans.get("band") or (),
+                            ox,
+                            oy,
+                        ):
+                            continue
                     except Exception:
-                        logger.exception("分屏格子 %s 的模糊背景绘制失败", cid)
-                if contain:
-                    _call_with_fit(tr, "fit", lambda lp=lp, tr=tr, cw=cw, ch=ch: paint_one(lp, tr, cw, ch))
-                else:
-                    paint_one(lp, tr, cw, ch)
-            except Exception:
-                geom["_dirty"] = True
-                logger.exception("分屏格子 %s 绘制失败", cid)
-                raise
-            finally:
-                lp.end()
-            if getattr(lp, "_split_drew", None) is False and not per_cell:
-                continue
-            direct_img = getattr(lp, "_split_direct_img", None)
-            cell_opaque = bool(getattr(lp, "_split_covered_all", False) or getattr(lp, "_split_filled", False))
+                        pass
+                try:
+                    from cutora.core.rust_engine import rust_bgr_to_rgb32_qimage
+                    direct_img = rust_bgr_to_rgb32_qimage(
+                        direct_bgr, direct_bgr.shape[1], direct_bgr.shape[0], reuse=True
+                    )
+                except Exception:
+                    pass
             if direct_img is not None:
                 src_layer = direct_img
             else:
-                if getattr(lp, "_split_layer_img", None) is not None:
+                if lp is not None and getattr(lp, "_split_layer_img", None) is not None:
                     layer.fill(0)
                     layer._last_fill_state = None
                     lp._split_layer_img = None
-                if not getattr(lp, "_split_filled", False):
+                if lp is not None and not getattr(lp, "_split_filled", False):
                     layer._last_fill_state = None
                 geom["_dirty"] = True
-                if geom["extend"] and not getattr(lp, "_split_filled", False) and not getattr(lp, "_split_covered_all", False):
+                if lp is not None and geom["extend"] and not getattr(lp, "_split_filled", False) and not getattr(lp, "_split_covered_all", False):
                     _extend_edges(layer, cx, cy, cw, ch, tilted=geom.get("tilted", False),
                                   src_qimg=getattr(lp, "_split_qimg", None),
                                   mask_edge_yx=geom.get("mask_edge_yx"))
                 src_layer = layer
-            bake_req = getattr(lp, "_split_loop_bake", None)
             if bake_req is not None:
                 try:
                     lcache, lkey, lrect = bake_req
                     if len(lcache) < 4096 or lkey in lcache:
-                        baked = QImage(
-                            src_layer.width(),
-                            src_layer.height(),
-                            QImage.Format.Format_ARGB32_Premultiplied,
-                        )
-                        bmp = QPainter(baked)
-                        try:
-                            bmp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
-                            bmp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-                            bmp.drawImage(0, 0, src_layer)
-                            m_img = geom.get("mask")
-                            if m_img is not None and not m_img.isNull():
-                                bmp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-                                bmp.drawImage(0, 0, m_img)
-                        finally:
-                            bmp.end()
-                        baked._is_premasked_cell = True
+                        from cutora.core.rust_engine import rust_premask_cell_qimg
+                        m_img = geom.get("mask")
+                        baked = rust_premask_cell_qimg(src_layer, m_img)
+                        if baked is None:
+                            baked = QImage(
+                                src_layer.width(),
+                                src_layer.height(),
+                                QImage.Format.Format_ARGB32_Premultiplied,
+                            )
+                            bmp = QPainter(baked)
+                            try:
+                                bmp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+                                bmp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+                                bmp.drawImage(0, 0, src_layer)
+                                if m_img is not None and not m_img.isNull():
+                                    bmp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+                                    bmp.drawImage(0, 0, m_img)
+                            finally:
+                                bmp.end()
+                            baked._is_premasked_cell = True
                         lcache[lkey] = (baked, lrect)
                         src_layer = baked
                         cell_opaque = True
@@ -2097,11 +2273,34 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                             break
                 if not shared_with_band:
                     skip_mask = True
+            spans = None if skip_mask else geom.get("spans")
+            if (
+                pending_cell_blits is not None
+                and not skip_mask
+                and spans
+                and spans.get("rects")
+                and cell_opaque
+            ):
+                ox, oy = int(geom["origin"][0]), int(geom["origin"][1])
+                pending_cell_blits.append((
+                    "qimg",
+                    src_layer,
+                    geom.get("mask"),
+                    spans.get("solid") or (),
+                    spans.get("band") or (),
+                    ox,
+                    oy,
+                    True,
+                    bool(getattr(src_layer, "_is_premasked_cell", False)),
+                ))
+                continue
+            _flush_deferred_blits()
             if skip_mask:
                 _blit_masked(op, src_layer, geom["origin"], None, geom["scratch"], spans=None, img_opaque=cell_opaque)
             else:
                 _blit_masked(op, src_layer, geom["origin"], geom["mask"], geom["scratch"],
-                             spans=geom.get("spans"), img_opaque=cell_opaque)
+                             spans=spans, img_opaque=cell_opaque)
+        _flush_deferred_blits()
         if op is not None:
             if plate_img is not None:
                 op.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOver)

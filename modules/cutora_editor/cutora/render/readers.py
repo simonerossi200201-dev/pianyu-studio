@@ -763,10 +763,7 @@ def _open_video_capture(path, hw: bool = True, alpha_mode=None, threads=None):
             if not cap.isOpened():
                 cap = cv2.VideoCapture(path)
             if cap.isOpened():
-                if _capture_looks_ok(cap):
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    return cap
-                cap.release()
+                return cap
         except Exception:
             pass
         

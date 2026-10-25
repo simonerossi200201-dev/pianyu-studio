@@ -274,7 +274,7 @@ def run_render_job_entry(argv=None):
     if not os.path.isdir(FONT_DIR) or not _iter_font_files():
         print("[RenderJob] 字体目录不可用: %s" % FONT_DIR, file=sys.stderr)
         return 1
-    if not load_embedded_fonts():
+    if not load_embedded_fonts(lazy=True):
         print("[RenderJob] 字体加载失败", file=sys.stderr)
         return 1
     _app.setFont(get_font_manager().get_font(DEFAULT_FONT_FAMILY, 10))

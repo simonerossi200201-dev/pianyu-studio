@@ -383,7 +383,76 @@ class FontManager:
         self._family_name_map = {}
         self._font_cache = {}
         self._registered = False
+        self._lazy_files_loaded = set()
         self._font_lock = threading.Lock()
+
+    def _ensure_family_loaded(self, family: str) -> str:
+        """If running in lazy render-child mode, call addApplicationFont on the family's files on first use."""
+        if not family:
+            return DEFAULT_FONT_FAMILY
+        files = self.font_files.get(family)
+        if not files:
+            for k, v in self.font_files.items():
+                if k.lower() == family.lower():
+                    files = v
+                    family = k
+                    break
+        if files:
+            for fpath in files:
+                norm_p = os.path.normcase(os.path.abspath(fpath))
+                if norm_p in self._lazy_files_loaded or fpath in FONT_FILE_IDS:
+                    continue
+                self._lazy_files_loaded.add(norm_p)
+                fid = QFontDatabase.addApplicationFont(fpath)
+                if fid != -1:
+                    FONT_FILE_IDS[fpath] = fid
+                    fams = list(QFontDatabase.applicationFontFamilies(fid) or ())
+                    FONT_FILE_FAMILIES[fpath] = fams
+                    for fam in fams:
+                        if fam:
+                            self._family_name_map[fam] = fam
+                            if fam not in ALLOWED_FONTS and fam != "Noto Color Emoji":
+                                ALLOWED_FONTS.append(fam)
+                    if fams and family not in fams:
+                        self._family_name_map[family] = fams[0]
+        return self._family_name_map.get(family) or family
+
+    def register_lazy_from_manifest(self) -> bool:
+        """Render-child fast registration: populate ALLOWED_FONTS & FONT_FILES from font_script_coverage.json,
+        and only call QFontDatabase.addApplicationFont on actual used families on demand!
+        Saves ~235 addApplicationFont DirectWrite registrations and ~250 MB per render worker process.
+        """
+        global LAST_EMBEDDED_FONT_LOAD_COUNT, FONT_FILES, FONT_FILE_FAMILIES, FONT_FILE_IDS, ALLOWED_FONTS
+        try:
+            from cutora.subtitle.font_coverage import load_coverage
+            cov = load_coverage() or {}
+            by_fam = cov.get("files_by_family") or {}
+        except Exception:
+            by_fam = {}
+        if not by_fam or not os.path.isdir(FONT_DIR):
+            return self.register()
+        fam_files = {}
+        for fam, rels in by_fam.items():
+            paths = []
+            for r in rels or ():
+                p = os.path.join(FONT_DIR, str(r).replace("/", os.sep))
+                if os.path.isfile(p):
+                    paths.append(p)
+            if paths:
+                fam_files[fam] = paths
+        if not fam_files:
+            return self.register()
+        self.font_files = fam_files
+        FONT_FILES = fam_files
+        ALLOWED_FONTS = sorted(f for f in fam_files.keys() if f != "Noto Color Emoji")
+        self._family_name_map = {f: f for f in fam_files}
+        self._registered = True
+        _mark_fonts_registered()
+        self._ensure_family_loaded(DEFAULT_FONT_FAMILY)
+        self._ensure_family_loaded("Noto Sans")
+        LAST_EMBEDDED_FONT_LOAD_COUNT = len(self._lazy_files_loaded)
+        _FONT_LOG.info("[FONT] Lazy font manifest ready (%d families, %d preloaded files)", len(fam_files), LAST_EMBEDDED_FONT_LOAD_COUNT)
+        return True
 
     def register(self) -> bool:
         """
@@ -482,7 +551,11 @@ class FontManager:
         from cutora.subtitle.font_coverage import EMOJI_FAMILY, apply_no_font_merging
         with self._font_lock:
             if not self._registered:
-                self.register()
+                from cutora.core.flags import is_render_child
+                if is_render_child():
+                    self.register_lazy_from_manifest()
+                else:
+                    self.register()
             raw = str(family_name or "").strip()
             if raw == EMOJI_FAMILY:
                 from cutora.render.stickers import _ensure_font
@@ -502,6 +575,7 @@ class FontManager:
                 # → 暂用默认字体，绝不卡死。工程里存的字体名不动。
                 _note_font_substituted(rec["family"])
                 rec = {"family": DEFAULT_FONT_FAMILY, "style": ""}
+            self._ensure_family_loaded(rec["family"])
             resolved = (
                 self._family_name_map.get(rec["family"])
                 or self._family_name_map.get(DEFAULT_FONT_FAMILY)
@@ -538,7 +612,7 @@ def get_font_manager() -> FontManager:
                 FONT_MANAGER = FontManager(FONT_FILES)
     return FONT_MANAGER
 
-def load_embedded_fonts() -> bool:
+def load_embedded_fonts(lazy: bool = False) -> bool:
     """
     只加载软件自带 fonts/ 下的字体到 QFontDatabase（应用级）。
     注意：这不会删除系统字体，但我们会把 UI 下拉框和渲染全部限制在白名单。
@@ -552,6 +626,11 @@ def load_embedded_fonts() -> bool:
         if not os.path.isdir(FONT_DIR):
             _FONT_LOG.error("[FONT] fonts/ folder missing: %s", FONT_DIR)
             return False
+        if lazy:
+            FONT_MANAGER = FontManager({})
+            if FONT_MANAGER.register_lazy_from_manifest():
+                load_font_metadata()
+                return True
         fam_files, file_fams, file_ids, stats = scan_fonts_from_dir()
         if not fam_files:
             _log_no_loadable(stats)
@@ -625,6 +704,9 @@ def family_style_names(family_name: str) -> list[str]:
     else:
         fam = rec.get("family") or DEFAULT_FONT_FAMILY
     try:
+        mgr = FONT_MANAGER
+        if mgr is not None and hasattr(mgr, "_ensure_family_loaded"):
+            fam = mgr._ensure_family_loaded(str(fam))
         names = list(QFontDatabase.styles(str(fam)))
     except Exception:
         names = []

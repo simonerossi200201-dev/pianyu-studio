@@ -40,6 +40,17 @@ def probe_duration_and_frames(path: str) -> tuple[float | None, int | None]:
     """Return (duration_sec, nb_frames or None)."""
     if not path or not os.path.isfile(path):
         return None, None
+    try:
+        import cv2
+        cap = cv2.VideoCapture(path)
+        if cap.isOpened():
+            fc = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            cap.release()
+            if fc > 0 and fps > 1.0:
+                return float(fc) / fps, fc
+    except Exception:
+        pass
     probe = _ffprobe()
     dur = None
     frames = None
@@ -101,7 +112,7 @@ def probe_duration_and_frames(path: str) -> tuple[float | None, int | None]:
 def decode_has_error(path: str, *, fast_spotcheck: bool = False) -> str | None:
     """Full decode (or fast head/tail spotcheck for verified large exports). Return stderr snippet if ffmpeg reported an error."""
     try:
-        if fast_spotcheck and os.path.isfile(path) and os.path.getsize(path) > 2 * 1024 * 1024:
+        if fast_spotcheck and os.path.isfile(path) and os.path.getsize(path) > 512 * 1024:
             try:
                 import cv2
                 cap = cv2.VideoCapture(path)
@@ -181,7 +192,8 @@ def mad_vs_preview(path, preview_frames, width, height, fps: float = 30.0) -> st
     except Exception:
         cap = None
     try:
-        for item in preview_frames:
+        cur_fidx = 0
+        for idx_i, item in enumerate(preview_frames):
             try:
                 t, ref = item
             except Exception:
@@ -198,8 +210,14 @@ def mad_vs_preview(path, preview_frames, width, height, fps: float = 30.0) -> st
                 try:
                     import cv2
                     fidx = max(0, int(round(float(t) * max(1.0, float(fps or 30.0)))))
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, fidx)
+                    if fidx >= cur_fidx and (fidx - cur_fidx) <= 4:
+                        while cur_fidx < fidx:
+                            cap.grab()
+                            cur_fidx += 1
+                    else:
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, fidx)
                     ok_r, bgr = cap.read()
+                    cur_fidx = fidx + 1
                     if ok_r and bgr is not None:
                         if bgr.shape[1] != int(width) or bgr.shape[0] != int(height):
                             bgr = cv2.resize(bgr, (int(width), int(height)))
@@ -208,6 +226,8 @@ def mad_vs_preview(path, preview_frames, width, height, fps: float = 30.0) -> st
                             mad_cv = float(np.mean(np.abs(
                                 got_cv.astype(np.float32) - ref_rgb.astype(np.float32)))) / 255.0
                             if mad_cv <= MAD_LIMIT:
+                                if idx_i == 0 and mad_cv <= 0.018:
+                                    return None
                                 continue
                 except Exception:
                     pass

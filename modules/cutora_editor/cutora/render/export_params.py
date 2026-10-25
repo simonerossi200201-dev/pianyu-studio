@@ -43,8 +43,9 @@ def build_rawvideo_ffmpeg_cmd(
     enc_threads=0,
     ffmpeg_path=None,
     profile=None,
+    input_pix_fmt="bgra",
 ):
-    """FFmpeg argv for the raw BGRA → encoded temp-video pass."""
+    """FFmpeg argv for the raw BGRA/YUV420p → encoded temp-video pass."""
     if not ffmpeg_path:
         from cutora.core.config import FFMPEG_PATH
         ffmpeg_path = FFMPEG_PATH
@@ -59,7 +60,7 @@ def build_rawvideo_ffmpeg_cmd(
     cmd = [
         ffmpeg_path, "-y",
         "-f", "rawvideo",
-        "-pix_fmt", "bgra",
+        "-pix_fmt", str(input_pix_fmt or "bgra"),
         "-s", "%sx%s" % (width, height),
         "-r", str(fps),
         "-thread_queue_size", "64",

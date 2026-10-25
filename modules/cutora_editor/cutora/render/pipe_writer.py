@@ -82,7 +82,7 @@ class FfmpegPipeWriter:
     """
 
     def __init__(self, stdin, stop_event=None, maxsize=PIPE_QUEUE_SIZE,
-                 canvas_wh=None):
+                 canvas_wh=None, use_yuv420p=False):
         if stdin is None:
             raise ValueError("ffmpeg stdin is required")
         size = int(maxsize)
@@ -94,9 +94,14 @@ class FfmpegPipeWriter:
         self._free = None
         self._error = None
         self._written = 0
+        self._use_yuv420p = bool(use_yuv420p)
+        self._yuv_buf = None
         self._expected_bytes = None
         if canvas_wh is not None:
-            self._expected_bytes = int(canvas_wh[0]) * int(canvas_wh[1]) * 4
+            if self._use_yuv420p:
+                self._expected_bytes = (int(canvas_wh[0]) * int(canvas_wh[1]) * 3) // 2
+            else:
+                self._expected_bytes = int(canvas_wh[0]) * int(canvas_wh[1]) * 4
         self._thread = threading.Thread(
             target=self._run, name=THREAD_NAME, daemon=True)
         if canvas_wh is not None:
@@ -255,6 +260,38 @@ class FfmpegPipeWriter:
                 if item is _SENTINEL:
                     break
                 if (
+                    self._use_yuv420p
+                    and not isinstance(item, (bytes, bytearray, memoryview))
+                    and hasattr(item, "constBits")
+                ):
+                    from cutora.core.rust_engine import rust_bgra_qimage_to_yuv420p
+                    self._yuv_buf, mv = rust_bgra_qimage_to_yuv420p(item, self._yuv_buf)
+                    if mv is None:
+                        raise FrameSizeMismatch("Rust BGRA->YUV420p 转换失败")
+                    if self._expected_bytes is not None and len(mv) != int(self._expected_bytes):
+                        mv_len = len(mv)
+                        del mv
+                        raise FrameSizeMismatch(
+                            "帧 %s 字节数不符：写出 %d，应为 %d。" % (
+                                self._written, mv_len, int(self._expected_bytes))
+                        )
+                    n = self._stdin.write(mv)
+                    mv_len = len(mv)
+                    del mv
+                    if n is not None and n != mv_len:
+                        raise FrameSizeMismatch(
+                            "帧 %d 短写：只写进 %s/%d 字节，后续帧会整体错位，已中止。"
+                            % (self._written, n, mv_len))
+                    self._written += 1
+                    if (self._written & 7) == 0:
+                        try:
+                            self._stdin.flush()
+                        except Exception:
+                            _LOG.exception("ffmpeg stdin flush 失败")
+                            raise
+                    self._recycle(item)
+                    continue
+                if (
                     not isinstance(item, (bytes, bytearray, memoryview))
                     and hasattr(item, "constBits")
                     and item.bytesPerLine() == item.width() * 4
@@ -278,11 +315,12 @@ class FfmpegPipeWriter:
                             "帧 %d 短写：只写进 %s/%d 字节，后续帧会整体错位，已中止。"
                             % (self._written, n, mv_len))
                     self._written += 1
-                    try:
-                        self._stdin.flush()
-                    except Exception:
-                        _LOG.exception("ffmpeg stdin flush 失败")
-                        raise
+                    if (self._written & 7) == 0:
+                        try:
+                            self._stdin.flush()
+                        except Exception:
+                            _LOG.exception("ffmpeg stdin flush 失败")
+                            raise
                     self._recycle(item)
                     continue
                 payload = _as_payload(
@@ -299,6 +337,12 @@ class FfmpegPipeWriter:
                     _LOG.exception("ffmpeg stdin flush 失败")
                     raise
                 self._recycle(item)
+            if self._written > 0 and not self._stop.is_set():
+                try:
+                    self._stdin.flush()
+                except Exception:
+                    _LOG.exception("ffmpeg stdin flush 失败")
+                    raise
         except Exception as e:
             _LOG.exception("ffmpeg 管道写入失败")
             self._error = e

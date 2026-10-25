@@ -746,6 +746,15 @@ class RenderWorker(QThread):
                 log_path = os.path.join(log_dir, stem + ".ffmpeg.log")
                 log_file = open(log_path, "w", encoding="utf-8", errors="ignore")
 
+            from cutora.core.rust_engine import is_rust_available as _rust_ok
+            _use_yuv420p = bool(
+                _rust_ok()
+                and (int(width) % 2 == 0)
+                and (int(height) % 2 == 0)
+                and os.environ.get("CUTORA_EXPORT_YUV420P", "1") != "0"
+            )
+            self._use_yuv420p_pipe = _use_yuv420p
+            self._cur_export_frame = 0
             proc = self._start_ffmpeg_rawvideo(width, height, fps, temp_video, log_file, export_sar)
             if proc is None:
                 self.error.emit("无法启动 FFmpeg 编码进程")
@@ -754,7 +763,8 @@ class RenderWorker(QThread):
             self._pipe_stop.clear()
             pipe_writer = FfmpegPipeWriter(
                 proc.stdin, stop_event=self._pipe_stop,
-                canvas_wh=(width, height))
+                canvas_wh=(width, height),
+                use_yuv420p=_use_yuv420p)
             pipe_writer.start()
             self.ffmpeg_pid = getattr(proc, "pid", None)
             _probe.configure()
@@ -768,6 +778,11 @@ class RenderWorker(QThread):
                     pass
             self._pre_audio_th = None
             self._pre_audio_result = None
+            if not self.video_only and not self.frame_range:
+                try:
+                    self._start_pre_encode_audio(project, self.output_path)
+                except Exception:
+                    pass
 
             # === 多轨道视频源管理 ===
             # 收集所有视频轨道的 source_id → path 映射
@@ -1029,6 +1044,11 @@ class RenderWorker(QThread):
                         _probe.add_ms("pipe", time.perf_counter() - _t_pipe)
 
                     frame_idx += 1
+                    self._cur_export_frame = frame_idx - _trim_start_frame
+                    if frame_idx == _trim_start_frame + 1:
+                        _fps_t0 = time.perf_counter()
+                        _fps_samples.clear()
+                        _fps_samples.append((1, _fps_t0))
                     if frame_idx < _end_frame and self._is_running:
                         _t_acq = time.perf_counter()
                         _canvas = pipe_writer.acquire_canvas()
@@ -1115,6 +1135,8 @@ class RenderWorker(QThread):
             except Exception:
                 _LOG.exception("释放多源 VideoCapture 失败")
             self.__dict__.pop("_loop_qimg_cache", None)
+            self.__dict__.pop("_direct_bgr_recipes", None)
+            self.__dict__.pop("_fast_cell_elig", None)
             cleanup_dbi_video_caps()  # 释放挂载视频 VideoCapture
             if log_file:
                 try:
@@ -1160,6 +1182,7 @@ class RenderWorker(QThread):
         from cutora.render.export_profile import encode_args, resolve_profile
         from cutora.render.parallel import EXPORT_ENC_THREADS
         prof = resolve_profile(task=self.task)
+        in_pix = "yuv420p" if getattr(self, "_use_yuv420p_pipe", False) else "bgra"
         cmd = build_rawvideo_ffmpeg_cmd(
             width, height, fps, output_path,
             use_gpu=self.use_gpu,
@@ -1168,6 +1191,7 @@ class RenderWorker(QThread):
             enc_threads=int(EXPORT_ENC_THREADS or 0),
             ffmpeg_path=FFMPEG_PATH,
             profile=prof,
+            input_pix_fmt=in_pix,
         )
         vcodec, preset, quality_args, _pix = encode_args(prof, self.use_gpu)
         if not vcodec:
@@ -1307,12 +1331,121 @@ class RenderWorker(QThread):
 
                 paint_track_layer(dest, _tr, dw, dh, _paint_export_track)
 
+            def _fast_cell_lookup(_tr, dw, dh, lw, lh, cx, cy):
+                if (
+                    getattr(_REPLAY_TLS, "record", None) is not None
+                    or getattr(_REPLAY_TLS, "replay", None) is not None
+                ):
+                    return None
+                for _trans in getattr(_tr, "transitions", []) or []:
+                    if str(getattr(_trans, "domain", "visual") or "visual") == "audio":
+                        continue
+                    if _trans.start_t <= t <= (_trans.start_t + _trans.duration):
+                        return None
+                _active_clips = self._find_active_clips_in_track_export(_tr, t)
+                if not _active_clips or len(_active_clips) != 1:
+                    return None
+                _clip = _active_clips[0]
+                _elig_map = self.__dict__.setdefault("_fast_cell_elig", {})
+                _ekey = (id(_tr), id(_clip))
+                _is_elig = _elig_map.get(_ekey)
+                if _is_elig is None:
+                    try:
+                        from cutora.render.track_transform import track_needs_layer
+                        from cutora.batch.layer_folders import (
+                            blend_of_folder, hidden_by_folder,
+                        )
+                        from cutora.render.child_matte import partition_clips
+                        _own, _mattes = partition_clips(project, _tr, t, _active_clips)
+                        _bname = (
+                            getattr(_clip, "blend_mode", None)
+                            or getattr(_tr, "blend_mode", "normal")
+                            or "normal"
+                        )
+                        _fb = blend_of_folder(project, _clip)
+                        if _fb and str(_bname) == "normal":
+                            _bname = _fb
+                        _is_elig = bool(
+                            not track_needs_layer(_tr)
+                            and not _mattes
+                            and len(_own) == 1
+                            and not hidden_by_folder(project, _clip)
+                            and str(_bname or "normal") == "normal"
+                        )
+                    except Exception:
+                        _is_elig = False
+                    _elig_map[_ekey] = _is_elig
+                if not _is_elig:
+                    return None
+                _sid = getattr(_clip, "source_id", None)
+                _fs = _frame_states.get(_sid)
+                loop_cache = self.__dict__.get("_loop_qimg_cache")
+                if loop_cache:
+                    loop_idx = self._loop_clip_src_idx(None, _clip, t, _fs)
+                    if loop_idx is not None:
+                        lhit = loop_cache.get((id(_clip), loop_idx))
+                        if lhit is not None:
+                            qimg_hit = lhit[0]
+                            if (
+                                qimg_hit is not None
+                                and qimg_hit.width() == lw
+                                and qimg_hit.height() == lh
+                            ):
+                                if (
+                                    _sid
+                                    and isinstance(_video_caps, _ExportCapPool)
+                                    and _sid in _video_caps
+                                ):
+                                    _c_st = float(getattr(_clip, "start_t", 0.0) or 0.0)
+                                    _c_sp = max(0.01, float(getattr(_clip, "speed", 1.0) or 1.0))
+                                    _src_len = float((_fs or {}).get("_src_len") or 0.0) if isinstance(_fs, dict) else 0.0
+                                    if _src_len > 0.1 and (t - _c_st) * _c_sp > _src_len + 0.25:
+                                        _video_caps._release(_sid)
+                                return ("img", qimg_hit)
+                recipes = self.__dict__.get("_direct_bgr_recipes")
+                if recipes:
+                    rkey = (id(_clip), int(dw), int(dh), int(lw), int(lh), int(cx), int(cy))
+                    recipe = recipes.get(rkey)
+                    if recipe is not None:
+                        sx0, sy0, sw_slice, sh_slice, exp_fw, exp_fh = recipe
+                        _cap, _ok = self._cap_or_cached(_clip, _video_caps)
+                        if _ok:
+                            frame = self._get_video_frame_at_time(_cap, _clip, t, _fs)
+                            if (
+                                isinstance(_fs, dict)
+                                and _fs.pop("_pf_kick", False)
+                                and _cap is not None
+                            ):
+                                try:
+                                    from cutora.render.decode_prefetch import kick_read
+                                    kick_read(_cap, _fs, getattr(self, "_pipe_stop", None))
+                                except Exception:
+                                    pass
+                            if frame is not None:
+                                frame = self._apply_clip_crop_frame(frame, _clip)
+                                fh, fw = frame.shape[:2]
+                                if fw == exp_fw and fh == exp_fh:
+                                    sliced = (
+                                        frame[sy0:sy0 + sh_slice, sx0:sx0 + sw_slice]
+                                        if (sw_slice < fw or sh_slice < fh or sx0 > 0 or sy0 > 0)
+                                        else frame
+                                    )
+                                    if sliced.shape[1] == lw and sliced.shape[0] == lh:
+                                        return ("bgr", sliced)
+                return None
+
             _paint_one._supports_lazy_clear = True
+            _paint_one._fast_cell_lookup = _fast_cell_lookup
             from cutora.render.split_screen import paint_split_video_tracks
             paint_split_video_tracks(
                 painter, project, _video_tracks_for_export, width, height, _paint_one,
                 bottom=bottom)
         elif _video_tracks_for_export:
+            if getattr(painter, "_canvas_needs_clear", False):
+                dev = painter.device()
+                if isinstance(dev, QImage):
+                    dev.fill(Qt.GlobalColor.black)
+                painter._canvas_needs_clear = False
             if bottom:
                 _bg.paint_bg_image(painter, project, width, height)
             for _tr in _video_tracks_for_export:
@@ -1405,6 +1538,7 @@ class RenderWorker(QThread):
         """One export frame. Shared by the serial loop and compose workers."""
         def _draw_bg(p, _t=t):
             self._paint_export_background(p, _t, ctx)
+        _draw_bg._handles_canvas_clear = bool(ctx.video_tracks)
 
         def _band(p, tracks, index, _t=t):
             # Q163：统一叠压 —— 一段视频带（和覆层交错时逐段画）
@@ -1499,6 +1633,8 @@ class RenderWorker(QThread):
         )
 
     def _kick_export_prefetch(self, video_caps, frame_states, fallback_cap):
+        if os.environ.get("CUTORA_EXPORT_PREFETCH", "1") == "0":
+            return
         from cutora.render.decode_prefetch import kick_read
         stop = getattr(self, "_pipe_stop", None)
         for sid, cap in (video_caps or {}).items():
@@ -1733,6 +1869,9 @@ class RenderWorker(QThread):
 
         def _worker():
             try:
+                time.sleep(0.15 + (os.getpid() % 10) * 0.12)
+                if not getattr(self, "_is_running", True):
+                    return
                 fc, tracks = self.export_audio_filter_complex(project, has_video=False)
                 if not tracks:
                     return
@@ -1740,8 +1879,15 @@ class RenderWorker(QThread):
                 from cutora.audio.loudness import apply_filter, get_loudness_settings, measure_file, parse_measured
                 target_sr = int(self.export_audio_rate) if isinstance(self.export_audio_rate, (int, float)) and self.export_audio_rate > 0 else 48000
                 cmd_before = [FFMPEG_PATH, "-y", "-threads", "1"]
+                _trim_end_s = float(project.get("trim_end_sec") or 0.0)
                 for t in tracks:
-                    cmd_before += ["-i", t["path"]]
+                    if _trim_end_s > 0.0 and not t.get("loop"):
+                        _t_in = float(t.get("trim_in") or 0.0)
+                        _spd = max(0.1, float(t.get("speed") or 1.0))
+                        _max_in_dur = _t_in + _trim_end_s * _spd + 2.0
+                        cmd_before += ["-t", f"{_max_in_dur:.2f}", "-i", t["path"]]
+                    else:
+                        cmd_before += ["-i", t["path"]]
                 ln = get_loudness_settings()
                 report = {
                     "mode": ln.mode,
@@ -1752,12 +1898,25 @@ class RenderWorker(QThread):
                 pre_audio = output_path + ".pre_audio.m4a"
                 encode_tail = ["-vn", "-c:a", "aac", "-ar", str(int(target_sr)), "-ac", "2"]
                 if ln.enabled:
+                    from cutora.audio.loudness import measure_filter
                     wav = output_path + ".lnmeas.wav"
+                    fc_meas = "%s;[aout]asplit=2[awav][ameas];[ameas]%s[anull]" % (
+                        fc, measure_filter(ln.target_i, ln.target_tp)
+                    )
                     res = run_filter_script(
-                        cmd_before, fc,
-                        ["-map", "[aout]", "-vn", "-c:a", "pcm_s16le", "-ar", str(int(target_sr)), "-ac", "2", wav],
+                        cmd_before, fc_meas,
+                        [
+                            "-map", "[awav]", "-vn", "-c:a", "pcm_s16le", "-ar", str(int(target_sr)), "-ac", "2", wav,
+                            "-map", "[anull]", "-vn", "-f", "null", "NUL" if os.name == "nt" else "/dev/null",
+                        ],
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     )
+                    if res.returncode != 0:
+                        res = run_filter_script(
+                            cmd_before, fc,
+                            ["-map", "[aout]", "-vn", "-c:a", "pcm_s16le", "-ar", str(int(target_sr)), "-ac", "2", wav],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        )
                     if res.returncode != 0:
                         try:
                             os.remove(wav)
@@ -1765,7 +1924,11 @@ class RenderWorker(QThread):
                             pass
                         return
                     try:
-                        measured = measure_file(FFMPEG_PATH, wav, ln.target_i, ln.target_tp)
+                        try:
+                            first_err = (res.stderr or b"").decode("utf-8", errors="replace")
+                            measured = parse_measured(first_err)
+                        except Exception:
+                            measured = measure_file(FFMPEG_PATH, wav, ln.target_i, ln.target_tp)
                         report["input_i"] = measured.get("input_i")
                         report["applied"] = True
                         af = apply_filter(measured, ln.target_i, ln.target_tp)
@@ -2509,6 +2672,57 @@ class RenderWorker(QThread):
             _pre_blurred_fill = None
             _orig_target_rect = target_rect
             _srect = getattr(painter, "_split_layer_rect", None)
+            _fx_flag = bool(getattr(clip, "flip_x", False) if not isinstance(clip, dict) else clip.get("flip_x", False))
+            _fy_flag = bool(getattr(clip, "flip_y", False) if not isinstance(clip, dict) else clip.get("flip_y", False))
+            if (
+                _clip_needs_fill
+                and _rgb32_ok
+                and not _is_pv
+                and frame is not None
+                and not _fx_flag
+                and not _fy_flag
+                and str(_fspec.get("mode") or "") == "blur"
+            ):
+                try:
+                    from cutora.render.fill_bg import blur_image
+                    _fb_cache = self.__dict__.setdefault("_fill_blur_cache", {})
+                    _fb_idx = (
+                        (src_token[-1] // 4)
+                        if (isinstance(src_token, tuple) and src_token and isinstance(src_token[-1], int))
+                        else int(round(t * 7.5))
+                    )
+                    _fb_key = (
+                        id(clip),
+                        _fb_idx,
+                        round(float(_fspec.get("blur") or 0.0), 2),
+                        str(_fspec.get("blur_style") or "lens"),
+                        round(float(_fspec.get("highlights") or 0.0), 2),
+                    )
+                    _pre_blurred_fill = _fb_cache.get(_fb_key)
+                    if _pre_blurred_fill is None:
+                        _sub_bgr = np.ascontiguousarray(frame[::2, ::2])
+                        _sub_q = QImage(
+                            _sub_bgr.data,
+                            _sub_bgr.shape[1],
+                            _sub_bgr.shape[0],
+                            int(_sub_bgr.strides[0]),
+                            QImage.Format.Format_BGR888,
+                        )
+                        _pre_blurred_fill = blur_image(
+                            _sub_q,
+                            _fspec["blur"],
+                            _fspec["blur_style"],
+                            _fspec["highlights"],
+                        )
+                        if len(_fb_cache) > 64:
+                            _fb_cache.clear()
+                        _fb_cache[_fb_key] = _pre_blurred_fill
+                except Exception:
+                    _pre_blurred_fill = None
+            _orig_fw_pre_slice = int(frame_w)
+            _orig_fh_pre_slice = int(frame_h)
+            _slice_sx0 = 0
+            _slice_sy0 = 0
             if (
                 _srect is not None
                 and _rgb32_ok
@@ -2527,59 +2741,245 @@ class RenderWorker(QThread):
                 ix1 = min(rx + frame_w, int(math.ceil(_srect[0] + _srect[2])))
                 iy1 = min(ry + frame_h, int(math.ceil(_srect[1] + _srect[3])))
                 if ix1 > ix0 and iy1 > iy0 and (ix1 - ix0 < frame_w or iy1 - iy0 < frame_h):
-                    _fx = bool(getattr(clip, "flip_x", False) if not isinstance(clip, dict) else clip.get("flip_x", False))
-                    _fy = bool(getattr(clip, "flip_y", False) if not isinstance(clip, dict) else clip.get("flip_y", False))
-                    if _clip_needs_fill and not _fx and not _fy and str(_fspec.get("mode") or "") == "blur":
-                        try:
-                            from cutora.render.fill_bg import blur_image
-                            _fb_cache = self.__dict__.setdefault("_fill_blur_cache", {})
-                            _fb_idx = (
-                                (src_token[-1] // 4)
-                                if (isinstance(src_token, tuple) and src_token and isinstance(src_token[-1], int))
-                                else int(round(t * 7.5))
-                            )
-                            _fb_key = (
-                                id(clip),
-                                _fb_idx,
-                                round(float(_fspec.get("blur") or 0.0), 2),
-                                str(_fspec.get("blur_style") or "lens"),
-                                round(float(_fspec.get("highlights") or 0.0), 2),
-                            )
-                            _pre_blurred_fill = _fb_cache.get(_fb_key)
-                            if _pre_blurred_fill is None:
-                                _sub_bgr = np.ascontiguousarray(frame[::2, ::2])
-                                _sub_q = QImage(
-                                    _sub_bgr.data,
-                                    _sub_bgr.shape[1],
-                                    _sub_bgr.shape[0],
-                                    int(_sub_bgr.strides[0]),
-                                    QImage.Format.Format_BGR888,
-                                )
-                                _pre_blurred_fill = blur_image(
-                                    _sub_q,
-                                    _fspec["blur"],
-                                    _fspec["blur_style"],
-                                    _fspec["highlights"],
-                                )
-                                if len(_fb_cache) > 64:
-                                    _fb_cache.clear()
-                                _fb_cache[_fb_key] = _pre_blurred_fill
-                        except Exception:
-                            _pre_blurred_fill = None
                     if not _clip_needs_fill or _pre_blurred_fill is not None:
-                        sx0 = (rx + frame_w - ix1) if _fx else (ix0 - rx)
-                        sy0 = (ry + frame_h - iy1) if _fy else (iy0 - ry)
+                        sx0 = (rx + frame_w - ix1) if _fx_flag else (ix0 - rx)
+                        sy0 = (ry + frame_h - iy1) if _fy_flag else (iy0 - ry)
+                        _slice_sx0 = int(sx0)
+                        _slice_sy0 = int(sy0)
                         frame = frame[sy0:sy0 + (iy1 - iy0), sx0:sx0 + (ix1 - ix0)]
                         frame_h, frame_w = frame.shape[:2]
                         target_rect = QRectF(float(ix0), float(iy0), float(frame_w), float(frame_h))
 
+            _is_split_f_loop = bool(
+                _srect is not None
+                and isinstance(src_token, tuple)
+                and len(src_token) == 4
+                and src_token[0] == "f_loop"
+            )
+            memo_key = None
+            if (src_token is not None and not _is_pv and not _needs_src
+                    and layer_has_fx(clip)):
+                memo_key = (id(clip), src_token, round(float(target_rect.width()), 4),
+                            round(float(target_rect.height()), 4))
+            elif (src_token is not None and not _needs_src and not layer_has_fx(clip)
+                  and not _is_split_f_loop
+                  and ((_is_pv and _fxg.viewer_for(clip) is None)
+                       or (
+                           (_clip_needs_fill or getattr(painter, "_split_layer_rect", None) is not None)
+                           and (
+                               (isinstance(src_token, tuple) and src_token and src_token[0] in ("f_loop", "q"))
+                               or (isinstance(frame_state, dict) and float(frame_state.get("src_fps") or 30.0) < 28.5)
+                           )
+                       ))):
+                from cutora.render.grade import host_needs_grade
+                from cutora.render.textfx.fade import fade_offset_tuple, fade_tuple
+                _trk = self._track_holding(clip)
+                if not host_needs_grade(clip) and not host_needs_grade(_trk):
+                    _fx = bool(getattr(clip, "flip_x", False) if not isinstance(clip, dict) else clip.get("flip_x", False))
+                    _fy = bool(getattr(clip, "flip_y", False) if not isinstance(clip, dict) else clip.get("flip_y", False))
+                    _feather = int(getattr(clip, "feather", 0) if not isinstance(clip, dict) else clip.get("feather", 0) or 0)
+                    memo_key = (
+                        "pv", id(clip), src_token,
+                        round(float(target_rect.width()), 3),
+                        round(float(target_rect.height()), 3),
+                        fade_tuple(clip), fade_offset_tuple(clip),
+                        _fx, _fy, _feather, _rgb32_ok,
+                    )
+
+            _can_reuse_qimg = (
+                memo_key is None
+                and not (
+                    isinstance(src_token, tuple)
+                    and len(src_token) == 4
+                    and src_token[0] == "f_loop"
+                )
+            )
+            _can_reuse_qimg_proc = _can_reuse_qimg or (memo_key is None and _is_split_f_loop)
+
+            from cutora.batch.layer_folders import opacity_mul_current
+            base_op = max(0.0, min(1.0, opacity / 255.0)) * t_op * opacity_mul_current(clip)
+
+            if (
+                _can_reuse_qimg
+                and _rgb32_ok
+                and not _clip_needs_fill
+                and qimg_cached is None
+                and frame is not None
+                and not _is_pv
+                and not _fx_flag
+                and not _fy_flag
+                and _srect is not None
+                and getattr(painter, "_accepts_direct_cell_img", False)
+                and not getattr(painter, "_split_filled", False)
+                and base_op >= 0.9999
+                and abs(rotation) < 1e-6
+                and abs(t_scale - 1.0) <= 1e-4
+                and int(getattr(clip, "feather", 0) if not isinstance(clip, dict) else clip.get("feather", 0) or 0) <= 0
+                and frame_w == int(round(target_rect.width()))
+                and frame_h == int(round(target_rect.height()))
+                and int(round(target_rect.x() + t_dx)) == int(round(_srect[0]))
+                and int(round(target_rect.y() + t_dy)) == int(round(_srect[1]))
+                and frame_w == int(round(_srect[2]))
+                and frame_h == int(round(_srect[3]))
+                and _axis_aligned(painter.worldTransform())
+                and abs(painter.worldTransform().m11() - 1.0) < 1e-3
+                and abs(painter.worldTransform().m22() - 1.0) < 1e-3
+            ):
+                from cutora.render.grade import host_needs_grade
+                _trk_g = self._track_holding(clip)
+                if not host_needs_grade(clip) and not host_needs_grade(_trk_g):
+                    self._log_export_geom(cap, frame_w, frame_h, frame_w, frame_h, timeline_w, timeline_h)
+                    painter._split_layer_img = None
+                    painter._split_covered_all = True
+                    painter._split_drew = True
+                    painter._split_direct_bgr = frame
+                    if not has_keyframes(clip) and (not t_preset or t_preset == "none"):
+                        _rkey = (
+                            id(clip),
+                            int(timeline_w),
+                            int(timeline_h),
+                            int(round(_srect[2])),
+                            int(round(_srect[3])),
+                            int(round(-_srect[0])),
+                            int(round(-_srect[1])),
+                        )
+                        self.__dict__.setdefault("_direct_bgr_recipes", {})[_rkey] = (
+                            _slice_sx0,
+                            _slice_sy0,
+                            int(frame_w),
+                            int(frame_h),
+                            _orig_fw_pre_slice,
+                            _orig_fh_pre_slice,
+                        )
+                    if (
+                        isinstance(frame_state, dict)
+                        and frame_state.get("_pf_kick")
+                        and cap is not None
+                        and os.environ.get("CUTORA_EXPORT_PREFETCH", "1") != "0"
+                        and getattr(_REPLAY_TLS, "replay", None) is None
+                        and getattr(_REPLAY_TLS, "record", None) is None
+                    ):
+                        frame_state.pop("_pf_kick", None)
+                        try:
+                            from cutora.render.decode_prefetch import kick_read
+                            kick_read(cap, frame_state, getattr(self, "_pipe_stop", None))
+                        except Exception:
+                            pass
+                    return
+
+            if (
+                _is_split_f_loop
+                and _rgb32_ok
+                and not _clip_needs_fill
+                and qimg_cached is None
+                and frame is not None
+                and not _is_pv
+                and not _fx_flag
+                and not _fy_flag
+                and _srect is not None
+                and getattr(painter, "_accepts_direct_cell_img", False)
+                and not getattr(painter, "_split_filled", False)
+                and base_op >= 0.9999
+                and abs(rotation) < 1e-6
+                and abs(t_scale - 1.0) <= 1e-4
+                and abs(t_dx) <= 1e-4
+                and abs(t_dy) <= 1e-4
+                and int(getattr(clip, "feather", 0) if not isinstance(clip, dict) else clip.get("feather", 0) or 0) <= 0
+                and _axis_aligned(painter.worldTransform())
+                and abs(painter.worldTransform().m11() - 1.0) < 1e-3
+                and abs(painter.worldTransform().m22() - 1.0) < 1e-3
+            ):
+                _fw_cov = int(round(target_rect.width()))
+                _fh_cov = int(round(target_rect.height()))
+                _lw_cov = int(round(_srect[2]))
+                _lh_cov = int(round(_srect[3]))
+                _ox_cov = int(round(_srect[0] - target_rect.x()))
+                _oy_cov = int(round(_srect[1] - target_rect.y()))
+                if (
+                    _fw_cov >= _lw_cov > 0
+                    and _fh_cov >= _lh_cov > 0
+                    and _ox_cov >= 0
+                    and _oy_cov >= 0
+                    and _ox_cov + _lw_cov <= _fw_cov
+                    and _oy_cov + _lh_cov <= _fh_cov
+                ):
+                    from cutora.render.grade import host_needs_grade
+                    _trk_g = self._track_holding(clip)
+                    if not host_needs_grade(clip) and not host_needs_grade(_trk_g):
+                        from cutora.core.rust_engine import rust_bgr_resize_crop_premask_qimg
+                        _baked = rust_bgr_resize_crop_premask_qimg(
+                            frame,
+                            getattr(painter, "_split_cell_mask", None),
+                            _lw_cov,
+                            _lh_cov,
+                            _fw_cov,
+                            _fh_cov,
+                            _ox_cov,
+                            _oy_cov,
+                        )
+                        if _baked is not None:
+                            self._log_export_geom(cap, frame_w, frame_h, _fw_cov, _fh_cov, timeline_w, timeline_h)
+                            _lcache = self.__dict__.setdefault("_loop_qimg_cache", {})
+                            if len(_lcache) < 4096:
+                                _lcache[(id(clip), src_token[3])] = (
+                                    _baked,
+                                    QRectF(float(_srect[0]), float(_srect[1]), float(_srect[2]), float(_srect[3])),
+                                )
+                            painter._split_layer_img = None
+                            painter._split_covered_all = True
+                            painter._split_drew = True
+                            painter._split_direct_img = _baked
+                            if (
+                                isinstance(frame_state, dict)
+                                and frame_state.get("_pf_kick")
+                                and cap is not None
+                                and os.environ.get("CUTORA_EXPORT_PREFETCH", "1") != "0"
+                                and getattr(_REPLAY_TLS, "replay", None) is None
+                                and getattr(_REPLAY_TLS, "record", None) is None
+                            ):
+                                frame_state.pop("_pf_kick", None)
+                                try:
+                                    from cutora.render.decode_prefetch import kick_read
+                                    kick_read(cap, frame_state, getattr(self, "_pipe_stop", None))
+                                except Exception:
+                                    pass
+                            return
+
             def _process(frame=frame, frame_w=frame_w, frame_h=frame_h):
+                feather = int(getattr(clip, "feather", 0) if not isinstance(clip, dict) else clip.get("feather", 0))
+                if (
+                    _rgb32_ok
+                    and qimg_cached is None
+                    and frame is not None
+                    and not _is_pv
+                    and feather <= 0
+                ):
+                    try:
+                        from cutora.render.grade import host_needs_grade
+                        _trk_g = self._track_holding(clip)
+                        if not host_needs_grade(clip) and not host_needs_grade(_trk_g):
+                            from cutora.core.rust_engine import rust_bgr_to_rgb32_qimage
+                            want_w, want_h = frame_w, frame_h
+                            if EXPORT_FX_AT_OUTPUT_RES and _srect is not None and _axis_aligned(painter.worldTransform()):
+                                tf = painter.worldTransform()
+                                cw = int(round(float(target_rect.width()) * abs(tf.m11())))
+                                ch = int(round(float(target_rect.height()) * abs(tf.m22())))
+                                if cw >= 16 and ch >= 16 and (frame_w >= cw * 1.01 or frame_h >= ch * 1.01):
+                                    want_w, want_h = cw, ch
+                            rq = rust_bgr_to_rgb32_qimage(frame, want_w, want_h, reuse=_can_reuse_qimg_proc)
+                            if rq is not None:
+                                self._log_export_geom(cap, frame_w, frame_h, rq.width(), rq.height(), timeline_w, timeline_h)
+                                if _fx_flag or _fy_flag:
+                                    rq = rq.mirrored(_fx_flag, _fy_flag)
+                                return rq
+                    except Exception:
+                        pass
                 if frame is not None and _is_pv:
                     frame, frame_w, frame_h = self._preview_shrink(painter, clip, frame, target_rect)
                 elif frame is not None and EXPORT_FX_AT_OUTPUT_RES:
                     frame, frame_w, frame_h = self._export_shrink_fx(
-                        painter, clip, frame, target_rect, t, needs_bg_fill=_clip_needs_fill)
-                feather = int(getattr(clip, "feather", 0) if not isinstance(clip, dict) else clip.get("feather", 0))
+                        painter, clip, frame, target_rect, t,
+                        needs_bg_fill=(_clip_needs_fill and _pre_blurred_fill is None))
                 _t_scale = time.perf_counter()
                 if qimg_cached is not None:
                     qimg = self._grade_clip_frame(qimg_cached, clip)
@@ -2645,34 +3045,6 @@ class RenderWorker(QThread):
                 return apply_layer_fx(qimg, clip, px_scale=mask_px_scale(qimg.width(), target_rect.width()), src=src_ctx,
                                       view=_view)
 
-            memo_key = None
-            if (src_token is not None and not _is_pv and not _needs_src
-                    and layer_has_fx(clip)):
-                memo_key = (id(clip), src_token, round(float(target_rect.width()), 4),
-                            round(float(target_rect.height()), 4))
-            elif (src_token is not None and not _needs_src and not layer_has_fx(clip)
-                  and ((_is_pv and _fxg.viewer_for(clip) is None)
-                       or (
-                           (_clip_needs_fill or getattr(painter, "_split_layer_rect", None) is not None)
-                           and (
-                               (isinstance(src_token, tuple) and src_token and src_token[0] in ("f_loop", "q"))
-                               or (isinstance(frame_state, dict) and float(frame_state.get("src_fps") or 30.0) < 28.5)
-                           )
-                       ))):
-                from cutora.render.grade import host_needs_grade
-                from cutora.render.textfx.fade import fade_offset_tuple, fade_tuple
-                _trk = self._track_holding(clip)
-                if not host_needs_grade(clip) and not host_needs_grade(_trk):
-                    _fx = bool(getattr(clip, "flip_x", False) if not isinstance(clip, dict) else clip.get("flip_x", False))
-                    _fy = bool(getattr(clip, "flip_y", False) if not isinstance(clip, dict) else clip.get("flip_y", False))
-                    _feather = int(getattr(clip, "feather", 0) if not isinstance(clip, dict) else clip.get("feather", 0) or 0)
-                    memo_key = (
-                        "pv", id(clip), src_token,
-                        round(float(target_rect.width()), 3),
-                        round(float(target_rect.height()), 3),
-                        fade_tuple(clip), fade_offset_tuple(clip),
-                        _fx, _fy, _feather, _rgb32_ok,
-                    )
             qimg = self._fx_memo_get(memo_key, _process) if memo_key is not None else _process()
             if (isinstance(src_token, tuple) and len(src_token) == 4 and src_token[0] == "f_loop"
                     and qimg is not None and not qimg.isNull()
@@ -2845,6 +3217,7 @@ class RenderWorker(QThread):
             isinstance(frame_state, dict)
             and frame_state.get("_pf_kick")
             and cap is not None
+            and os.environ.get("CUTORA_EXPORT_PREFETCH", "1") != "0"
             and getattr(_REPLAY_TLS, "replay", None) is None
             and getattr(_REPLAY_TLS, "record", None) is None
         ):

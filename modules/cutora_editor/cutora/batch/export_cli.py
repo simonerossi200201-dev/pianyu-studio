@@ -181,6 +181,7 @@ def run_batch_export(
             env["NUMEXPR_NUM_THREADS"] = "1"
             env[COMPOSE_WORKERS_ENV] = str(max(1, int(compose_workers)))
             env[EXPORT_DECODE_THREADS_ENV] = str(max(1, int(decode_threads)))
+            env.setdefault("CUTORA_NVENC_PRESET", "p1")
             if not use_gpu:
                 env["CUDA_VISIBLE_DEVICES"] = ""
 
