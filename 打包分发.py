@@ -81,13 +81,18 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "modules/table_tool/install.py",
     "modules/table_tool/uninstall.py",
     "modules/cutora_editor/cutora",
+    "modules/cutora_editor/rust_core/src",
     "modules/cutora_editor/resources",
     "modules/cutora_editor/vendor",
+    "modules/orante_desk/orante",
+    "modules/orante_desk/ui",
+    "modules/orante_desk/extension",
     "modules/studio_gateway",
     "studio_launcher.py",
     "install_studio.py",
     "片语工作室.bat",
     "片语工作室.vbs",
+    "代码热更新_双击同步最新功能.bat",
     "创建桌面快捷方式.bat",
     "一键打包分发.bat",
     "启动本地算力网关.bat",
@@ -102,14 +107,7 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
 ]
 
 
-BASE_APP_ROOTS = CORE_SHELL_AND_CUTORA_ROOTS + [
-    "modules/orante_desk/orante",
-    "modules/orante_desk/ui",
-    "modules/orante_desk/extension",
-    "modules/robota_hub/robota",
-    "modules/robota_hub/config",
-    "robota_assistant_window.py",
-]
+BASE_APP_ROOTS = list(CORE_SHELL_AND_CUTORA_ROOTS)
 
 COMFY_EXCLUDED_TOP_DIRS = {"models", "output", "input", "temp", ".git", "__pycache__", "user"}
 
