@@ -2018,10 +2018,14 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
     )
     band_jobs = []
     defer_band_clear = False
+    # Rust DLL 不可用（老系统 / 杀毒拦截 / 加载失败）时，所有「延后到 Rust 批量执行」的快路径必须关掉，
+    # 否则延后的格子在 flush 时会被丢弃或整屏涂黑。
+    from cutora.core.rust_engine import is_rust_available as _rust_ok
+    rust_ok = _rust_ok()
     if getattr(painter, "_canvas_needs_clear", False):
         painter._canvas_needs_clear = False
         if direct_canvas:
-            can_partial = True
+            can_partial = rust_ok
             for cid, _tr in cell_renders:
                 geom = cells.get(cid)
                 spans = geom.get("spans") if geom else None
@@ -2050,8 +2054,8 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
     if quiet is not None:
         quiet.__enter__()
     lazy_clear = bool(getattr(paint_one, "_supports_lazy_clear", False))
-    fast_lookup = getattr(paint_one, "_fast_cell_lookup", None) if (not per_cell and not contain and not direct_band) else None
-    pending_cell_blits = [] if (direct_canvas and not later_cids) else None
+    fast_lookup = getattr(paint_one, "_fast_cell_lookup", None) if (rust_ok and not per_cell and not contain and not direct_band) else None
+    pending_cell_blits = [] if (rust_ok and direct_canvas and not later_cids) else None
 
     def _flush_deferred_blits():
         nonlocal defer_band_clear
@@ -2210,6 +2214,16 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
                     )
                 except Exception:
                     pass
+                if direct_img is None:
+                    # Rust 不可用时的纯 Qt 回退：BGR888 → RGB32（像素一致）
+                    try:
+                        _b = direct_bgr if direct_bgr.flags["C_CONTIGUOUS"] else direct_bgr.copy()
+                        direct_img = QImage(
+                            _b.data, _b.shape[1], _b.shape[0], int(_b.strides[0]),
+                            QImage.Format.Format_BGR888,
+                        ).convertToFormat(QImage.Format.Format_RGB32)
+                    except Exception:
+                        logger.exception("分屏格子 BGR→RGB32 回退转换失败")
             if direct_img is not None:
                 src_layer = direct_img
             else:

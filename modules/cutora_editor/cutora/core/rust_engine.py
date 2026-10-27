@@ -56,6 +56,9 @@ def get_rust_lib() -> Optional[ctypes.CDLL]:
     if _LOAD_TRIED:
         return _LIB
     _LOAD_TRIED = True
+    # 诊断开关：CUTORA_DISABLE_RUST=1 时完全不加载 DLL，用来验证「DLL 加载失败时自动回退 Python/Qt 路径」。
+    if os.environ.get("CUTORA_DISABLE_RUST") == "1":
+        return None
     dll_path = _find_dll()
     if dll_path is None:
         return None

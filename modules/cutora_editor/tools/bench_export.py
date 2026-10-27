@@ -62,6 +62,7 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=10, help="Number of tasks to benchmark (0 = all)")
     parser.add_argument("--max-duration", type=float, default=90.0, help="Duration per task in seconds for equal-length benchmark (0 = full duration)")
     parser.add_argument("--ref-dir", default=r"D:\1_PROJECT\2026-10-19\B\成品", help="Reference output directory for PSNR check")
+    parser.add_argument("--keep-out", action="store_true", help="Keep the output directory (to use as a later --ref-dir)")
     args = parser.parse_args()
 
     from cutora.batch.export_cli import run_batch_export
@@ -95,7 +96,10 @@ def main() -> int:
         print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
         return 0 if summary.get("ok") else 1
     finally:
-        shutil.rmtree(tmp_out, ignore_errors=True)
+        if args.keep_out:
+            print(f"[bench] 输出保留在: {tmp_out}", flush=True)
+        else:
+            shutil.rmtree(tmp_out, ignore_errors=True)
 
 
 if __name__ == "__main__":

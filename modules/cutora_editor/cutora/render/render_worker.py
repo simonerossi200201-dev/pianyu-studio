@@ -2799,8 +2799,10 @@ class RenderWorker(QThread):
             from cutora.batch.layer_folders import opacity_mul_current
             base_op = max(0.0, min(1.0, opacity / 255.0)) * t_op * opacity_mul_current(clip)
 
+            from cutora.core.rust_engine import is_rust_available as _rust_ok_dbgr
             if (
                 _can_reuse_qimg
+                and _rust_ok_dbgr()
                 and _rgb32_ok
                 and not _clip_needs_fill
                 and qimg_cached is None
