@@ -13,6 +13,7 @@ import time
 import tempfile
 import threading
 from PySide6.QtCore import (
+    Qt,
     QThread,
     Signal,
     QRectF,

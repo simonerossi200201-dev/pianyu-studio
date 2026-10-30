@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 
 from cutora.batch.batch_load import VIDEO_EXTS
 from cutora.batch.script_insert_image import (

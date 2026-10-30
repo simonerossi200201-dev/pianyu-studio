@@ -2,6 +2,7 @@
 # Extracted from the T01 monolith by tools/split_monolith.py.
 # Original lines: 2280-2282, 2284-2554
 
+import os
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,

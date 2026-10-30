@@ -7002,7 +7002,8 @@ class MainWindow(CommandBodies, QMainWindow):
                     progressed = True
                 if not progressed:
                     break
-        _sync_audio_tracks_to_task(task)
+        # 时间线就是音频的唯一来源（_add_bgm_to_track 同样不做额外同步）。
+        # 这里原来调用了一个从未定义过的 _sync_audio_tracks_to_task，批量加配乐每次都会抛 NameError。
 
     def _after_audio_volume_changed(self, role=None, linear_val=None, immediate=False):
         """统一同步角色推子、实时更新 StemMixer 增益，并触发后台音轨重混（解决配乐/音效调音量无反应）。"""

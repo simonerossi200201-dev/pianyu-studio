@@ -5,6 +5,8 @@
 import copy
 import math
 import time
+from cutora.core.log import get_logger as _get_logger
+_LOG = _get_logger("cutora.ui.panels.property")
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QVBoxLayout,
