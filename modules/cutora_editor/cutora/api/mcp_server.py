@@ -106,6 +106,18 @@ def handle_tools_call(params: dict) -> dict:
     try:
         body = api_post("/v1/commands/" + spec.name, args)
     except ApiOff:
+        if getattr(spec, "headless", False) and (
+            os.environ.get("CUTORA_MCP_HEADLESS") == "1" or bool(args.get("_headless"))
+        ):
+            clean_args = {k: v for k, v in args.items() if k != "_headless"}
+            try:
+                from cutora.core.commands import get_bus
+                res = get_bus().execute(spec.name, clean_args, source="mcp")
+                body = {"ok": True, "command": spec.name, "result": res}
+                return {"content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False, indent=2)}], "isError": False}
+            except Exception as exc:
+                body = {"ok": False, "command": spec.name, "error": str(exc)}
+                return {"content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False, indent=2)}], "isError": True}
         return {
             "content": [{"type": "text", "text": API_OFF}],
             "isError": True,

@@ -16,17 +16,22 @@ MIN_SPEECH_OVERLAP = 0.25
 def _model_transcribe(model, audio, language, batch_size=4):
     from cutora.asr.decode_opts import asr_decode_options
     opts = asr_decode_options()
+    # task 必须显式给：whisperx 在「换语言」时会拿 faster-whisper 的
+    # ``tokenizer.task``（那是 token id 50359，不是 "transcribe"）去重建
+    # Tokenizer → ValueError。模型按 en 载入、自动检测出 ar / sw / mg 时必炸。
     try:
         return model.transcribe(
-            audio, batch_size=batch_size, language=language,
+            audio, batch_size=batch_size, language=language, task="transcribe",
             verbose=False, print_progress=False, **opts)
     except TypeError:
         try:
             return model.transcribe(
-                audio, batch_size=batch_size, language=language, **opts)
+                audio, batch_size=batch_size, language=language,
+                task="transcribe", **opts)
         except TypeError:
             return model.transcribe(
-                audio, batch_size=batch_size, language=language)
+                audio, batch_size=batch_size, language=language,
+                task="transcribe")
 
 
 def _speech_windows(wav, sr):

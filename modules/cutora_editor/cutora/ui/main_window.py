@@ -1551,9 +1551,24 @@ def place_shared_track(src_tl, src_tr, tgt_tl, new_tr, placed=None) -> int:
             anchor = placed.get(id(below))
             if anchor is None:
                 btype = getattr(below, "type", "")
-                nth = sum(1 for t in tracks[:j] if getattr(t, "type", "") == btype)
-                same = [t for t in tgt if getattr(t, "type", "") == btype]
-                anchor = same[nth] if nth < len(same) else None
+                if (
+                    btype == "video"
+                    and getattr(below, "split_cell", None)
+                    and not any(
+                        getattr(t, "type", "") == "video" and getattr(t, "split_cell", None)
+                        for t in tracks[j + 1:i]
+                    )
+                ):
+                    split_same = [
+                        t for t in tgt
+                        if getattr(t, "type", "") == "video" and getattr(t, "split_cell", None)
+                    ]
+                    if split_same:
+                        anchor = split_same[-1]
+                if anchor is None:
+                    nth = sum(1 for t in tracks[:j] if getattr(t, "type", "") == btype)
+                    same = [t for t in tgt if getattr(t, "type", "") == btype]
+                    anchor = same[nth] if nth < len(same) else (same[-1] if same and btype == "video" and getattr(new_tr, "split_cell", None) is None else None)
             if anchor is not None and anchor in tgt:
                 pos = tgt.index(anchor) + 1
                 tgt.insert(pos, new_tr)
@@ -2920,6 +2935,11 @@ class MainWindow(CommandBodies, QMainWindow):
         act_del = QAction(tr("删除选中片段"), self)
         act_del.triggered.connect(self.delete_timeline_selection)
         edit_menu.addAction(act_del)
+        act_silence = QAction(tr("剪气口（智能裁剪停顿）…"), self)
+        act_silence.setToolTip(tr("检测并裁剪说话间超过设定时长的停顿气口，支持毫秒/帧/秒/分钟精度与无损自检"))
+        act_silence.triggered.connect(self.open_silence_cut_dialog)
+        edit_menu.addAction(act_silence)
+        own(act_silence)
         _s = QAction(self)
         _s.setSeparator(True)
         edit_menu.addAction(_s)
@@ -3077,6 +3097,11 @@ class MainWindow(CommandBodies, QMainWindow):
         batch_menu = menu.addMenu(tr("批量"))
         _a = QAction(tr("片段智能拼接…"), self)
         _a.triggered.connect(self.open_script_stitcher)
+        batch_menu.addAction(_a)
+        own(_a)
+        _a = QAction(tr("批量剪气口…"), self)
+        _a.setToolTip(tr("对工程内全部视频批量检测并裁剪过长停顿气口，带三路信号防误伤与自检报告"))
+        _a.triggered.connect(self.open_batch_silence_cut_dialog)
         batch_menu.addAction(_a)
         own(_a)
         _a = QAction(tr("片段散落…"), self)
@@ -7512,6 +7537,17 @@ class MainWindow(CommandBodies, QMainWindow):
                 src_tr = it["track"]
                 auto_fit = it["auto_fit_duration"]
                 new_tr = copy.deepcopy(src_tr)
+                # 同步混合模式与分屏角色（全屏特效叠加层保持 split_cell=None 且混合模式一致）
+                _src_bm = str(
+                    getattr(src_tr, "blend_mode", None)
+                    or (getattr(src_tr, "props", None) or {}).get("blend_mode")
+                    or "normal"
+                )
+                new_tr.blend_mode = _src_bm
+                if isinstance(getattr(new_tr, "props", None), dict):
+                    new_tr.props["blend_mode"] = _src_bm
+                if getattr(src_tr, "split_cell", None) in (None, "", "none", "None"):
+                    new_tr.split_cell = None
                 # 双保险：共享时忽略任何缩略图前置片段
                 new_tr.clips = [
                     c for c in (getattr(new_tr, "clips", []) or [])
@@ -13165,6 +13201,14 @@ class MainWindow(CommandBodies, QMainWindow):
         self.timeline.set_data(self.media_player.duration(), task)
         self.sub_panel.load_data(task['style'])
         self._reset_sticker_ui_cache()
+
+    def open_silence_cut_dialog(self):
+        from cutora.ui.silence_cut_dialog import open_silence_cut_dialog as _open_sc
+        return _open_sc(self, batch_default=False)
+
+    def open_batch_silence_cut_dialog(self):
+        from cutora.ui.silence_cut_dialog import open_silence_cut_dialog as _open_sc
+        return _open_sc(self, batch_default=True)
 
     def _announce_text_layer_migrate(self, data):
         from cutora.subtitle.text_layer import migrate_open_project

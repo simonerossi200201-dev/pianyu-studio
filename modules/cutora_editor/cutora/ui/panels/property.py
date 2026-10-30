@@ -1204,13 +1204,17 @@ class PropertyPanel(QWidget):
         bff = _mkform()
         self.vid_bg_mode = ValueCombo((
             ("none", "无（露黑底）"),
-            ("blur", "模糊背景（原片放大虚化）"),
+            ("blur", "模糊背景（露边时自动虚化）"),
             ("mirror", "镜像填充"),
             ("tile", "平铺填充"),
             ("stretch", "拉伸填充"),
         ))
         self.vid_bg_mode.valueChanged.connect(self._on_vid_bg_fill)
         bff.addRow("填充", self.vid_bg_mode, reset_key="vid.bg_mode")
+        self.vid_bg_status_lbl = QLabel("")
+        self.vid_bg_status_lbl.setWordWrap(True)
+        self.vid_bg_status_lbl.setStyleSheet("color: #7E8B9B; font-size: 11px; padding: 2px 0;")
+        bff.addRow("", self.vid_bg_status_lbl)
         # 一行只连一个信号：SliderSpin 自己会把滑杆和数字框合成一个
         # valueChanged，再去连 spin/slider 就是同一次改动发三遍。
         _bg_blur = SliderSpin(0, 100, 1, 0)
@@ -2535,7 +2539,7 @@ class PropertyPanel(QWidget):
         self.param_changed.emit(None)
 
     def _sync_bg_fill_rows(self):
-        """无填充时只留模式那一行；不是模糊就不显示模糊程度。"""
+        """无填充时只留模式那一行；不是模糊就不显示模糊程度；若画面已铺满则提示零损耗跳过。"""
         mode = self.vid_bg_mode.currentData() if hasattr(self, "vid_bg_mode") else "none"
         on = mode not in (None, "", "none")
         for w in (self.vid_bg_dim, self.vid_bg_dim_sl, self.vid_bg_scale,
@@ -2548,6 +2552,17 @@ class PropertyPanel(QWidget):
         lens_on = blur_on and (self.vid_bg_style.currentData() or "lens") == "lens"
         self.vid_bg_hl.setEnabled(lens_on)
         self.vid_bg_hl_sl.setEnabled(lens_on)
+        lbl = getattr(self, "vid_bg_status_lbl", None)
+        if lbl is not None:
+            clip = getattr(self, "_video_clip", None)
+            sc = float(getattr(clip, "scale", 1.0) or 1.0) if clip is not None else 1.0
+            fmode = str(getattr(clip, "fit_mode", "fill") or "fill").lower() if clip is not None else "fill"
+            if not on:
+                lbl.setText("已关闭背景填充")
+            elif fmode in ("fill", "stretch") and sc >= 0.999:
+                lbl.setText("✓ 当前画面已完全铺满，渲染时自动跳过背景模糊计算（0 资源占用）")
+            else:
+                lbl.setText("仅在画面留有边距时计算背景填充")
 
     def _load_bg_fill(self, clip):
         from cutora.render.fill_bg import fill_spec

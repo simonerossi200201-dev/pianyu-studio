@@ -424,6 +424,29 @@ def _numeric_to_words(s):
             return _int_to_words(n)
     return None
 
+_ARABIC_NORM_MAP = str.maketrans({
+    "\u0640": "",   # tatweel
+    "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا",
+    "ى": "ي", "ة": "ه",
+    "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+    "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+})
+_CJK_NORM_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]")
+
+
+def _fold_multilingual_token(s: str) -> str:
+    """Fold Arabic variants and Latin diacritics (Malagasy ô→o, Swahili, etc.)."""
+    import unicodedata
+    s = s.translate(_ARABIC_NORM_MAP)
+    out = []
+    for ch in unicodedata.normalize("NFKD", s):
+        cat = unicodedata.category(ch)
+        if cat in ("Mn", "Me"):
+            continue
+        out.append(ch)
+    return unicodedata.normalize("NFKC", "".join(out))
+
+
 def norm_tokens(w):
     """归一化一个原始词 → token 列表 (可能 0 个、1 个或多个)。
 
@@ -434,11 +457,26 @@ def norm_tokens(w):
       "50%"         → ['fifty','percent']
       "$100"        → ['one','hundred','dollars']
       "1st"         → ['first']
+    中日韩字符按单字切分；阿拉伯语/马尔加什语/斯瓦希里语自动归一变体与重音。
     返回 [] 表示应丢弃。
     """
-    raw = (w or "").strip().lower()
+    raw = _fold_multilingual_token((w or "").strip().lower())
     if not raw:
         return []
+    if _CJK_NORM_RE.search(raw):
+        out_cjk = []
+        buf = ""
+        for ch in raw:
+            if _CJK_NORM_RE.match(ch):
+                if buf:
+                    out_cjk.extend(norm_tokens(buf))
+                    buf = ""
+                out_cjk.append(ch)
+            else:
+                buf += ch
+        if buf:
+            out_cjk.extend(norm_tokens(buf))
+        return [t for t in out_cjk if t]
     out = []
     # 时间 "3:30" 必须在下面那步 re.sub 吃掉冒号之前处理掉。
     # 否则会被压成 "330" → three hundred thirty, 而口播念的是 "three thirty",
@@ -629,7 +667,7 @@ def fold_numbers(toks, spans=None):
 # 这里在切词之前把「字母 + 标点 + 字母」的标点后面补一个空格。
 # 只在两边都是字母时才补，所以 "4:9"、"22:10" 这类数字不受影响。
 _GLUED_PUNCT = re.compile(
-    r'(?<=[A-Za-z])([.,;:!?\u2026]+[\u201d"\u2019\')\]]*)(?=[A-Za-z\u201c"\u2018\'(\[])')
+    r'(?<=[^\W\d_])([.,;:!?\u2026\u060C\u061B\u061F]+[\u201d"\u2019\')\]\u00bb]*)(?=[^\W\d_]|\u201c|"|\u2018|\'|\(|\[|\u00ab)')
 
 def unglue_punct(text):
     """把标点后面漏掉的空格补回来。切词前调用，纯预处理，不改别的。"""
@@ -926,6 +964,14 @@ def scan_groups_multi(folders, group_mark=None, order_mark=None, group_by_folder
         else:
             one = scan_groups(folder, group_mark, order_mark)
             label = _folder_label(folder)
+            if not one and not (group_mark or "").strip() and not (order_mark or "").strip():
+                try:
+                    from cutora.batch.stitch_grouping import GROUP_AUTO, scan_folders
+                    sub_res = scan_folders([folder], mode=GROUP_AUTO)
+                    if sub_res.groups and not sub_res.low_items:
+                        one = {g.key: g.paths for g in sub_res.groups}
+                except Exception:
+                    pass
         for k, paths in one.items():
             key = k
             if key in groups:
@@ -1207,7 +1253,22 @@ def flatten_words(segments, log=None):
         seg_words, rescued = _seg_words_or_text(seg)
         if rescued:
             n_rescued += 1
+        merged_seg_words = []
         for w in seg_words:
+            raw_w = str(w.get("word", "") or "").strip()
+            if (
+                merged_seg_words
+                and re.fullmatch(r",?\d{3}(?:,\d{3})*", raw_w)
+                and re.fullmatch(r"\$?\d{1,3},?", str(merged_seg_words[-1].get("word", "") or "").strip())
+            ):
+                prev = dict(merged_seg_words[-1])
+                prev["word"] = str(prev.get("word", "")).rstrip(",") + raw_w.replace(",", "")
+                if w.get("end") is not None:
+                    prev["end"] = w.get("end")
+                merged_seg_words[-1] = prev
+                continue
+            merged_seg_words.append(w)
+        for w in merged_seg_words:
             toks = norm_tokens(w.get("word", ""))
             if not toks:
                 continue
@@ -3816,12 +3877,14 @@ class StitcherDialog(QDialog):
         self._base_of = {}
         self._groups = {}
         self._group_keys = []
+        self._grouping_result = None
         self._session = None
         self._pending_groups = None
         self._pending_scripts = None
         self._auto_handoff_mode = False
         self.setWindowTitle("片段智能拼接")
-        self.setMinimumSize(760, 680)
+        self.setMinimumSize(760, 620)
+        self.setAcceptDrops(True)
         self._build_ui()
         try:
             from cutora.batch.script_ui import apply_plugin_style
@@ -3830,189 +3893,276 @@ class StitcherDialog(QDialog):
         except Exception:
             pass
         self._attach_session()
-        if os.environ.get("CUTORA_START_ROOM") == "stitch" or os.environ.get("CUTORA_SYNC_ORANTE") == "1" or not self._folders():
+        if (
+            os.environ.get("CUTORA_START_ROOM") == "stitch"
+            or os.environ.get("CUTORA_SYNC_ORANTE") == "1"
+            or (parent is not None and not self._folders())
+        ):
             self._sync_from_orante(quiet=True)
         if self._folders() and not self._groups:
             self._rescan()
 
     def _build_ui(self):
-        v = QVBoxLayout(self)
+        from PySide6.QtGui import QAction, QShortcut
+        from PySide6.QtWidgets import QFrame, QMenu, QSplitter, QToolButton, QWidget
+        from cutora.ui.i18n import tr as _tr
 
-        # ── 素材文件夹 (可以加多个) ──
-        # 一个文件夹里可以是一条视频的所有片段, 也可以是多组。加多个文件夹
-        # 就等于一次把多条视频排进来; 每条的成品仍然写回它自己的 _stitched,
-        # 谁也不会覆盖谁。
-        row = QHBoxLayout()
-        row.addWidget(QLabel("素材文件夹 (可添加多个):"))
-        row.addStretch(1)
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+
+        # ── 顶部工具栏：标题 + Orante 同步 + ⓘ 使用指南 ──
+        top_bar = QHBoxLayout()
+        lbl_title = QLabel("🔗 片段智能拼接")
+        lbl_title.setObjectName("sectionHeader")
+        top_bar.addWidget(lbl_title)
+
+        self.btn_info = QToolButton(self)
+        self.btn_info.setText("ⓘ 说明")
+        self.btn_info.setCursor(Qt.CursorShape.PointingHandCursor)
+        info_tip = (
+            "【智能分组说明】\n"
+            "• 自动识别（推荐）：添加或粘贴文件夹瞬间自动解析文件名形状与数字/字母序号\n"
+            "  （支持 01a/01b、01 (1)、Tik001_v01、V01-简单的小天使 (1)-1 等任意规律）。\n"
+            "• 按文件夹分组：每个素材文件夹直接算作一组，内部按文件名自然排序。\n\n"
+            "【原文案粘贴说明】\n"
+            "• 与 Google Sheet 一一对应：一格 = 一个视频。\n"
+            "• 在 Sheet 中复制整列文案后，点击右侧表格按 Ctrl+V 或点「从剪贴板批量粘贴」即可。"
+        )
+        self.btn_info.setToolTip(info_tip)
+        self.btn_info.clicked.connect(lambda: QMessageBox.information(self, "片段智能拼接说明", info_tip))
+        top_bar.addWidget(self.btn_info)
+
+        top_bar.addStretch(1)
         self.ed_orante_range = QLineEdit()
         self.ed_orante_range.setPlaceholderText("任务范围(留空=全部，如 T0137-T0162 或 v01-v26)")
-        self.ed_orante_range.setFixedWidth(250)
-        row.addWidget(self.ed_orante_range)
+        self.ed_orante_range.setFixedWidth(230)
+        top_bar.addWidget(self.ed_orante_range)
         b_orante = QPushButton("⚡ 载入 Orante 批次与文案")
-        b_orante.setToolTip("直接读取 Orante 当前活跃批次（或左侧指定范围）的全部已收片文件夹与文案，自动写入顺序锁并填好下方文案表")
+        b_orante.setToolTip("直接读取 Orante 当前活跃批次（或左侧指定范围）的全部已收片文件夹与文案，自动写入顺序锁并填好文案表")
         b_orante.clicked.connect(lambda: self._sync_from_orante(quiet=False, auto_start_override=False))
-        row.addWidget(b_orante)
+        top_bar.addWidget(b_orante)
+        b_miss = QPushButton("打开缺失报告")
+        b_miss.clicked.connect(self._open_missing_report)
+        top_bar.addWidget(b_miss)
+        v.addLayout(top_bar)
+
+        # ── 响应式双栏 Splitter（宽屏/横屏左右布局，窄屏/竖屏自动切换为上下布局）──
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.main_splitter.setChildrenCollapsible(False)
+
+        # === 左/上栏：素材文件夹与智能分组 ===
+        self.pane_folders = QFrame(self.main_splitter)
+        pf_lay = QVBoxLayout(self.pane_folders)
+        pf_lay.setContentsMargins(0, 0, 4, 0)
+        pf_lay.setSpacing(6)
+
+        row_f = QHBoxLayout()
+        row_f.addWidget(QLabel("📂 素材目录 (支持拖入或粘贴路径):"))
+        row_f.addStretch(1)
         b_add = QPushButton("添加文件夹...")
         b_add.clicked.connect(self._add_folder)
-        row.addWidget(b_add)
-        b_tree = QPushButton("添加整棵目录...")
-        b_tree.setToolTip("选一个总目录, 自动把它下面所有装着视频的子文件夹都加进来\n"
-                          "(适合 …\\0901\\Tik012\\片段 这种一条视频一个文件夹的摆法)")
+        row_f.addWidget(b_add)
+        b_tree = QPushButton("添加总目录...")
+        b_tree.setToolTip("选一个总目录, 自动把它下面所有装着视频的子文件夹都加进来")
         b_tree.clicked.connect(self._add_tree)
-        row.addWidget(b_tree)
-        b_del = QPushButton("移除选中")
+        row_f.addWidget(b_tree)
+        b_paste_dir = QPushButton("📋 粘贴路径")
+        b_paste_dir.setToolTip("直接从剪贴板粘贴一个或多个文件夹路径，立即自动识别分组")
+        b_paste_dir.clicked.connect(self._paste_folders)
+        row_f.addWidget(b_paste_dir)
+        b_del = QPushButton("移除")
         b_del.clicked.connect(self._remove_folder)
-        row.addWidget(b_del)
+        row_f.addWidget(b_del)
         b_clr = QPushButton("清空")
         b_clr.clicked.connect(self._clear_folders)
-        row.addWidget(b_clr)
-        b_miss = QPushButton("打开缺失报告位置")
-        b_miss.clicked.connect(self._open_missing_report)
-        row.addWidget(b_miss)
-        v.addLayout(row)
+        row_f.addWidget(b_clr)
+        pf_lay.addLayout(row_f)
 
         self.lst_folders = QListWidget()
-        self.lst_folders.setSelectionMode(
-            QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.lst_folders.setMaximumHeight(92)
-        v.addWidget(self.lst_folders)
+        self.lst_folders.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.lst_folders.setMinimumHeight(110)
+        self.lst_folders.setToolTip("可将文件夹或视频直接拖入此处，或选中后按 Delete 移除")
+        pf_lay.addWidget(self.lst_folders, 1)
 
-        # ── 自定义命名规则 ──
-        # 默认留空 = 自动识别(能认 01a / 01 (1) / Tik008-s017 / Tik001_v01 等)。
-        # 认错或者认不出来的时候, 在这里直接告诉它前缀是什么, 比改代码快。
+        # ── 分组依据（合并原分组前缀与序号前缀为智能自动识别 + 文件夹分组）──
         rown = QHBoxLayout()
-        rown.addWidget(QLabel("分组前缀:"))
-        self.ed_group_mark = QLineEdit()
-        self.ed_group_mark.setPlaceholderText("留空=自动识别；例: Tik00x 或 Tik")
-        self.ed_group_mark.setFixedWidth(190)
-        rown.addWidget(self.ed_group_mark)
-        rown.addSpacing(12)
-        rown.addWidget(QLabel("序号前缀:"))
-        self.ed_order_mark = QLineEdit()
-        self.ed_order_mark.setPlaceholderText("留空=自动识别；例: v0x 或 v")
-        self.ed_order_mark.setFixedWidth(190)
-        rown.addWidget(self.ed_order_mark)
-        self.chk_group_by_folder = QCheckBox("以文件夹为一组（忽略文件名）")
-        self.chk_group_by_folder.setToolTip(
-            "一个文件夹里的视频都算一组，文件名随便起。勾上之后，"
-            "左边两个前缀不再参与分组，所以变成灰色。")
-        rown.addWidget(self.chk_group_by_folder)
-        btn_apply = QPushButton("重新扫描")
+        rown.addWidget(QLabel("分组依据:"))
+        self.cmb_group_mode = QComboBox()
+        self.cmb_group_mode.addItem("✨ 自动识别前缀与序号 (推荐)", "auto")
+        self.cmb_group_mode.addItem("📁 用文件夹来分组 (一夹一组)", "folder")
+        rown.addWidget(self.cmb_group_mode, 1)
+
+        btn_apply = QPushButton("🔄 重新扫描")
         btn_apply.clicked.connect(self._apply_naming)
         rown.addWidget(btn_apply)
-        rown.addStretch(1)
-        v.addLayout(rown)
+        pf_lay.addLayout(rown)
+
+        # 保留原有隐藏控件以兼容外部脚本与旧配置读写
+        self.ed_group_mark = QLineEdit(self)
+        self.ed_group_mark.setPlaceholderText("留空=自动识别；例: Tik00x 或 Tik")
+        self.ed_group_mark.hide()
+        self.ed_order_mark = QLineEdit(self)
+        self.ed_order_mark.setPlaceholderText("留空=自动识别；例: v0x 或 v")
+        self.ed_order_mark.hide()
+        self.chk_group_by_folder = QCheckBox("以文件夹为一组（忽略文件名）", self)
+        self.chk_group_by_folder.hide()
+
         _gm, _om = load_naming()
         self.ed_group_mark.setText(_gm)
         self.ed_order_mark.setText(_om)
         _by_folder = load_group_by_folder()
-        # 先摆状态再接线, 打开对话框不要把配置重写一遍
         self.chk_group_by_folder.setChecked(_by_folder)
-        self.ed_group_mark.setEnabled(not _by_folder)
-        self.ed_order_mark.setEnabled(not _by_folder)
+        self.cmb_group_mode.setCurrentIndex(1 if _by_folder else 0)
         for _p in load_last_folders():
             self.lst_folders.addItem(_p)
         self.ed_group_mark.editingFinished.connect(self._apply_naming)
         self.ed_order_mark.editingFinished.connect(self._apply_naming)
         self.chk_group_by_folder.toggled.connect(self._on_group_by_folder)
+        self.cmb_group_mode.currentIndexChanged.connect(self._on_group_mode_combo)
 
-        hint_n = QLabel("例: 文件叫 Tik001_v01.mp4 → 分组前缀填 Tik00x（或 Tik）, "
-                        "序号前缀填 v0x（或 v）。占位符 x/#/0 随便写, 只看前面的字母。")
-        hint_n.setObjectName("hint")
-        hint_n.setWordWrap(True)
-        v.addWidget(hint_n)
-
-        self.lbl_scan = QLabel("（添加文件夹后自动扫描分组）")
+        self.lbl_scan = QLabel("（添加或拖入文件夹后立即自动识别分组）")
         self.lbl_scan.setObjectName("okHint")
-        v.addWidget(self.lbl_scan)
+        self.lbl_scan.setWordWrap(True)
+        pf_lay.addWidget(self.lbl_scan)
 
-        lbl = QLabel("原文案 — 与 Google Sheet 一一对应: 一格 = 一个视频。\n"
-                     "在 Sheet 里选中文案整列复制 (如 C1:C51), 回到这里点表格后 Ctrl+V, "
-                     "或直接点「从剪贴板批量粘贴」。多行格子会自动合并为一条。")
-        lbl.setObjectName("hint")
-        v.addWidget(lbl)
-
-        self.tbl_script = PasteTable(self._paste_clipboard, 0, 2)
-        self.tbl_script.setHorizontalHeaderLabels(["组", "文案 (双击可单独编辑)"])
-        self.tbl_script.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.tbl_script.setColumnWidth(0, 56)
-        v.addWidget(self.tbl_script, 1)
+        # === 右/下栏：原文案与智能认领预览表 ===
+        self.pane_scripts = QFrame(self.main_splitter)
+        ps_lay = QVBoxLayout(self.pane_scripts)
+        ps_lay.setContentsMargins(4, 0, 0, 0)
+        ps_lay.setSpacing(6)
 
         rowp = QHBoxLayout()
-        btn_paste = QPushButton("📋 从剪贴板批量粘贴 (Sheet 一格一条)")
+        rowp.addWidget(QLabel("📝 原文案与分组匹配表 (一格一视频):"))
+        rowp.addStretch(1)
+        btn_paste = QPushButton("📋 从剪贴板批量粘贴")
+        btn_paste.setToolTip("在 Google Sheet 中复制文案列后点此粘贴，或在表格内按 Ctrl+V")
         btn_paste.clicked.connect(self._paste_clipboard)
         rowp.addWidget(btn_paste)
+        self.btn_precheck = QPushButton("🔍 拼接前自检")
+        self.btn_precheck.setToolTip("检查各组片段顺序、缺号情况与文案匹配度")
+        self.btn_precheck.clicked.connect(self._run_precheck_dialog)
+        rowp.addWidget(self.btn_precheck)
         btn_clear = QPushButton("清空文案")
         btn_clear.clicked.connect(self._clear_scripts)
         rowp.addWidget(btn_clear)
-        rowp.addStretch(1)
-        self.lbl_fill = QLabel("")
+        self.lbl_fill = QLabel("已填 0 / 0")
         self.lbl_fill.setObjectName("okHint")
         rowp.addWidget(self.lbl_fill)
-        v.addLayout(rowp)
+        ps_lay.addLayout(rowp)
 
+        self.tbl_script = PasteTable(self._paste_clipboard, 0, 3)
+        self.tbl_script.setHorizontalHeaderLabels(["组", "文案 (双击可单独编辑)", "智能分组与片段序"])
+        self.tbl_script.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_script.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.tbl_script.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        ps_lay.addWidget(self.tbl_script, 1)
+
+        self.main_splitter.addWidget(self.pane_folders)
+        self.main_splitter.addWidget(self.pane_scripts)
+        self.main_splitter.setStretchFactor(0, 2)
+        self.main_splitter.setStretchFactor(1, 3)
+        v.addWidget(self.main_splitter, 1)
+
+        # ── 底部参数与执行栏（默认语言必须为 auto 自动识别，繁琐选项收纳进高级菜单）──
         opt = QHBoxLayout()
-        opt.addWidget(QLabel("语言:"))
+        opt.addWidget(QLabel("识别语言:"))
         self.cmb_lang = QComboBox()
-        cur = getattr(_cfg, "LANGUAGE", "en")
-        for code in [cur] + [c for c in ("en", "it", "es", "fr", "pt", "de") if c != cur]:
-            self.cmb_lang.addItem(code)
+        self.cmb_lang.setToolTip("默认自动识别全语种（含中文、马尔加什语、斯瓦西里语、阿拉伯语、英语等）")
+        lang_items = [
+            ("auto", "auto · 自动识别 (全语种)"),
+            ("zh", "zh · 中文"),
+            ("mg", "mg · 马尔加什语 (Malagasy)"),
+            ("sw", "sw · 斯瓦西里语 (Swahili)"),
+            ("ar", "ar · 阿拉伯语 (العربية)"),
+            ("en", "en · 英语 (English)"),
+            ("it", "it · 意大利语"),
+            ("es", "es · 西班牙语"),
+            ("fr", "fr · 法语"),
+            ("pt", "pt · 葡萄牙语"),
+            ("de", "de · 德语"),
+        ]
+        for code, label in lang_items:
+            self.cmb_lang.addItem(label, code)
+        self.cmb_lang.setCurrentIndex(0)  # 默认必须是 auto 自动识别
         opt.addWidget(self.cmb_lang)
+
+        opt.addSpacing(10)
         opt.addWidget(QLabel("尾部余量(s):"))
         self.spin_pad = QDoubleSpinBox()
         self.spin_pad.setRange(0.0, 2.0)
         self.spin_pad.setSingleStep(0.05)
         self.spin_pad.setValue(0.35)
         opt.addWidget(self.spin_pad)
-        self.chk_head = QCheckBox("裁剪开头空白")
+
+        # 保留原有 QCheckBox 属性并与「⚙ 高级设置 ▾」下拉菜单双向同步
+        self.chk_head = QCheckBox("裁剪开头空白", self)
         self.chk_head.setChecked(True)
-        opt.addWidget(self.chk_head)
-        self.chk_edge = QCheckBox("切口落在静音处")
+        self.chk_head.hide()
+        self.chk_edge = QCheckBox("切口落在静音处", self)
         self.chk_edge.setChecked(EDGE_REFINE_DEFAULT)
-        self.chk_edge.setToolTip(
-            "不再机械地按「词尾 + 尾部余量」下刀。\n"
-            "词尾之后一旦有声音重新起来 (Flow 结尾常带的半秒 an / and / to 之类),\n"
-            "就在它之前的静音里切断 —— 余量够用时切点和以前完全一样。")
-        opt.addWidget(self.chk_edge)
-        self.chk_fade = QCheckBox("接缝淡化30ms")
+        self.chk_edge.hide()
+        self.chk_fade = QCheckBox("接缝淡化30ms", self)
         self.chk_fade.setChecked(True)
-        self.chk_fade.setToolTip("每段接口处做 30ms 音频淡入淡出, 抹掉底噪突变的\"啪\"声。")
-        opt.addWidget(self.chk_fade)
-        opt.addStretch(1)
-        v.addLayout(opt)
-
-        opt2 = QHBoxLayout()
-        self.chk_review = QCheckBox("编码前总是人工复核 (不弹确认询问)")
+        self.chk_fade.hide()
+        self.chk_review = QCheckBox("编码前总是人工复核 (不弹确认询问)", self)
         self.chk_review.setChecked(False)
-        opt2.addWidget(self.chk_review)
-        self.chk_auto_ai = QCheckBox("完成后自动一键全自动")
+        self.chk_review.hide()
+        self.chk_auto_ai = QCheckBox("完成后自动一键全自动", self)
         self.chk_auto_ai.setChecked(True)
-        opt2.addWidget(self.chk_auto_ai)
-        self.chk_recycle = QCheckBox("编码成功后将多余片段移入回收站")
+        self.chk_auto_ai.hide()
+        self.chk_recycle = QCheckBox("编码成功后将多余片段移入回收站", self)
         self.chk_recycle.setChecked(True)
-        opt2.addWidget(self.chk_recycle)
-        from cutora.ui.i18n import tr as _tr
-        self.chk_ignore_refs = QCheckBox(_tr("忽略经文出处"))
+        self.chk_recycle.hide()
+        self.chk_ignore_refs = QCheckBox(_tr("忽略经文出处"), self)
         self.chk_ignore_refs.setChecked(True)
-        self.chk_ignore_refs.setToolTip(_tr(
-            "括号里的经文出处（如 (John 8:34-35)）配音不会念，不列入缺失清单。"))
-        opt2.addWidget(self.chk_ignore_refs)
-        opt2.addStretch(1)
-        v.addLayout(opt2)
+        self.chk_ignore_refs.hide()
 
-        self.btn_start = QPushButton("开始拼接")
+        self.btn_adv = QToolButton(self)
+        self.btn_adv.setText("⚙ 高级拼接设置 ▾")
+        self.btn_adv.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        adv_menu = QMenu(self.btn_adv)
+        for chk, tip in (
+            (self.chk_head, "自动裁掉首个词之前的空白气口"),
+            (self.chk_edge, "词尾后若有碎音，自动在静音谷底切断"),
+            (self.chk_fade, "每段接缝处做 30ms 音频淡化，消除底噪突变"),
+            (self.chk_ignore_refs, "括号里的经文出处（如 (John 8:34-35)）配音不念时不列入缺失"),
+            (self.chk_auto_ai, "生成时间线后自动启动全自动字幕与排版"),
+            (self.chk_recycle, "拼接完成后将完全重复或废片移入回收站"),
+            (self.chk_review, "生成时间线前总是打开人工复核表微调切点"),
+        ):
+            act = QAction(chk.text(), adv_menu, checkable=True)
+            act.setChecked(chk.isChecked())
+            act.setToolTip(tip)
+            act.toggled.connect(chk.setChecked)
+            chk.toggled.connect(act.setChecked)
+            adv_menu.addAction(act)
+        adv_menu.addSeparator()
+        act_custom_prefix = QAction("自定义前缀规则覆盖…", adv_menu)
+        act_custom_prefix.triggered.connect(self._open_custom_prefix_dialog)
+        adv_menu.addAction(act_custom_prefix)
+        self.btn_adv.setMenu(adv_menu)
+        opt.addSpacing(8)
+        opt.addWidget(self.btn_adv)
+
+        opt.addStretch(1)
+        self.btn_start = QPushButton("🚀 开始智能拼接")
+        self.btn_start.setMinimumHeight(36)
+        self.btn_start.setMinimumWidth(180)
         self.btn_start.clicked.connect(self._start)
-        v.addWidget(self.btn_start)
+        opt.addWidget(self.btn_start)
+        v.addLayout(opt)
 
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
+        self.bar.setMaximumHeight(14)
         v.addWidget(self.bar)
 
         self.ed_log = QPlainTextEdit()
         self.ed_log.setReadOnly(True)
-        self.ed_log.setMaximumHeight(150)
+        self.ed_log.setMaximumHeight(110)
         v.addWidget(self.ed_log)
+
+        self._update_responsive_layout()
 
     @staticmethod
     def _read_orante_copy_for_folder(folder_path: str) -> str:
@@ -4146,6 +4296,57 @@ class StitcherDialog(QDialog):
         return groups, out_dirs, out_names, out_dir
 
     # ---------- 交互 ----------
+    def _update_responsive_layout(self):
+        sp = getattr(self, "main_splitter", None)
+        if sp is None:
+            return
+        w = max(1, self.width())
+        h = max(1, self.height())
+        want = Qt.Orientation.Vertical if (w < 980 or w < h) else Qt.Orientation.Horizontal
+        if sp.orientation() != want:
+            sp.setOrientation(want)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def dragEnterEvent(self, event):
+        mime = event.mimeData()
+        if mime is not None and (mime.hasUrls() or mime.hasText()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        mime = event.mimeData()
+        paths = []
+        if mime is not None and mime.hasUrls():
+            for u in mime.urls():
+                lp = u.toLocalFile()
+                if lp:
+                    paths.append(lp)
+        elif mime is not None and mime.hasText():
+            for line in (mime.text() or "").splitlines():
+                s = line.strip().strip('"').strip("'")
+                if s and os.path.exists(s):
+                    paths.append(s)
+        if paths:
+            self._add_paths(paths)
+            event.acceptProposedAction()
+
+    def _paste_folders(self):
+        raw = QApplication.clipboard().text() or ""
+        paths = []
+        for line in raw.splitlines():
+            s = line.strip().strip('"').strip("'")
+            if s and os.path.exists(s):
+                paths.append(s)
+        if not paths:
+            QMessageBox.information(self, "提示", "剪贴板中没有找到有效的文件夹或视频路径。")
+            return
+        n = self._add_paths(paths)
+        self._log(f"📋 从剪贴板识别并加入 {n} 个素材目录")
+
     def _folders(self):
         return [self.lst_folders.item(i).text()
                 for i in range(self.lst_folders.count())]
@@ -4153,11 +4354,28 @@ class StitcherDialog(QDialog):
     def _add_paths(self, paths):
         cur = self._folders()
         added = 0
-        for p in paths:
-            p = os.path.normpath(str(p))
-            if os.path.isdir(p) and p not in cur:
-                cur.append(p)
-                added += 1
+        for raw_p in paths:
+            p = os.path.normpath(str(raw_p or "").strip().strip('"'))
+            if os.path.isfile(p) and os.path.splitext(p)[1].lower() in VIDEO_EXTS:
+                p = os.path.dirname(p)
+            if not os.path.isdir(p):
+                continue
+            # 若拖入/粘贴的是总目录（下一层没有直接的视频文件），自动往下找出所有含视频的子文件夹
+            has_direct_video = False
+            try:
+                has_direct_video = any(
+                    os.path.splitext(fn)[1].lower() in VIDEO_EXTS
+                    and os.path.isfile(os.path.join(p, fn))
+                    for fn in os.listdir(p)
+                )
+            except OSError:
+                pass
+            targets = [p] if has_direct_video else (find_material_dirs(p, max_depth=5) or [p])
+            for tp in targets:
+                tp = os.path.normpath(tp)
+                if os.path.isdir(tp) and tp not in cur:
+                    cur.append(tp)
+                    added += 1
         if added:
             self.lst_folders.clear()
             for p in cur:
@@ -4226,9 +4444,6 @@ class StitcherDialog(QDialog):
         self._rescan()
 
     def _open_missing_report(self):
-        # 2026-09-23 Q96: 原来读的是 self.out_dir —— 这个字段根本不存在
-        # (对话框里叫 self._out_dir)，所以路径永远是空的，永远弹
-        # 「还没有缺失报告」。现在把所有可能的 _stitched 都找一遍。
         dirs = missing_report_dirs(
             getattr(self, "_out_dir", "") or "",
             getattr(self, "_out_dirs", None),
@@ -4257,15 +4472,88 @@ class StitcherDialog(QDialog):
             "它会写在第一个素材文件夹的 _stitched\\ 里。" % MISSING_NAME)
 
     def _by_folder(self):
+        cmb = getattr(self, "cmb_group_mode", None)
+        if cmb is not None:
+            return cmb.currentData() == "folder"
         chk = getattr(self, "chk_group_by_folder", None)
         return bool(chk is not None and chk.isChecked())
 
+    def _on_group_mode_combo(self, _idx=0):
+        by_f = self._by_folder()
+        chk = getattr(self, "chk_group_by_folder", None)
+        if chk is not None and chk.isChecked() != by_f:
+            chk.blockSignals(True)
+            chk.setChecked(by_f)
+            chk.blockSignals(False)
+        save_group_by_folder(by_f)
+        self._rescan()
+
     def _on_group_by_folder(self, checked):
-        """勾上就不用文件名了: 两个前缀留在原地, 只是变灰, 然后马上重扫。"""
+        """勾上就不用文件名了: 同步下拉框并马上重扫。"""
         self.ed_group_mark.setEnabled(not checked)
         self.ed_order_mark.setEnabled(not checked)
+        cmb = getattr(self, "cmb_group_mode", None)
+        if cmb is not None:
+            want_idx = 1 if checked else 0
+            if cmb.currentIndex() != want_idx:
+                cmb.blockSignals(True)
+                cmb.setCurrentIndex(want_idx)
+                cmb.blockSignals(False)
         save_group_by_folder(checked)
         self._rescan()
+
+    def _open_custom_prefix_dialog(self):
+        from PySide6.QtWidgets import QDialogButtonBox, QFormLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle("自定义前缀规则覆盖 (可选)")
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel("默认留空即可自动识别所有规律。仅当特殊命名需要强制指定前缀时填写："))
+        form = QFormLayout()
+        ed_g = QLineEdit(self.ed_group_mark.text())
+        ed_g.setPlaceholderText("留空=自动识别；例: Tik00x 或 Tik")
+        ed_o = QLineEdit(self.ed_order_mark.text())
+        ed_o.setPlaceholderText("留空=自动识别；例: v0x 或 v")
+        form.addRow("分组前缀:", ed_g)
+        form.addRow("序号前缀:", ed_o)
+        lay.addLayout(form)
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        box.accepted.connect(dlg.accept)
+        box.rejected.connect(dlg.reject)
+        lay.addWidget(box)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.ed_group_mark.setText(ed_g.text().strip())
+            self.ed_order_mark.setText(ed_o.text().strip())
+            self._apply_naming()
+
+    def _run_precheck_dialog(self):
+        from cutora.batch.stitch_grouping import GROUP_AUTO, GROUP_FOLDER, precheck, scan_folders
+        folders = self._folders()
+        if not folders:
+            QMessageBox.information(self, "拼接前自检", "请先添加素材文件夹。")
+            return
+        mode = GROUP_FOLDER if self._by_folder() else GROUP_AUTO
+        gm = self.ed_group_mark.text().strip() if hasattr(self, "ed_group_mark") else ""
+        om = self.ed_order_mark.text().strip() if hasattr(self, "ed_order_mark") else ""
+        res = self._grouping_result or scan_folders(folders, mode=mode, group_mark=gm, order_mark=om)
+        scripts, _empty = self._collect_scripts()
+        rep = precheck(res, scripts=scripts)
+        lines = [
+            f"共扫描 {len(res.groups)} 组 / {res.n_clips} 个视频片段 · 平均分组置信度 {res.mean_confidence * 100:.0f}%",
+            "",
+        ]
+        if rep["ok"]:
+            lines.append("✓ 所有分组与文案均已完整对应，无缺号或低置信问题，可直接开始拼接！")
+        else:
+            lines.append(f"⚠ 发现 {len(rep['problems'])} 项需要注意：")
+            for p in rep["problems"][:15]:
+                lines.append(f"  • {p}")
+        lines.append("\n【各组详情前 12 组】")
+        for g in res.groups[:12]:
+            w_str = f"  ⚠ {'; '.join(g.warnings)}" if g.warnings else ""
+            lines.append(
+                f"  • {g.key}: {len(g.clips)} 段 ({' → '.join(c.name for c in g.clips[:4])}{'…' if len(g.clips) > 4 else ''}) [{g.basis}]{w_str}"
+            )
+        QMessageBox.information(self, "拼接前分组与文案自检报告", "\n".join(lines))
 
     def _apply_naming(self):
         """改了前缀就存下来并立刻重扫。"""
@@ -4275,17 +4563,21 @@ class StitcherDialog(QDialog):
         self._rescan()
 
     def _rescan(self, folder=None):
+        from cutora.batch.stitch_grouping import GROUP_AUTO, GROUP_FOLDER, scan_folders
         gm = self.ed_group_mark.text().strip() if hasattr(self, "ed_group_mark") else ""
         om = self.ed_order_mark.text().strip() if hasattr(self, "ed_order_mark") else ""
         folders = self._folders()
+        by_f = self._by_folder()
+        mode = GROUP_FOLDER if by_f else GROUP_AUTO
+        res = scan_folders(folders, mode=mode, group_mark=gm, order_mark=om)
+        self._grouping_result = res
         self._groups, self._folder_of, self._base_of, notes = scan_groups_multi(
-            folders, gm, om, group_by_folder=self._by_folder())
+            folders, gm, om, group_by_folder=by_f)
         for _n in notes:
             self._log("⚠ " + _n)
         self._group_keys = list(self._groups.keys())
         n_clip = sum(len(v) for v in self._groups.values())
         if not self._groups:
-            # 扫不到的时候把目录里前几个文件名摆出来, 用户一看就知道该填什么前缀
             names = []
             for _f in folders[:2]:
                 try:
@@ -4294,22 +4586,24 @@ class StitcherDialog(QDialog):
                 except OSError:
                     pass
             if not folders:
-                tip = "还没有添加素材文件夹 —— 点右上角「添加文件夹...」。"
+                tip = "还没有添加素材文件夹 —— 点上方「添加文件夹...」或直接把文件夹拖进来。"
             elif not names:
                 tip = "这些目录里没有视频文件。"
             else:
-                tip = ("认不出分组。目录里的文件长这样: " + " / ".join(names[:3])
-                       + "  → 勾选「以文件夹为一组（忽略文件名）」，或填写上面的前缀")
+                tip = ("未能分组。目录里的文件: " + " / ".join(names[:3])
+                       + " → 可切换为「用文件夹来分组」")
             self.lbl_scan.setText("扫描到 0 组 / 0 个片段 —— " + tip)
             self.lbl_scan.setObjectName("warnHint")
             self.tbl_script.setRowCount(0)
             self._update_fill_label()
             return
         self.lbl_scan.setObjectName("okHint")
+        conf_pct = int(round(res.mean_confidence * 100))
+        low_note = f" · ⚠ {len(res.low_items)} 段建议确认" if res.low_items else f" · ✓ 识别置信度 {conf_pct}%"
         self.lbl_scan.setText(
-            f"{len(folders)} 个文件夹, 扫描到 {len(self._groups)} 组 / {n_clip} 个片段: "
-            + ", ".join(f"{k}({len(v)})" for k, v in list(self._groups.items())[:12])
-            + (" ..." if len(self._groups) > 12 else ""))
+            f"✓ {len(folders)} 个目录 → 智能识别 {len(self._groups)} 组 / {n_clip} 个片段{low_note}: "
+            + ", ".join(f"{k}({len(v)})" for k, v in list(self._groups.items())[:10])
+            + (" ..." if len(self._groups) > 10 else ""))
         # 重建文案表格 (保留已填内容)
         old = {}
         for r in range(self.tbl_script.rowCount()):
@@ -4319,8 +4613,11 @@ class StitcherDialog(QDialog):
                 old[k.text()] = t.text()
         self.tbl_script.setRowCount(len(self._group_keys))
         for r, gnum in enumerate(self._group_keys):
+            g_info = res.group(gnum)
             it0 = QTableWidgetItem(gnum)
             it0.setFlags(it0.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if g_info is not None:
+                it0.setToolTip(f"分组: {gnum}\n目录: {g_info.folder}\n依据: {g_info.basis}")
             self.tbl_script.setItem(r, 0, it0)
             txt_val = old.get(gnum, "")
             if not txt_val:
@@ -4328,6 +4625,25 @@ class StitcherDialog(QDialog):
             it1 = QTableWidgetItem(txt_val)
             it1.setToolTip(txt_val)
             self.tbl_script.setItem(r, 1, it1)
+            if self.tbl_script.columnCount() >= 3 and g_info is not None:
+                c_names = [c.name for c in g_info.clips]
+                preview_seq = " → ".join(c_names[:3]) + (" …" if len(c_names) > 3 else "")
+                badge = "⚠" if g_info.low else "✓"
+                it2 = QTableWidgetItem(f"{badge} {len(c_names)}段 · {preview_seq}")
+                it2.setFlags(it2.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                tip_lines = [
+                    f"分组依据: {g_info.basis}",
+                    f"置信度: {g_info.confidence * 100:.0f}%",
+                    "组内排序:",
+                ] + [f"  {idx + 1}. {nm}" for idx, nm in enumerate(c_names)]
+                if g_info.warnings:
+                    tip_lines.append("提示: " + "；".join(g_info.warnings))
+                it2.setToolTip("\n".join(tip_lines))
+                if g_info.low:
+                    it2.setForeground(QColor("#E5A93C"))
+                else:
+                    it2.setForeground(QColor("#56D364"))
+                self.tbl_script.setItem(r, 2, it2)
         self._update_fill_label()
 
     def _paste_clipboard(self):
@@ -4490,6 +4806,16 @@ class StitcherDialog(QDialog):
             return
         self._launch_analyze(groups, scripts)
 
+    def _selected_language(self) -> str:
+        if hasattr(self, "cmb_lang") and self.cmb_lang is not None:
+            d = self.cmb_lang.currentData()
+            if d:
+                return str(d).strip()
+            txt = (self.cmb_lang.currentText() or "").strip()
+            if txt:
+                return txt.split()[0].strip()
+        return "auto"
+
     def _launch_analyze(self, groups, scripts):
         self._session.groups = groups
         self._session.scripts = scripts
@@ -4498,7 +4824,7 @@ class StitcherDialog(QDialog):
         self.btn_start.setText("停止")
         self._log(f"阶段1/2 分析 {len(groups)} 组素材 ...")
         self.worker = self._session.launch_analyze({
-            "language": self.cmb_lang.currentText(),
+            "language": self._selected_language(),
             "tail_pad": self.spin_pad.value(),
             "trim_head": self.chk_head.isChecked(),
             "edge_refine": self.chk_edge.isChecked(),

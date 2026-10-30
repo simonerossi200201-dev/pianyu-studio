@@ -263,6 +263,7 @@ class WelcomePage(QWidget):
         self.btn_restore_backup = QPushButton(tr("恢复上次自动备份"))
         self.btn_restore_backup.setObjectName("btnSecondary")
         self.btn_restore_backup.setFixedHeight(H_OPEN)
+        self.btn_restore_backup.setMaximumWidth(ACTIONS_MAX_W)
         self.btn_restore_backup.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_restore_backup.setToolTip(tr("立即恢复并打开上次未保存或意外退出时的自动备份工程"))
         bind_icon(self.btn_restore_backup, "rotate-ccw", size=16)

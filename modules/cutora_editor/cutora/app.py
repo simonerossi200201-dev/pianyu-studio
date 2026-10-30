@@ -626,10 +626,27 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
             q = _qc.load_queue()
         except Exception:
             q = None
-        if queue_continue or (
-            q and q.get("active") and q.get("resume_on_launch") and not q.get("paused")
-        ):
+        if queue_continue:
             w.resume_project_queue()
+            return
+        if q and q.get("active") and q.get("resume_on_launch") and not q.get("paused"):
+            try:
+                from PySide6.QtWidgets import QMessageBox
+                ans = QMessageBox.question(
+                    w,
+                    "检测到未完成的批量导出队列",
+                    "上次有未完成的工程批量导出队列，是否立即继续导出？\n\n"
+                    "• 点击「Yes」：立即继续批量导出\n"
+                    "• 点击「No」：先暂停队列（稍后可在「批量 → 工程队列」中手动继续）",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if ans == QMessageBox.StandardButton.Yes:
+                    w.resume_project_queue()
+                else:
+                    _qc.pause_queue("startup_declined")
+            except Exception:
+                _qc.pause_queue("startup_guard")
 
     QTimer.singleShot(1600, _maybe_resume_queue)
     QTimer.singleShot(500, lambda: getattr(w, "_offer_autosave_restore", lambda: None)())

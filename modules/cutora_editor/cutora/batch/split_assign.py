@@ -321,9 +321,13 @@ def assign_random_split_for_task(
         recompute,
         set_track_cell,
     )
+    try:
+        from cutora.render.split_screen import is_fullscreen_overlay_track
+    except Exception:
+        is_fullscreen_overlay_track = lambda _t: False
     rgen = rng if rng is not None else random
     if tracks is not None:
-        valid_tracks = [t for t in tracks if t is not None]
+        valid_tracks = [t for t in tracks if t is not None and not is_fullscreen_overlay_track(t)]
     else:
         valid_tracks = _collect_video_tracks_for_split(task)
     n_total = len(valid_tracks)
@@ -478,7 +482,11 @@ def assign_split(task: dict, layout: str, tracks: list, *, border: dict | None =
             face_safe=face_safe,
         )
     from cutora.render.split_layout import apply_split_to_task, set_track_cell
-    valid_tracks = [t for t in (tracks or []) if t is not None]
+    try:
+        from cutora.render.split_screen import is_fullscreen_overlay_track
+    except Exception:
+        is_fullscreen_overlay_track = lambda _t: False
+    valid_tracks = [t for t in (tracks or []) if t is not None and not is_fullscreen_overlay_track(t)]
     if layout in ("top1_bottom_auto", "left1_right_auto"):
         lay = resolve_auto_layout(layout, max(1, len(valid_tracks) - 1))
     else:
@@ -504,6 +512,9 @@ def assign_split(task: dict, layout: str, tracks: list, *, border: dict | None =
     for tr in tracks:
         if tr is None:
             slot += 1
+            continue
+        if is_fullscreen_overlay_track(tr):
+            tr.split_cell = None
             continue
         if slot >= len(order):
             tr.split_cell = None

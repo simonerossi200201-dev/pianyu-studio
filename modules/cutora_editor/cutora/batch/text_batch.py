@@ -23,8 +23,11 @@ from cutora.core.log import get_logger
 
 _LOG = get_logger("cutora.batch.text_batch")
 
-# 句末标点：中英都收
-_SENT_END = "。！？!?…；;\n"
+# 句末标点：中英阿都收（英文句点独立处理，避免拆散小数 3.5 或经文 22.14）
+_SENT_END = "。！？!?…；;؟\n"
+_SENT_SPLIT_RE = re.compile(
+    r"(?:(?<=[。！？；؟])|(?<=[!?])[\"'”’)\]]*\s+|(?<=[A-Za-z0-9\"'”’)\]])\.(?![0-9])[\"'”’)\]]*(?:\s+|$)|(?<=…)\s+(?=[A-Z\u4e00-\u9fff]))"
+)
 # 归一化时丢掉的东西：空白 + 各种标点。文案和 ASR 出来的字幕标点常常对不上，
 # 留着只会让匹配失败。
 _DROP = re.compile(
@@ -69,19 +72,21 @@ def normalize(text: str) -> str:
 
 
 def split_sentences(text: str) -> list[str]:
-    """按句末标点和换行断句，空句丢掉。"""
-    out, buf = [], []
-    for ch in str(text or ""):
-        buf.append(ch)
-        if ch in _SENT_END:
-            piece = "".join(buf).strip()
-            if piece:
+    """按句末标点和换行断句，空句丢掉。
+
+    正确处理英文句号 ``.``（不拆小数 ``3.5`` 或章节 ``22.14``），且句中悬停省略号
+    ``Did you know… there is``（后接小写词）不误拆成两句。
+    """
+    out: list[str] = []
+    for line in str(text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        for piece in _SENT_SPLIT_RE.split(line):
+            piece = piece.strip()
+            if piece and normalize(piece):
                 out.append(piece)
-            buf = []
-    tail = "".join(buf).strip()
-    if tail:
-        out.append(tail)
-    return [s for s in out if normalize(s)]
+    return out
 
 
 def _flatten(segments):

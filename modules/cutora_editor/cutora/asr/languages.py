@@ -34,6 +34,18 @@ def languages_json_path() -> str:
     return os.path.join(RESOURCES, "data", "languages.json")
 
 
+# 核心支持语种（中文、阿拉伯语、马尔加什语、斯瓦希里语）：UI 不弹实验性警告
+FIRST_CLASS_LANGS = frozenset({"zh", "ar", "mg", "sw"})
+
+# 从右往左写的文字（排版要按 RTL 段落走）。
+RTL_SCRIPTS = frozenset({"arabic", "hebrew"})
+
+
+def is_rtl_language(code: str | None) -> bool:
+    entry = get_language(code)
+    return bool(entry) and str(entry.get("script") or "") in RTL_SCRIPTS
+
+
 def whisper_language_codes() -> tuple[str, ...]:
     from faster_whisper.tokenizer import _LANGUAGE_CODES
     return tuple(_LANGUAGE_CODES)
@@ -133,6 +145,9 @@ def whisper_language_arg(code: str | None) -> str | None:
 
 
 def is_experimental(code: str | None) -> bool:
+    raw = (code or "").strip().lower()
+    if raw in FIRST_CLASS_LANGS:
+        return False
     entry = get_language(code)
     if not entry or entry["code"] == "auto":
         return False

@@ -188,6 +188,12 @@ def run_batch_export(
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
             log_f = open(log_path, "w", encoding="utf-8", errors="ignore")
             cmd = [sys.executable, "-u", "-m", "cutora", "--render-job", job_path]
+            # 诊断开关：CUTORA_CPROFILE_DIR=<目录> 时子进程跑在 cProfile 下，结果写成 worker<N>.prof
+            _prof_dir = os.environ.get("CUTORA_CPROFILE_DIR")
+            if _prof_dir:
+                os.makedirs(_prof_dir, exist_ok=True)
+                cmd = [sys.executable, "-u", "-m", "cProfile", "-o",
+                       os.path.join(_prof_dir, f"worker{wid}.prof"), "-m", "cutora", "--render-job", job_path]
             proc = subprocess.Popen(
                 cmd,
                 cwd=REPO_ROOT,

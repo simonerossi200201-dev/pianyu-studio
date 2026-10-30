@@ -57,9 +57,12 @@ DEFAULT_MAX_CHARS = 42
 DEFAULT_MAX_LINES = 2
 DEFAULT_CPS = 17.0
 DEFAULT_MIN_GAP = 0.08
-PUNCT_END = frozenset(",.;:…—")
+PUNCT_END = frozenset(",.;:…—،؛؟，。；：！？、")
 _TOKEN_RE = re.compile(r"\S+|\s+")
-_WORD_STRIP = re.compile(r"^[\"'(\[]+|[\"')\].,;:!?…—]+$")
+_WORD_STRIP = re.compile(r"^[\"'(\[«“‘]+|[\"')\]»”’.,;:!?…—،؛؟，。；：！？、]+$")
+_CJK_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]")
+_CJK_NO_START = frozenset("，。！？；：、）》」』】”’.,;:!?…—")
+_CJK_NO_END = frozenset("（《「『【“‘")
 _STOP_CACHE: dict[str, frozenset[str]] = {}
 
 
@@ -96,6 +99,9 @@ def line_break_mode(lang: str | None) -> str:
     try:
         from cutora.asr.languages import catalog_by_code
         row = catalog_by_code().get(code) or {}
+        script = str(row.get("script") or "").strip().lower()
+        if script in ("arabic", "hebrew"):
+            return "space"
         mode = str(row.get("line_break") or "space").strip().lower()
         return mode if mode in ("space", "fallback") else "space"
     except Exception:
@@ -368,12 +374,84 @@ def _greedy_pack(tokens: list[str], max_c: int, max_l: int, stops: frozenset[str
     return [" ".join(part) for part in lines if part]
 
 
+def _cjk_atoms(text: str) -> list[str]:
+    """Split CJK text into kinsoku-safe atoms (keeping closing punct attached)."""
+    body = (text or "").replace("\n", "").strip()
+    if not body:
+        return []
+    atoms: list[str] = []
+    i = 0
+    n = len(body)
+    while i < n:
+        ch = body[i]
+        if ch.isspace():
+            i += 1
+            continue
+        atom = ""
+        while i < n and body[i] in _CJK_NO_END:
+            atom += body[i]
+            i += 1
+        if i < n:
+            if body[i].isascii() and (body[i].isalnum() or body[i] in "-'%$"):
+                while i < n and body[i].isascii() and not body[i].isspace() and body[i] not in _CJK_NO_START:
+                    atom += body[i]
+                    i += 1
+            else:
+                atom += body[i]
+                i += 1
+        while i < n and body[i] in _CJK_NO_START:
+            atom += body[i]
+            i += 1
+        if atom:
+            atoms.append(atom)
+    return atoms
+
+
+def _split_cjk(text: str, rules: LayoutRules) -> list[str]:
+    """Clause-aware and kinsoku-safe CJK line breaking."""
+    max_c = max(1, int(rules.max_chars_per_line))
+    max_l = max(1, int(rules.max_lines))
+    body = (text or "").replace("\n", "").strip()
+    if not body:
+        return []
+    if max_l == 1 or len(body) <= max_c:
+        return [body]
+    atoms = _cjk_atoms(body)
+    if len(atoms) <= 1:
+        return [body]
+    if max_l == 2 and rules.balance_lines:
+        best = None
+        best_score = None
+        for i in range(1, len(atoms)):
+            left = "".join(atoms[:i])
+            right = "".join(atoms[i:])
+            over_l = 0 if len(left) <= max_c else 1
+            over_r = 0 if len(right) <= max_c else 1
+            punct = 0 if left[-1] in PUNCT_END else 1
+            spread = abs(len(left) - len(right))
+            score = (over_l + over_r, max(len(left), len(right)) if (over_l or over_r) else 0, punct, spread)
+            if best_score is None or score < best_score:
+                best_score = score
+                best = [left, right]
+        if best:
+            return best
+    lines: list[str] = [""]
+    for atom in atoms:
+        if lines[-1] and len(lines[-1]) + len(atom) > max_c and len(lines) < max_l:
+            lines.append(atom)
+        else:
+            lines[-1] += atom
+    return [ln for ln in lines if ln]
+
+
 def _split_fallback(text: str, rules: LayoutRules) -> list[str]:
     max_c = max(1, int(rules.max_chars_per_line))
     max_l = max(1, int(rules.max_lines))
     body = (text or "").replace("\n", "")
     if not body:
         return []
+    if _CJK_CHAR_RE.search(body):
+        return _split_cjk(body, rules)
     chunks = [body[i:i + max_c] for i in range(0, len(body), max_c)]
     if len(chunks) <= max_l:
         return chunks
@@ -404,7 +482,10 @@ def break_lines(segment, rules: LayoutRules | None = None) -> list[str]:
         text = str((segment or {}).get("text") or "")
         lang = rules.lang or (segment or {}).get("lang")
     text = " ".join(text.split())
+    code = (lang or "").strip().lower()
     mode = (rules.line_break or line_break_mode(lang)).strip().lower()
+    if code in ("zh", "zh-cn", "zh-tw", "yue") or (_CJK_CHAR_RE.search(text) and " " not in text.strip()):
+        return _split_cjk(text, rules)
     if mode == "fallback":
         return _split_fallback(text, rules)
     tokens = _tokens(text)

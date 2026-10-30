@@ -1921,7 +1921,7 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
         else:
             overflow_tracks.append(tr)
     for tr in overlay:
-        if getattr(tr, "_force_fullscreen_overlay", False):
+        if getattr(tr, "_force_fullscreen_overlay", False) or is_fullscreen_overlay_track(tr):
             fullscreen_overlays.append(tr)
         else:
             overflow_tracks.append(tr)
@@ -2345,6 +2345,48 @@ def paint_split_video_tracks(painter, task, tracks, canvas_w, canvas_h, paint_on
 
 def border_style(split) -> str:
     return str((split.get("border") or {}).get("style") or "none")
+
+
+_NORMAL_BLENDS = ("", "normal", "none", "sourceover", "source_over")
+
+
+def _blend_of(obj) -> str:
+    if obj is None:
+        return ""
+    if isinstance(obj, dict):
+        b = obj.get("blend_mode")
+        props = obj.get("props")
+    else:
+        b = getattr(obj, "blend_mode", None)
+        props = getattr(obj, "props", None)
+    if not b and isinstance(props, dict):
+        b = props.get("blend_mode")
+    return str(b or "").strip().lower()
+
+
+def is_fullscreen_overlay_track(tr) -> bool:
+    """分屏开着时，这条视频轨是不是「整幅覆盖、不参与分屏」。
+
+    1. 显式设置：track.split_role == "overlay"（全屏覆盖）/ "cell"（强制参与分屏补格子）；
+    2. 没设置时：没分配格子、并且轨道或片段用了非「正常」混合模式（滤色 / 叠加 / 正片叠底…）
+       → 这是一层特效（光效、粒子、翻书…），按整幅画面混合一次，不拆进每个格子。
+    普通混合模式、没分配格子的轨道保持原来的「补空格子」行为，老工程不变。
+    """
+    if getattr(tr, "split_cell", None):
+        return False
+    role = str(getattr(tr, "split_role", "") or "").strip().lower()
+    if role == "overlay":
+        return True
+    if role == "cell":
+        return False
+    if str(getattr(tr, "type", "video") or "video") != "video":
+        return False
+    if _blend_of(tr) not in _NORMAL_BLENDS:
+        return True
+    for c in getattr(tr, "clips", None) or []:
+        if _blend_of(c) not in _NORMAL_BLENDS:
+            return True
+    return False
 
 
 def handle_centers(split, canvas_w, canvas_h):

@@ -131,10 +131,39 @@ def _char_wrap_lines(event: dict, style: dict, video_w: int, lines: list[str]) -
     return wrapped or lines
 
 
+def _is_rtl_text(text: str) -> bool:
+    """True when RTL letters (Arabic/Hebrew) outnumber LTR letters."""
+    rtl = 0
+    ltr = 0
+    for ch in text or "":
+        bidi = unicodedata.bidirectional(ch)
+        if bidi in ("R", "AL"):
+            rtl += 1
+        elif bidi == "L":
+            ltr += 1
+    return rtl > 0 and rtl >= ltr
+
+
 def _pixel_wrap_one(
     line: str, fm, max_w: float, stops: frozenset,
 ) -> list[str]:
-    from cutora.subtitle.layout import _bad_end
+    from cutora.subtitle.layout import _CJK_CHAR_RE, _bad_end, _cjk_atoms
+    if _CJK_CHAR_RE.search(str(line or "")) and " " not in str(line or "").strip():
+        atoms = _cjk_atoms(str(line or ""))
+        if not atoms:
+            return [line]
+        out_cjk: list[str] = []
+        cur_cjk = ""
+        for atom in atoms:
+            cand = cur_cjk + atom
+            if cur_cjk and float(fm.horizontalAdvance(cand)) > max_w:
+                out_cjk.append(cur_cjk)
+                cur_cjk = atom
+            else:
+                cur_cjk = cand
+        if cur_cjk:
+            out_cjk.append(cur_cjk)
+        return out_cjk or [line]
     words = str(line).split()
     if not words:
         return [line]
@@ -698,7 +727,9 @@ def _place_line(
         return _place_line_vertical(
             built, line_text, x0, y0, t0, t1, spec, family, em)
     runs: list[WordRun] = []
-    x = x0
+    rtl = _is_rtl_text(line_text)
+    total_w = sum(float(b[3]) for b in built)
+    x = (x0 + total_w) if rtl else x0
     max_h = em
     for token, info, font, w, asc, desc, fam, hit, fill, size, pad in built:
         idx = int(info["index"]) if info else len(runs)
@@ -706,6 +737,12 @@ def _place_line(
         te = float(info["end"]) if info else t1
         h = asc + desc
         max_h = max(max_h, h)
+        if rtl:
+            x -= w
+            run_x = x
+        else:
+            run_x = x
+            x += w
         runs.append(WordRun(
             text=token,
             font_family=fam or family,
@@ -716,7 +753,7 @@ def _place_line(
             word_index=idx,
             t_start=ts,
             t_end=te,
-            x=x,
+            x=run_x,
             y=baseline - asc,
             w=w,
             h=h,
@@ -724,8 +761,7 @@ def _place_line(
             pad_px=pad,
             qfont=QFont(font) if font is not None else None,
         ))
-        x += w
-    width = max(0.0, x - x0)
+    width = max(0.0, total_w if rtl else (x - x0))
     top = baseline - max((b[4] for b in built), default=em * 0.8)
     return LineBox(
         text=line_text, x=x0, y=top, w=width, h=max_h,

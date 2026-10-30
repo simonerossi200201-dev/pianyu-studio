@@ -3104,9 +3104,12 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
         # Q117：画面没铺满的地方先垫背景（模糊/镜像/平铺/拉伸），再画前景。
         # 跟导出走同一个 fill_bg.paint_fill，不另写一份。
         try:
-            from cutora.render.fill_bg import fill_spec_at, paint_fill
+            from cutora.render.fill_bg import fill_spec_at, needs_fill, paint_fill
             _spec = fill_spec_at(clip, current_time)
-            if _spec["mode"] != "none":
+            if _spec["mode"] != "none" and needs_fill(
+                _spec, target_rect, tw, th,
+                split_rect=getattr(painter, "_split_layer_rect", None),
+            ):
                 painter.save()
                 painter.setOpacity(max(0.0, min(1.0, opacity / 255.0)) * t_op)
                 paint_fill(painter, frame, _spec, tw, th, target_rect)

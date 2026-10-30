@@ -15,4 +15,10 @@ def build_registry() -> CommandRegistry:
     registry = CommandRegistry()
     for spec in build_app() + build_edit() + build_batch() + build_asr():
         registry.register(spec)
+    # Agent/MCP gap-fill commands; never shadow a command registered above.
+    from cutora.core.cmds.specs_mcp import build as build_mcp
+    taken = set(registry.names())
+    for spec in build_mcp():
+        if spec.name not in taken:
+            registry.register(spec)
     return registry

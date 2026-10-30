@@ -186,10 +186,72 @@ def _clamp_offset(v: float) -> float:
     return max(-OFFSET_CAP, min(OFFSET_CAP, float(v)))
 
 
-def _apply_mask(bgra: np.ndarray, mask: np.ndarray) -> None:
+def _runs(idx: np.ndarray):
+    """[3,4,5,9,10] -> [(3,6),(9,11)]：连续下标合并成半开区间。"""
+    if idx.size == 0:
+        return []
+    breaks = np.flatnonzero(np.diff(idx) != 1)
+    starts = np.concatenate(([idx[0]], idx[breaks + 1]))
+    ends = np.concatenate((idx[breaks] + 1, [idx[-1] + 1]))
+    return list(zip(starts.tolist(), ends.tolist()))
+
+
+def _mul_region(bgra: np.ndarray, mask: np.ndarray) -> None:
+    # mask ∈ [0, 1]、像素 ∈ [0, 255] → 乘积不会越界，原来的 np.clip 是空操作；截断取整方式不变
     scaled = bgra.astype(np.float32) * mask[..., None]
-    np.clip(scaled, 0, 255, out=scaled)
     bgra[:] = scaled.astype(np.uint8)
+
+
+def _apply_mask(bgra: np.ndarray, mask: np.ndarray, plan=None) -> None:
+    """逐像素与原实现完全一致，但只处理 mask < 1 的行 / 列（mask == 1 的像素乘 1.0 截断后不变）。
+
+    导出时上边缘 21% 渐隐的整幅覆盖层，原来每帧对 1080×1920×4 全部做浮点乘法（约 14 ms/帧），
+    现在只算渐隐带。``plan`` = (行区间, 列区间)，由缓存提供，省掉每帧再扫一遍 mask。
+    """
+    if plan is None:
+        plan = _mask_plan(mask)
+    row_runs, col_runs = plan
+    h = mask.shape[0]
+    covered = np.zeros(h, dtype=bool)
+    for r0, r1 in row_runs:
+        _mul_region(bgra[r0:r1], mask[r0:r1])
+        covered[r0:r1] = True
+    if col_runs:
+        rest = np.flatnonzero(~covered)
+        for r0, r1 in _runs(rest):
+            for c0, c1 in col_runs:
+                _mul_region(bgra[r0:r1, c0:c1], mask[r0:r1, c0:c1])
+
+
+def _mask_plan(mask: np.ndarray, rfac: np.ndarray | None = None, cfac: np.ndarray | None = None):
+    """要处理的行区间 + 列区间。mask = 行因子 × 列因子：行因子 < 1 的行整行处理；
+    其余行只处理列因子 < 1 的列。两个因子都是 1 的像素 mask 恰好是 1.0，乘了也不变。"""
+    if rfac is None or cfac is None:
+        rows = np.flatnonzero(mask.min(axis=1) < 1.0)
+        cols = np.flatnonzero(mask.min(axis=0) < 1.0) if rows.size == 0 else np.arange(mask.shape[1])
+        return _runs(rows), _runs(cols)
+    return _runs(np.flatnonzero(rfac < 1.0)), _runs(np.flatnonzero(cfac < 1.0))
+
+
+_MASK_CACHE: dict = {}
+_MASK_CACHE_MAX = 32
+
+
+def _cached_mask(h, w, top, bottom, left, right, toff, boff, loff, roff):
+    key = (h, w, top, bottom, left, right, toff, boff, loff, roff)
+    hit = _MASK_CACHE.get(key)
+    if hit is None:
+        m = edge_fade_mask(h, w, top, bottom, left, right,
+                           top_offset=toff, bottom_offset=boff,
+                           left_offset=loff, right_offset=roff)
+        m.setflags(write=False)
+        rfac = edge_fade_mask(h, 1, top, bottom, 0.0, 0.0, top_offset=toff, bottom_offset=boff)[:, 0]
+        cfac = edge_fade_mask(1, w, 0.0, 0.0, left, right, left_offset=loff, right_offset=roff)[0]
+        hit = (m, _mask_plan(m, rfac, cfac))
+        if len(_MASK_CACHE) >= _MASK_CACHE_MAX:
+            _MASK_CACHE.pop(next(iter(_MASK_CACHE)))
+        _MASK_CACHE[key] = hit
+    return hit
 
 
 def apply_fade_bgra(
@@ -217,10 +279,8 @@ def apply_fade_bgra(
         return
     h, w = bgra.shape[:2]
     if not boxes:
-        _apply_mask(bgra, edge_fade_mask(
-            h, w, top, bottom, left, right,
-            top_offset=toff, bottom_offset=boff,
-            left_offset=loff, right_offset=roff))
+        m, plan = _cached_mask(h, w, top, bottom, left, right, toff, boff, loff, roff)
+        _apply_mask(bgra, m, plan)
         return
     for x0, y0, bw, bh in boxes:
         x0 = int(x0)
@@ -232,10 +292,9 @@ def apply_fade_bgra(
         if x1 <= x0 or y1 <= y0:
             continue
         sub = bgra[y0:y1, x0:x1]
-        _apply_mask(sub, edge_fade_mask(
-            sub.shape[0], sub.shape[1], top, bottom, left, right,
-            top_offset=toff, bottom_offset=boff,
-            left_offset=loff, right_offset=roff))
+        m, plan = _cached_mask(sub.shape[0], sub.shape[1], top, bottom, left, right,
+                               toff, boff, loff, roff)
+        _apply_mask(sub, m, plan)
 
 
 def apply_edge_fade(

@@ -1735,7 +1735,7 @@ def pixel_rect(rect, canvas_w, canvas_h):
 
 
 def _collect_video_tracks_for_split(task) -> list:
-    """获取当前任务时间线上的所有非背景视频轨道（主视频轨排在第一位）。"""
+    """获取当前任务时间线上的所有参与分屏的非背景视频轨道（主视频轨排在第一位，排除全屏混合特效层）。"""
     tl = (task or {}).get("timeline") if isinstance(task, dict) else None
     if tl is None:
         return []
@@ -1744,12 +1744,18 @@ def _collect_video_tracks_for_split(task) -> list:
         is_bg = BG.is_backdrop_track
     except Exception:
         is_bg = lambda _t: False
+    try:
+        from cutora.render.split_screen import is_fullscreen_overlay_track
+    except Exception:
+        is_fullscreen_overlay_track = lambda _t: False
     main_tracks = []
     other_tracks = []
     for tr in getattr(tl, "tracks", []) or []:
         if getattr(tr, "type", "video") != "video":
             continue
         if is_bg(tr):
+            continue
+        if not getattr(tr, "is_main_video", False) and is_fullscreen_overlay_track(tr):
             continue
         if getattr(tr, "is_main_video", False):
             main_tracks.append(tr)

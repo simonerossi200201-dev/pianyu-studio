@@ -316,8 +316,7 @@ def fit_secondary_clip(clip, src_w: int, src_h: int, face_info: dict | None, cel
 
     s_w = (safe_w * 0.90) / (fw * base_w)
     s_h = (safe_h * 0.90) / (fh * base_h)
-    scale = min(1.0, s_w, s_h)
-    scale = max(0.75, round(scale, 4))
+    scale = max(1.0, round(min(1.0, s_w, s_h), 4))
 
     tw = base_w * scale
     th = base_h * scale
@@ -327,34 +326,30 @@ def fit_secondary_clip(clip, src_w: int, src_h: int, face_info: dict | None, cel
     target_lx = (lx0 + lx1) * 0.5
     ox_ideal = (target_lx - cw * 0.5) - (fcx - 0.5) * tw
 
-    if tw >= cw:
-        ox_min_cov = -(tw - cw) * 0.5
-        ox_max_cov = +(tw - cw) * 0.5
-        lo_x = max(ox_min_face, ox_min_cov)
-        hi_x = min(ox_max_face, ox_max_cov)
-        if lo_x <= hi_x:
-            ox = max(lo_x, min(hi_x, ox_ideal))
-        else:
-            ox = max(ox_min_face, min(ox_max_face, ox_ideal)) if ox_min_face <= ox_max_face else 0.5 * (ox_min_face + ox_max_face)
+    ox_min_cov = -max(0.0, (tw - cw) * 0.5)
+    ox_max_cov = +max(0.0, (tw - cw) * 0.5)
+    lo_x = max(ox_min_face, ox_min_cov)
+    hi_x = min(ox_max_face, ox_max_cov)
+    if lo_x <= hi_x:
+        ox = max(lo_x, min(hi_x, ox_ideal))
     else:
-        ox = max(ox_min_face, min(ox_max_face, ox_ideal)) if ox_min_face <= ox_max_face else 0.5 * (ox_min_face + ox_max_face)
+        raw_ox = max(ox_min_face, min(ox_max_face, ox_ideal)) if ox_min_face <= ox_max_face else 0.5 * (ox_min_face + ox_max_face)
+        ox = max(ox_min_cov, min(ox_max_cov, raw_ox))
 
     oy_min_face = ly0 - ((ch - th) * 0.5 + fy0 * th)
     oy_max_face = ly1 - ((ch - th) * 0.5 + fy1 * th)
     target_ly = (ly0 + ly1) * 0.5
     oy_ideal = (target_ly - ch * 0.5) - (fcy - 0.5) * th
 
-    if th >= ch:
-        oy_min_cov = -(th - ch) * 0.5
-        oy_max_cov = +(th - ch) * 0.5
-        lo_y = max(oy_min_face, oy_min_cov)
-        hi_y = min(oy_max_face, oy_max_cov)
-        if lo_y <= hi_y:
-            oy = max(lo_y, min(hi_y, oy_ideal))
-        else:
-            oy = max(oy_min_face, min(oy_max_face, oy_ideal)) if oy_min_face <= oy_max_face else 0.5 * (oy_min_face + oy_max_face)
+    oy_min_cov = -max(0.0, (th - ch) * 0.5)
+    oy_max_cov = +max(0.0, (th - ch) * 0.5)
+    lo_y = max(oy_min_face, oy_min_cov)
+    hi_y = min(oy_max_face, oy_max_cov)
+    if lo_y <= hi_y:
+        oy = max(lo_y, min(hi_y, oy_ideal))
     else:
-        oy = max(oy_min_face, min(oy_max_face, oy_ideal)) if oy_min_face <= oy_max_face else 0.5 * (oy_min_face + oy_max_face)
+        raw_oy = max(oy_min_face, min(oy_max_face, oy_ideal)) if oy_min_face <= oy_max_face else 0.5 * (oy_min_face + oy_max_face)
+        oy = max(oy_min_cov, min(oy_max_cov, raw_oy))
 
     clip.scale = round(float(scale), 4)
     clip.x = round(float(ox), 2)
@@ -557,7 +552,10 @@ def calibrate_task_face_safe(
             rect_y_canvas = min(0.0, (ov_top - 18.0 * sy_scale) - chin_src_px)
 
         if main_clip is not None:
-            main_clip.y = round(rect_y_canvas - cy_a - (ch_a - th) * 0.5, 2)
+            _ratio_a = max(cw_a / float(max(1, tw)), ch_a / float(max(1, th)))
+            _oy_lim = max(0.0, (th * _ratio_a * float(getattr(main_clip, "scale", 1.0) or 1.0) - ch_a) * 0.5)
+            _raw_y = rect_y_canvas - cy_a - (ch_a - th) * 0.5
+            main_clip.y = round(max(-_oy_lim, min(_oy_lim, _raw_y)), 2)
         sec_safe_y_bot = (
             max(
                 (phone_y + phone_h) if el_img else 0.0,
@@ -576,18 +574,24 @@ def calibrate_task_face_safe(
         face_center_src = 0.5 * (head_src_px + chin_src_px)
         rect_y_canvas = target_center_y - face_center_src
         if main_clip is not None:
-            main_clip.y = round(rect_y_canvas - cy_a - (ch_a - th) * 0.5, 2)
+            _ratio_a = max(cw_a / float(max(1, tw)), ch_a / float(max(1, th)))
+            _oy_lim = max(0.0, (th * _ratio_a * float(getattr(main_clip, "scale", 1.0) or 1.0) - ch_a) * 0.5)
+            _raw_y = rect_y_canvas - cy_a - (ch_a - th) * 0.5
+            main_clip.y = round(max(-_oy_lim, min(_oy_lim, _raw_y)), 2)
         sec_safe_y_top = (62.0 * sy_scale, 705.0 * sy_scale)
         sec_safe_y_bot = (1200.0 * sy_scale, th - 20.0 * sy_scale)
     else:
-        # 其它通用分屏布局：将主讲人人脸居中对齐至主格安全区
+        # 其它通用分屏布局：将主讲人人脸居中对齐至主格安全区（严禁越出主格边界露出模糊底）
         phone_y = float(el_img.get("y", 860.0 * sy_scale)) if isinstance(el_img, dict) else 860.0 * sy_scale
         title_y = float(title_ov.get("y", 860.0 * sy_scale)) if isinstance(title_ov, dict) else 860.0 * sy_scale
         face_center_src = 0.5 * (head_src_px + chin_src_px)
         target_center_y = cy_a + ch_a * 0.45
         rect_y_canvas = target_center_y - face_center_src
         if main_clip is not None:
-            main_clip.y = round(rect_y_canvas - cy_a - (ch_a - th) * 0.5, 2)
+            _ratio_a = max(cw_a / float(max(1, tw)), ch_a / float(max(1, th)))
+            _oy_lim = max(0.0, (th * _ratio_a * float(getattr(main_clip, "scale", 1.0) or 1.0) - ch_a) * 0.5)
+            _raw_y = rect_y_canvas - cy_a - (ch_a - th) * 0.5
+            main_clip.y = round(max(-_oy_lim, min(_oy_lim, _raw_y)), 2)
         sec_safe_y_top = (62.0 * sy_scale, th * 0.46)
         sec_safe_y_bot = (th * 0.58, th - 18.0 * sy_scale)
 

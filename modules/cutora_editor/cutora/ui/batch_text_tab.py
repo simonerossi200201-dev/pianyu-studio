@@ -976,7 +976,9 @@ def build_text_tab(dlg, host, picker, preset_combo=None):
         picked = []
         if reason in ("matched", "partial") and plan.get("start") is not None:
             picked = sentences_in_span(sents, plan.get("start"), plan.get("end"))
-        return replacement_title(title, picked or sents)
+        if picked:
+            return replacement_title(title, picked, count=len(picked))
+        return replacement_title(title, sents)
 
     def _is_problem(plan):
         if not plan.get("ok"):

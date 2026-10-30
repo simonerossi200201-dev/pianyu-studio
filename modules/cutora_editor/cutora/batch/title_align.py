@@ -53,10 +53,11 @@ def tokens_of(text: str) -> list[str]:
     return [t for t, _ in tokens_with_owner([(str(text or ""), 0)])]
 
 
-def tokens_with_owner(pieces) -> list[tuple[str, int]]:
-    """pieces = [(text, owner_id)] → [(token, owner_id)]，并做数字折叠（folded 的 owner 取首词）。
+def tokens_with_owner_bounds(pieces) -> list[tuple[str, int, int]]:
+    """pieces = [(text, owner_id)] → [(token, start_owner_id, end_owner_id)]，并做数字/经文/缩写折叠。
 
-    折叠需要整段上下文（"twenty" "five" → "25"），所以先全部切完再折一次。
+    折叠多词数字（如 "twenty" "five" → "25"、"two" "thousand" → "2000"）或缩写（"K" "J" "V" → "kjv"）时，
+    保留首词 owner 与末词 owner，确保标题在多词数字或缩写处收尾时不会截断末词时长。
     """
     from cutora.batch.script_stitcher import _fold_for_match, unglue_punct
     toks: list[str] = []
@@ -85,19 +86,39 @@ def tokens_with_owner(pieces) -> list[tuple[str, int]]:
     folded, spans = _fold_for_match(toks, spans=[(i, i) for i in range(len(toks))])
     out = []
     for t, (a, b) in zip(folded, spans):
-        out.append((t, owners[a]))
+        out.append((t, owners[a], owners[b]))
     return out
 
 
+def tokens_with_owner(pieces) -> list[tuple[str, int]]:
+    """pieces = [(text, owner_id)] → [(token, owner_id)]，并做数字折叠（folded 的 owner 取首词）。"""
+    return [(t, oa) for t, oa, _ob in tokens_with_owner_bounds(pieces)]
+
+
 def _words_of(segments) -> list[dict]:
-    out = []
+    raw_out: list[dict] = []
     for seg in segments or []:
         if isinstance(seg, dict):
-            start, end, text = seg.get("start"), seg.get("end"), seg.get("text")
+            sub_words = seg.get("words")
+            if isinstance(sub_words, list) and sub_words:
+                for sw in sub_words:
+                    if not isinstance(sw, dict):
+                        continue
+                    w_txt = str(sw.get("text") or sw.get("word") or "").strip()
+                    if not w_txt:
+                        continue
+                    try:
+                        ws = float(sw.get("start") if sw.get("start") is not None else seg.get("start") or 0.0)
+                        we = float(sw.get("end") if sw.get("end") is not None else ws)
+                    except (TypeError, ValueError):
+                        continue
+                    raw_out.append({"start": ws, "end": max(we, ws), "text": w_txt})
+                continue
+            start, end, text = seg.get("start"), seg.get("end"), seg.get("text") or seg.get("word")
         else:
             start = getattr(seg, "start", None)
             end = getattr(seg, "end", None)
-            text = getattr(seg, "text", "")
+            text = getattr(seg, "text", "") or getattr(seg, "word", "")
         try:
             start = float(start)
             end = float(end)
@@ -106,7 +127,42 @@ def _words_of(segments) -> list[dict]:
         text = str(text or "").strip()
         if not text:
             continue
-        out.append({"start": start, "end": max(end, start), "text": text})
+        end = max(end, start)
+        parts = [p for p in re.split(r"\s+", text) if p]
+        if len(parts) > 1 and (end - start) > 0.6:
+            weights = [max(1, len(p)) for p in parts]
+            tot_w = float(sum(weights))
+            acc = 0.0
+            for p, w_len in zip(parts, weights):
+                ws = start + (end - start) * (acc / tot_w)
+                acc += w_len
+                we = start + (end - start) * (acc / tot_w)
+                raw_out.append({"start": ws, "end": max(we, ws), "text": p})
+        else:
+            raw_out.append({"start": start, "end": end, "text": text})
+
+    # 合并被逗号拆散的千位数字（如 Whisper 将 "2,000" 拆成 ("2", 3.99..4.01) + (",000"/"0", 4.03..4.67)）
+    out: list[dict] = []
+    for w in raw_out:
+        if out:
+            prev = out[-1]
+            p_txt = prev["text"].strip()
+            c_txt = w["text"].strip()
+            gap = w["start"] - prev["end"]
+            c_dur = w["end"] - w["start"]
+            if (
+                gap <= 0.15
+                and re.fullmatch(r"\d{1,3}", p_txt)
+                and (
+                    re.fullmatch(r",?\d{3}(?:,\d{3})*", c_txt)
+                    or (c_txt == "0" and c_dur >= 0.20)
+                )
+            ):
+                suffix = "000" if c_txt in ("0", "000", ",000") else c_txt.replace(",", "")
+                prev["text"] = p_txt + suffix
+                prev["end"] = max(prev["end"], w["end"])
+                continue
+        out.append(w)
     return out
 
 
@@ -227,9 +283,10 @@ def _align_title(segments, title: str) -> dict:
     if not words:
         out.update(how="no_speech", why="识别范围里没听到说话")
         return out
-    sp = tokens_with_owner([(w["text"], k) for k, w in enumerate(words)])
-    speech_toks = [t for t, _ in sp]
-    owner = [o for _, o in sp]
+    sp = tokens_with_owner_bounds([(w["text"], k) for k, w in enumerate(words)])
+    speech_toks = [t for t, _, _ in sp]
+    owner_start = [oa for _, oa, _ in sp]
+    owner_end = [ob for _, _, ob in sp]
     if not speech_toks:
         out.update(how="no_speech", why="识别范围里没听到说话")
         return out
@@ -241,16 +298,19 @@ def _align_title(segments, title: str) -> dict:
     hit = 0.0
     n_hit = 0
     js = []
+    hit_pairs = []
     diff = []
     for i, j, kind in pairs:
         if kind == "equal":
             hit += 1.0
             n_hit += 1
             js.append(j)
+            hit_pairs.append((i, j))
         elif kind == "near":
             hit += _S_NEAR
             n_hit += 1
             js.append(j)
+            hit_pairs.append((i, j))
             diff.append((title_toks[i], speech_toks[j]))
         elif kind == "sub":
             diff.append((title_toks[i], speech_toks[j]))
@@ -264,22 +324,44 @@ def _align_title(segments, title: str) -> dict:
     if not js:
         out.update(how="mismatch", why="视频内容与标题文字不符")
         return out
+    # 防止首尾因个别错词跨越长停顿（>=0.65s 且多跳过口播词）误吸附到下一句里的单个常见词
+    while len(hit_pairs) >= 4:
+        i_prev, j_prev = hit_pairs[-2]
+        i_last, j_last = hit_pairs[-1]
+        extra_s = (j_last - j_prev) - (i_last - i_prev)
+        t_gap = float(words[owner_start[j_last]]["start"]) - float(words[owner_end[j_prev]]["end"])
+        if extra_s >= 2 and (t_gap >= 0.65 or extra_s >= 4):
+            hit_pairs.pop()
+            js.pop()
+        else:
+            break
+    while len(hit_pairs) >= 4:
+        i_first, j_first = hit_pairs[0]
+        i_next, j_next = hit_pairs[1]
+        extra_s = (j_next - j_first) - (i_next - i_first)
+        t_gap = float(words[owner_start[j_next]]["start"]) - float(words[owner_end[j_first]]["end"])
+        if extra_s >= 2 and (t_gap >= 0.65 or extra_s >= 4):
+            hit_pairs.pop(0)
+            js.pop(0)
+        else:
+            break
     j0, j1 = js[0], js[-1]
     # 对上的词在口播里太稀（一堆 the / you 零散命中）也不算
     density = n_hit / max(1, j1 - j0 + 1)
     # 标题末尾有几个词没对上、而对上的部分已经顶到口播最后 → 识别范围太短
-    last_hit_i = max(i for i, j, kind in pairs if kind in ("equal", "near"))
+    last_hit_i = hit_pairs[-1][0]
     tail_missing = n - 1 - last_hit_i
     out["tail_missing"] = tail_missing
-    w0, w1 = words[owner[j0]], words[owner[j1]]
+    i0_idx, i1_idx = owner_start[j0], owner_end[j1]
+    w0, w1 = words[i0_idx], words[i1_idx]
     out["start"] = float(w0["start"])
     out["end"] = float(w1["end"])
     out["said"] = ensure_sentence_punctuation(
-        _join_words([w["text"] for w in words[owner[j0]: owner[j1] + 1]]),
-        words[owner[j0]: owner[j1] + 1],
+        _join_words([w["text"] for w in words[i0_idx: i1_idx + 1]]),
+        words[i0_idx: i1_idx + 1],
     )
     at_end = (len(speech_toks) - 1 - j1) <= 1
-    if tail_missing >= 1 and at_end and score < MATCH_GOOD and n_hit >= min(3, n):
+    if tail_missing >= 1 and at_end and n_hit >= min(3, n):
         out.update(how="window_short",
                    why="标题说到一半识别范围就到头了（对上了前 %d 个词）" % n_hit)
         return out
@@ -428,9 +510,10 @@ def sentences_with_times(segments, sents) -> list[dict]:
     if not sents:
         return spoken_sentences(segments)
     words = _words_of(segments)
-    sp = tokens_with_owner([(w["text"], k) for k, w in enumerate(words)])
-    speech_toks = [t for t, _ in sp]
-    owner = [o for _, o in sp]
+    sp = tokens_with_owner_bounds([(w["text"], k) for k, w in enumerate(words)])
+    speech_toks = [t for t, _, _ in sp]
+    owner_start = [oa for _, oa, _ in sp]
+    owner_end = [ob for _, _, ob in sp]
     out = []
     cursor = 0
     for seg in sents:
@@ -458,7 +541,7 @@ def sentences_with_times(segments, sents) -> list[dict]:
                 js = [j for _i, j, k in pairs if k in ("equal", "near")]
                 if len(js) >= max(1, len(ptoks) // 2):
                     j0, j1 = cursor + js[0], cursor + js[-1]
-                    start, end = words[owner[j0]]["start"], words[owner[j1]]["end"]
+                    start, end = words[owner_start[j0]]["start"], words[owner_end[j1]]["end"]
                     cursor = j1 + 1
             out.append({"start": float(start), "end": float(max(end, start)),
                         "text": ensure_sentence_punctuation(piece)})
@@ -530,13 +613,26 @@ def punctuate_words_for_display(words: list[dict], sentences: list[dict] | None 
     return w_list
 
 
-def sentences_in_span(sentences, start, end, pad: float = 0.15) -> list[dict]:
-    """和 [start, end] 有交集的句子（给「视频原话」那一格用）。"""
+def sentences_in_span(sentences, start, end, pad: float = 0.05) -> list[dict]:
+    """和 [start, end] 有实质交集的句子（给「视频原话」那一格用）。
+
+    避免下一句仅因停顿极短（如 0.02s）落入旧版 +0.15s pad 而被误并入当前标题。
+    """
     try:
-        a, b = float(start) - pad, float(end) + pad
+        start_f, end_f = float(start), float(end)
     except (TypeError, ValueError):
         return []
-    return [s for s in (sentences or []) if float(s["end"]) >= a and float(s["start"]) <= b]
+    out = []
+    for s in sentences or []:
+        try:
+            sa, sb = float(s["start"]), float(s["end"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        overlap = min(sb, end_f) - max(sa, start_f)
+        s_dur = max(0.05, sb - sa)
+        if overlap >= min(0.18, 0.25 * s_dur) or (sa >= start_f - pad and sb <= end_f + pad):
+            out.append(s)
+    return out
 
 
 def diff_note(diff, limit: int = 8) -> str:

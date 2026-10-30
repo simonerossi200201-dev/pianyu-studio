@@ -145,6 +145,7 @@ def _blend_premul_rgb(sl, r: int, g: int, b: int, amount: float) -> None:
 
 def tint_run_ltr(img: QImage, layout, run, color: str, frac: float, amount: float = 1.0,
                  colors=None, angle: float = 0.0) -> QImage:
+    from cutora.render.textfx.layout import _is_rtl_text
     from cutora.render.textfx.raster import as_bgra
     frac = max(0.0, min(1.0, float(frac)))
     if frac <= 1e-6 or amount <= 1e-6:
@@ -156,7 +157,8 @@ def tint_run_ltr(img: QImage, layout, run, color: str, frac: float, amount: floa
     x1, y1 = min(w, x1), min(h, y1)
     if x1 <= x0 or y1 <= y0:
         return owned
-    cut = x0 + int(round((x1 - x0) * frac))
+    rtl = _is_rtl_text(getattr(run, "text", "") or "")
+    cut = (x1 - int(round((x1 - x0) * frac))) if rtl else (x0 + int(round((x1 - x0) * frac)))
     cols = [str(c) for c in (colors or []) if c]
     if len(cols) >= 2:
         sl_full = bgra[y0:y1, x0:x1]
@@ -178,11 +180,18 @@ def tint_run_ltr(img: QImage, layout, run, color: str, frac: float, amount: floa
         mix = np.empty((hh, ww, 3), dtype="float32")
         for ch in range(3):
             mix[..., ch] = np.interp(u, stops, [c[ch] for c in rgb]).reshape(hh, ww)
-        cut_i = max(0, min(ww, cut - x0))
-        if cut_i <= 0:
-            return owned
-        sl = sl_full[:, :cut_i]
-        mix_sl = mix[:, :cut_i]
+        if rtl:
+            cut_i = max(0, min(ww, cut - x0))
+            if cut_i >= ww:
+                return owned
+            sl = sl_full[:, cut_i:]
+            mix_sl = mix[:, cut_i:]
+        else:
+            cut_i = max(0, min(ww, cut - x0))
+            if cut_i <= 0:
+                return owned
+            sl = sl_full[:, :cut_i]
+            mix_sl = mix[:, :cut_i]
         amt = max(0.0, min(1.0, float(amount)))
         a = sl[..., 3].astype("float32") * (1.0 / 255.0)
         inv = 1.0 - amt
@@ -196,7 +205,7 @@ def tint_run_ltr(img: QImage, layout, run, color: str, frac: float, amount: floa
             sl[..., 2].astype("float32") * inv + mix_sl[..., 0] * a * amt
         ).clip(0, 255).astype("uint8")
         return owned
-    sl = bgra[y0:y1, x0:cut]
+    sl = bgra[y0:y1, cut:x1] if rtl else bgra[y0:y1, x0:cut]
     if sl.size == 0:
         return owned
     r, g, b = rgb_tuple(color)
@@ -482,7 +491,7 @@ def draw_box_highlight(bg: QImage | None, layout, spec, t: float, event: dict,
 
 
 def _line_bar_progress(line, t: float) -> float:
-    """0–1 width fraction: line start → current-word right edge, eased."""
+    """0–1 width fraction: line start → current-word active edge, eased."""
     runs = [r for r in (line.runs or []) if str(r.text or "").strip()]
     if not runs:
         return 1.0
@@ -494,6 +503,7 @@ def _line_bar_progress(line, t: float) -> float:
         return 0.0
     line_x = float(line.x)
     line_w = max(float(line.w), 1e-6)
+    rtl = len(runs) >= 2 and float(runs[0].x) > float(runs[-1].x)
     for i, run in enumerate(runs):
         rs = float(run.t_start)
         re = float(run.t_end)
@@ -503,6 +513,9 @@ def _line_bar_progress(line, t: float) -> float:
         if t <= re or t < nxt:
             dur = max(re - rs, 1e-6)
             u = max(0.0, min(1.0, (t - rs) / dur))
+            if rtl:
+                x = float(run.x) + float(run.w) * (1.0 - ease_out_cubic(u))
+                return max(0.0, min(1.0, (line_x + line_w - x) / line_w))
             x = float(run.x) + float(run.w) * ease_out_cubic(u)
             return max(0.0, min(1.0, (x - line_x) / line_w))
     return 1.0

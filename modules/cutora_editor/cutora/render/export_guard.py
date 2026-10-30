@@ -606,6 +606,19 @@ def probe_nvenc_sessions(max_try: int = NVENC_PROBE_MAX, hold_seconds: float = 4
     return ok
 
 
+def is_legacy_nvenc_gpu(gpu_name: str | None) -> bool:
+    """Pascal / Maxwell / GTX 10 / 16 / MX 等旧架构显卡：严禁启动时并发拉起 8 路 ffmpeg NVENC 抢占测试，
+    避免旧驱动在 OpenEncodeSessionEx 并发冲撞时触发 WDDM TDR 冻屏。"""
+    u = str(gpu_name or "").upper()
+    if not u:
+        return False
+    for tag in ("GTX 10", "GTX 16", "GTX 9", "GTX 7", "GT 10", "MX1", "MX2", "MX3", "MX4", "MX5",
+                "QUADRO P", "QUADRO M", "QUADRO K", "TESLA P", "TESLA M", "TITAN X", "TITAN XP"):
+        if tag in u:
+            return True
+    return False
+
+
 def ensure_nvenc_probe(force: bool = False, log=print) -> int:
     """启动后台调用：缓存有效就直接返回；否则实测并写入设置。返回会话数（0 = 没测出来）。
     一次只跑一个；导出进行中不要调（会和导出抢会话，测出来偏小）。"""
@@ -620,7 +633,13 @@ def ensure_nvenc_probe(force: bool = False, log=print) -> int:
         ident = gpu_identity()
         if ident is None:
             return 0
-        n = probe_nvenc_sessions()
+        if is_legacy_nvenc_gpu(ident[1]):
+            # 旧架构（如 GTX 1070）直接采用安全并发上限 2 路，不拉起 8 路 ffmpeg 并发施压
+            n = 2 if not force else probe_nvenc_sessions(max_try=2, hold_seconds=1.0)
+            if n <= 0:
+                n = 2
+        else:
+            n = probe_nvenc_sessions()
         if n <= 0:
             log("[NVENC] 实测失败：一路 NVENC 都开不起来（ffmpeg 缺失或显卡不支持），按 %d 路" % NVENC_MAX_SESSIONS)
             return 0
