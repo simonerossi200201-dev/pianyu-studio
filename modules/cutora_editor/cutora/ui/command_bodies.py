@@ -1171,6 +1171,13 @@ class CommandBodies:
             raise CommandError("不能跨类型换轨")
         clip = clips.pop(int(clip_index))
         clip.start_t = float(start)
+        if getattr(dest, "type", None) in ("audio", "bgm", "sfx") or getattr(dest, "domain", None) == "audio":
+            dest_role = str(getattr(dest, "audio_role", "") or "")
+            if dest_role:
+                clip.audio_role = dest_role
+                clip.is_main = bool(dest_role == "main")
+                if dest_role != "main":
+                    clip.spatial_enabled = False
         dest.clips.append(clip)
         self.timeline.update()
         return {
@@ -2356,9 +2363,14 @@ class CommandBodies:
         act = getattr(self, "act_autosave_restore", None)
         if act is not None:
             act.setEnabled(True)
-        if not self.isVisible():
-            return
-        self._ask_restore_unsaved(left, backup, untitled=True)
+        # 启动时保持空白工作区：不再自动弹窗 / 自动载入任何工程，只在状态栏提示一次，
+        # 需要时到「文件 → 恢复上次自动保存… / 打开自动保存文件夹」里手动找回。
+        try:
+            self.statusBar().showMessage(
+                "检测到上次未保存的工程快照，已安全备份。如需找回：文件 → 恢复上次自动保存…", 15000)
+        except Exception:
+            pass
+        return
 
     def _restart_autosave_timer(self):
         from cutora.core.autosave import interval_minutes

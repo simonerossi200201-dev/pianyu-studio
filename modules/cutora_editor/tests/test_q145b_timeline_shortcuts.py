@@ -260,7 +260,7 @@ def test_q_w_ripple_trim_to_playhead():
     win.undo()
     tl = win.timeline
     tl.position = 5000                      # 第二段 [4,8) 中间 5.0 s
-    _key(tl, Qt.Key.Key_BracketRight, SHIFT)    # Q157：Shift+] = W（达芬奇）
+    _key(tl, Qt.Key.Key_BracketRight, SHIFT)    # Shift+] = 剪掉播放头右边（留空隙；W 是波纹版）
     _tr, clips = _clips(_cur(win))
     second = max(clips, key=lambda c: c.start_t)
     assert abs(second.start_t - 4.0) < 1e-6 and abs(second.out_t - 11.0) < 1e-6
@@ -597,10 +597,11 @@ def test_delete_key_ripples_and_shift_bracket_trims_start():
     win.undo()
     tl = win.timeline
     tl.position = 1000
-    _key(tl, Qt.Key.Key_BracketLeft, SHIFT)                           # Shift+[ = 删掉播放头左边
+    _key(tl, Qt.Key.Key_BracketLeft, SHIFT)                           # Shift+[ = 删掉播放头左边（留空隙）
     _tr, clips = _clips(_cur(win))
     first = min(clips, key=lambda c: c.start_t)
-    assert abs(first.in_t - 1.0) < 1e-6 and abs(first.start_t) < 1e-6
+    assert abs(first.in_t - 1.0) < 1e-6 and abs(first.start_t - 1.0) < 1e-6
+    assert abs(max(c.start_t for c in clips) - 4.0) < 1e-6            # 后面的片段不动
 
 
 def test_grab_playhead_head_and_drag_scrubs():

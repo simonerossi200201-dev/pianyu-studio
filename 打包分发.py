@@ -382,9 +382,19 @@ def verify_and_build_zip(edition: str = "code-only") -> dict[str, Any]:
     }
 
     print(f"[打包开始] 正在生成主程序包: {zip_name} ...", flush=True)
+    # 代码包 / 模型包两者都以同一个顶层文件夹「片语工作室/」打包：解压到同一个位置即自动合并成一个完整工作室；
+    # 即使分别解压到两个不同文件夹，《安装与体检.bat》也会自动找到模型包并把 runtime 合并进来。
+    arc_prefix = "片语工作室/" if edition in ("code-only", "standard", "models-once") else ""
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as zf:
+        if edition == "models-once":
+            zf.writestr(
+                arc_prefix + "README_模型与环境底座包.txt",
+                "这是《片语工作室》的模型与运行环境底座包，只需下载一次。\n"
+                "请把它和《02_代码主程序包》解压到同一个位置（两个包内都是「片语工作室」文件夹，会自动合并）。\n"
+                "然后双击「片语工作室\\安装与体检.bat」即可。以后升级只需重新下载代码包并解压覆盖。\n",
+            )
         zf.writestr(
-            "packs/README_如何安装扩展包.txt",
+            arc_prefix + "packs/README_如何安装扩展包.txt",
             "将从网盘按需下载的 .ltxpack 扩展包（如 02_Orante、03_Robota、04_ComfyUI、05_LTX2.5视频模型等）直接放入本目录 (packs/)，\n"
             "然后双击根目录的《安装与体检.bat》或打开《片语工作室》点击右上角【📦 模块与模型扩展中心】，即可一键无缝拼装！\n",
         )
@@ -397,7 +407,7 @@ def verify_and_build_zip(edition: str = "code-only") -> dict[str, Any]:
                     if target.suffix == ".py" and not is_runtime_tree:
                         py_compile.compile(str(target), doraise=True)
                     comp = zipfile.ZIP_STORED if (is_runtime_tree or target.suffix.lower() in STORED_EXTS) else zipfile.ZIP_DEFLATED
-                    zf.write(target, rel, compress_type=comp)
+                    zf.write(target, arc_prefix + rel.replace("\\", "/"), compress_type=comp)
                     files_added += 1
             elif target.is_dir():
                 for dirpath, dirnames, filenames in os.walk(target):
@@ -421,7 +431,7 @@ def verify_and_build_zip(edition: str = "code-only") -> dict[str, Any]:
                             except Exception:
                                 pass
                         comp = zipfile.ZIP_STORED if (is_runtime_tree or sfx in STORED_EXTS) else zipfile.ZIP_DEFLATED
-                        zf.write(p, rel, compress_type=comp)
+                        zf.write(p, arc_prefix + rel.replace("\\", "/"), compress_type=comp)
                         files_added += 1
 
     elapsed = round(time.time() - t0, 1)

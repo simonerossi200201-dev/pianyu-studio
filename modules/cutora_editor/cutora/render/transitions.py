@@ -1446,6 +1446,572 @@ def scanlines(a, b, t, w, h, *, intensity=1.0, easing="ease_in_out", direction="
     return out
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 20 Top-Tier Pro NLE Transitions (DaVinci Resolve / Premiere / CapCut Pro)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def whip_pan_left(a, b, t, w, h, *, intensity=1.0, easing="ease_in_out", **_):
+    """横向甩镜：高速水平甩动 + 多重残影运动模糊。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi)
+    k = max(0.3, min(2.0, float(intensity)))
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    try:
+        dx_a = -float(w) * p
+        dx_b = float(w) * (1.0 - p)
+        _draw(painter, a, dx_a, 0, w, h)
+        _draw(painter, b, dx_b, 0, w, h)
+        # 高速运动残影层
+        stride = max(2.0, float(w) * 0.08 * k * veil)
+        for idx, alpha in ((1, 0.28 * veil), (2, 0.16 * veil), (3, 0.09 * veil)):
+            off = stride * idx
+            painter.setOpacity(alpha)
+            _draw(painter, a, dx_a + off, 0, w, h)
+            _draw(painter, b, dx_b - off, 0, w, h)
+        painter.setOpacity(0.18 * veil * veil)
+        painter.fillRect(int(max(0, dx_b - 6)), 0, 12, int(h), QColor(255, 240, 200))
+    finally:
+        painter.end()
+    return out
+
+
+def whip_pan_up(a, b, t, w, h, *, intensity=1.0, easing="ease_in_out", **_):
+    """纵向甩镜：高速垂直甩镜 + 纵向拖影。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi)
+    k = max(0.3, min(2.0, float(intensity)))
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    try:
+        dy_a = -float(h) * p
+        dy_b = float(h) * (1.0 - p)
+        _draw(painter, a, 0, dy_a, w, h)
+        _draw(painter, b, 0, dy_b, w, h)
+        stride = max(2.0, float(h) * 0.09 * k * veil)
+        for idx, alpha in ((1, 0.28 * veil), (2, 0.16 * veil), (3, 0.09 * veil)):
+            off = stride * idx
+            painter.setOpacity(alpha)
+            _draw(painter, a, 0, dy_a + off, w, h)
+            _draw(painter, b, 0, dy_b - off, w, h)
+        painter.setOpacity(0.18 * veil * veil)
+        painter.fillRect(0, int(max(0, dy_b - 5)), int(w), 10, QColor(200, 235, 255))
+    finally:
+        painter.end()
+    return out
+
+
+def light_leak(a, b, t, w, h, *, intensity=1.0, easing="ease_in_out", **_):
+    """胶片漏光：电影级暖金/洋红渐变光斑横扫过渡。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    from PySide6.QtGui import QLinearGradient
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi) ** 1.4
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    try:
+        painter.setOpacity(p)
+        _draw(painter, b, 0, 0, w, h)
+        if veil > 1e-4:
+            cx = float(w) * (0.15 + 0.70 * p)
+            grad = QLinearGradient(cx - float(w) * 0.45, 0, cx + float(w) * 0.45, float(h))
+            grad.setColorAt(0.0, QColor(255, 90, 40, 0))
+            grad.setColorAt(0.35, QColor(255, 140, 50, int(210 * veil)))
+            grad.setColorAt(0.65, QColor(255, 215, 110, int(235 * veil)))
+            grad.setColorAt(1.0, QColor(210, 60, 140, 0))
+            painter.setOpacity(1.0)
+            painter.fillRect(QRectF(0, 0, float(w), float(h)), grad)
+    finally:
+        painter.end()
+    return out
+
+
+def film_burn(a, b, t, w, h, *, intensity=1.0, easing="ease_in_out", **_):
+    """胶片烧灼：复古胶片暗角灼烧与琥珀高光闪烁。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    from PySide6.QtGui import QRadialGradient
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi) ** 1.5
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    try:
+        # 随进度偏移并叠加 B
+        shift = float(h) * 0.06 * veil
+        painter.setOpacity(1.0)
+        _draw(painter, a, 0, -shift, w, h)
+        painter.setOpacity(p)
+        _draw(painter, b, 0, shift * 0.5, w, h)
+        if veil > 1e-4:
+            rad = max(float(w), float(h)) * (0.75 - 0.25 * veil)
+            rg = QRadialGradient(float(w) * (0.3 + 0.4 * p), float(h) * 0.5, rad)
+            rg.setColorAt(0.0, QColor(255, 235, 170, int(190 * veil)))
+            rg.setColorAt(0.55, QColor(235, 95, 20, int(215 * veil)))
+            rg.setColorAt(1.0, QColor(45, 12, 4, int(220 * veil)))
+            painter.setOpacity(1.0)
+            painter.fillRect(QRectF(0, 0, float(w), float(h)), rg)
+    finally:
+        painter.end()
+    return out
+
+
+def spin_in(a, b, t, w, h, *, intensity=1.0, easing="ease_in_out", **_):
+    """旋转推进：中心漩涡旋转缩放切入（底层放大防黑边）。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    try:
+        cx, cy = float(w) * 0.5, float(h) * 0.5
+        # 先画放大旋转的 A 作为不透明满幅底
+        painter.save()
+        painter.translate(cx, cy)
+        painter.rotate(95.0 * p)
+        sc_a = 1.0 + 0.85 * veil
+        painter.scale(sc_a, sc_a)
+        painter.translate(-cx, -cy)
+        _draw(painter, a, 0, 0, w, h)
+        painter.restore()
+        # 再画反向旋转汇聚的 B
+        painter.save()
+        painter.setOpacity(p)
+        painter.translate(cx, cy)
+        painter.rotate(-95.0 * (1.0 - p))
+        sc_b = 1.0 + 0.85 * veil
+        painter.scale(sc_b, sc_b)
+        painter.translate(-cx, -cy)
+        _draw(painter, b, 0, 0, w, h)
+        painter.restore()
+    finally:
+        painter.end()
+    return out
+
+
+def shake_impact(a, b, t, w, h, *, intensity=1.0, easing="ease_in_out", **_):
+    """震动冲击：重低音卡点脉冲缩放与高频相机震颤。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi) ** 1.3
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    try:
+        cx, cy = float(w) * 0.5, float(h) * 0.5
+        sc = 1.0 + 0.26 * veil
+        jx = math.sin(p * math.pi * 7.0) * float(w) * 0.08 * veil
+        jy = math.cos(p * math.pi * 5.0) * float(h) * 0.08 * veil
+        src = a if p < 0.5 else b
+        painter.save()
+        painter.translate(cx + jx, cy + jy)
+        painter.scale(sc, sc)
+        painter.translate(-cx, -cy)
+        _draw(painter, src, 0, 0, w, h)
+        painter.restore()
+        painter.setOpacity(p)
+        painter.save()
+        painter.translate(cx - jx * 0.6, cy - jy * 0.6)
+        painter.scale(sc, sc)
+        painter.translate(-cx, -cy)
+        _draw(painter, b, 0, 0, w, h)
+        painter.restore()
+    finally:
+        painter.end()
+    return out
+
+
+def iris_diamond(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """菱形展开：中心几何菱形遮罩向外扩张揭示新画面。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    try:
+        cx, cy = float(w) * 0.5, float(h) * 0.5
+        rx = float(w) * p
+        ry = float(h) * p
+        path = QPainterPath()
+        path.moveTo(cx, cy - ry)
+        path.lineTo(cx + rx, cy)
+        path.lineTo(cx, cy + ry)
+        path.lineTo(cx - rx, cy)
+        path.closeSubpath()
+        painter.setClipPath(path)
+        _draw(painter, b, 0, 0, w, h)
+    finally:
+        painter.end()
+    return out
+
+
+def iris_close(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """圆形收缩：新画面从四周向中心圆孔合拢收束。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    out = _copy_fit(b, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    try:
+        cx, cy = float(w) * 0.5, float(h) * 0.5
+        max_r = math.hypot(cx, cy) * (1.0 - p)
+        if max_r > 0.5:
+            path = QPainterPath()
+            path.addEllipse(QPointF(cx, cy), max_r, max_r)
+            painter.setClipPath(path)
+            _draw(painter, a, 0, 0, w, h)
+    finally:
+        painter.end()
+    return out
+
+
+def iris_rectangle(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """矩形画框：中心等比画框向外扩张并伴随金色描边。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    from PySide6.QtGui import QPen
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    try:
+        rw = float(w) * p
+        rh = float(h) * p
+        rx = (float(w) - rw) * 0.5
+        ry = (float(h) - rh) * 0.5
+        rect = QRectF(rx, ry, rw, rh)
+        painter.save()
+        painter.setClipRect(rect)
+        _draw(painter, b, 0, 0, w, h)
+        painter.restore()
+        if veil > 0.02:
+            painter.setPen(QPen(QColor(245, 200, 95, int(200 * veil)), max(1.5, min(w, h) * 0.025)))
+            painter.drawRect(rect)
+    finally:
+        painter.end()
+    return out
+
+
+def checker_wipe(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """棋盘格：6×4 交错棋盘格逐块翻转揭示。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    try:
+        cols, rows = 6, 4
+        cw = float(w) / cols
+        ch = float(h) / rows
+        path = QPainterPath()
+        for r in range(rows):
+            for c in range(cols):
+                phase = ((r + c) % 2) * 0.18 + (c / float(cols)) * 0.12
+                local_p = max(0.0, min(1.0, (p * 1.3 - phase)))
+                if local_p > 0.0:
+                    path.addRect(QRectF(c * cw, r * ch, cw * local_p, ch))
+        painter.setClipPath(path)
+        _draw(painter, b, 0, 0, w, h)
+    finally:
+        painter.end()
+    return out
+
+
+def barn_door_h(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """左右开门：从画面纵向中轴线向左右两侧对称拉开。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    try:
+        rw = float(w) * p
+        rx = (float(w) - rw) * 0.5
+        painter.setClipRect(QRectF(rx, 0.0, rw, float(h)))
+        _draw(painter, b, 0, 0, w, h)
+    finally:
+        painter.end()
+    return out
+
+
+def barn_door_v(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """上下开门：从画面横向中轴线向上下两侧对称拉开。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    try:
+        rh = float(h) * p
+        ry = (float(h) - rh) * 0.5
+        painter.setClipRect(QRectF(0.0, ry, float(w), rh))
+        _draw(painter, b, 0, 0, w, h)
+    finally:
+        painter.end()
+    return out
+
+
+def split_interleave(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """交错滑入：多条水平分带从左右两侧交替滑入合拢。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    try:
+        bands = 6
+        bh = float(h) / bands
+        for i in range(bands):
+            y0 = i * bh
+            painter.save()
+            painter.setClipRect(QRectF(0.0, y0, float(w), bh + 0.8))
+            dx = (1.0 - p) * float(w) * (1.0 if i % 2 == 0 else -1.0)
+            _draw(painter, b, dx, 0, w, h)
+            painter.restore()
+    finally:
+        painter.end()
+    return out
+
+
+def cover_left(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """左向覆叠：原画面缓慢左退，新画面从右侧带立体阴影覆叠滑入。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    try:
+        _draw(painter, a, -float(w) * 0.22 * p, 0, w, h)
+        bx = float(w) * (1.0 - p)
+        if veil > 0.01:
+            painter.fillRect(QRectF(max(0.0, bx - 10.0), 0.0, 10.0, float(h)), QColor(0, 0, 0, int(140 * veil)))
+        _draw(painter, b, bx, 0, w, h)
+    finally:
+        painter.end()
+    return out
+
+
+def cover_down(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """下向覆叠：原画面缓慢下沉，新画面从顶部带立体阴影覆叠滑落。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    try:
+        _draw(painter, a, 0, float(h) * 0.22 * p, w, h)
+        by = -float(h) * (1.0 - p)
+        edge_y = float(h) * p
+        if veil > 0.01:
+            painter.fillRect(QRectF(0.0, min(float(h), edge_y), float(w), 10.0), QColor(0, 0, 0, int(140 * veil)))
+        _draw(painter, b, 0, by, w, h)
+    finally:
+        painter.end()
+    return out
+
+
+def luma_melt(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """流光穿插：多柱流光熔滴交错下拉过渡。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    env = math.sin(p * math.pi) ** 2
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    try:
+        cols = 10
+        cw = float(w) / cols
+        for i in range(cols):
+            x0 = i * cw
+            phase = 0.5 + 0.5 * math.sin(i * 1.9 + 0.7)
+            drop_y = float(h) * max(0.0, min(1.0, p + (phase - 0.5) * 0.55 * env))
+            painter.save()
+            painter.setClipRect(QRectF(x0, 0.0, cw + 0.8, float(h)))
+            _draw(painter, a, 0, drop_y * env * 0.6, w, h)
+            painter.setClipRect(QRectF(x0, 0.0, cw + 0.8, drop_y))
+            _draw(painter, b, 0, 0, w, h)
+            if env > 0.02 and 1.0 < drop_y < float(h) - 1.0:
+                painter.fillRect(
+                    QRectF(x0, max(0.0, drop_y - 3.0), cw + 0.8, 3.5),
+                    QColor(95, 225, 255, int(200 * env)),
+                )
+            painter.restore()
+    finally:
+        painter.end()
+    return out
+
+
+def cross_zoom_blur(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """穿梭拉焦：深空隧道级多层同心缩放拉焦过渡。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    veil = math.sin(p * math.pi)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    try:
+        cx, cy = float(w) * 0.5, float(h) * 0.5
+        for step_i, alpha in ((1, 0.45), (2, 0.30), (3, 0.20)):
+            sc = 1.0 + step_i * 0.22 * veil
+            painter.save()
+            painter.setOpacity(alpha * (1.0 - p * 0.5))
+            painter.translate(cx, cy)
+            painter.scale(sc, sc)
+            painter.translate(-cx, -cy)
+            _draw(painter, a, 0, 0, w, h)
+            painter.restore()
+        for step_i, alpha in ((2, 0.35), (1, 0.55), (0, 1.0)):
+            sc_b = 1.0 + step_i * 0.18 * veil
+            painter.save()
+            painter.setOpacity(p * alpha)
+            painter.translate(cx, cy)
+            painter.scale(sc_b, sc_b)
+            painter.translate(-cx, -cy)
+            _draw(painter, b, 0, 0, w, h)
+            painter.restore()
+    finally:
+        painter.end()
+    return out
+
+
+def wave_ripple(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """水波涟漪：正弦波浪水平折光错位融变。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    env = math.sin(p * math.pi) ** 2
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    try:
+        slices = 12
+        sh = float(h) / slices
+        for i in range(slices):
+            y0 = i * sh
+            wave = math.sin((i / float(slices)) * math.pi * 3.0 + p * math.pi * 4.0)
+            dx = wave * float(w) * 0.28 * env
+            painter.save()
+            painter.setClipRect(QRectF(0.0, y0, float(w), sh + 0.8))
+            _draw(painter, a, dx, 0, w, h)
+            painter.setOpacity(p)
+            _draw(painter, b, -dx, 0, w, h)
+            painter.restore()
+    finally:
+        painter.end()
+    return out
+
+
+def curtain_drop(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """帷幕垂落：多列错落垂幕自上而下依次落下。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    try:
+        cols = 8
+        cw = float(w) / cols
+        for c in range(cols):
+            x0 = c * cw
+            delay = abs(c - (cols - 1) * 0.5) / float(cols) * 0.35
+            local_p = max(0.0, min(1.0, (p * 1.35 - delay)))
+            ch = float(h) * local_p
+            if ch > 0.0:
+                painter.save()
+                painter.setClipRect(QRectF(x0, 0.0, cw + 0.8, ch))
+                _draw(painter, b, 0, 0, w, h)
+                painter.restore()
+    finally:
+        painter.end()
+    return out
+
+
+def venetian_diag(a, b, t, w, h, *, easing="ease_in_out", **_):
+    """斜向格栅：45° 斜向平行百叶格栅同步翻转开合。"""
+    hit = _endpoints(a, b, t, w, h)
+    if hit is not None:
+        return hit
+    QColor, QImage, QPainter, QPainterPath, QTransform, QRectF, QPointF, Qt = _q()
+    p = _ease(t, easing)
+    out = _copy_fit(a, w, h)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    try:
+        slats = 7
+        span = float(w + h)
+        step = span / slats
+        band = step * p
+        path = QPainterPath()
+        for i in range(-1, slats + 1):
+            d0 = i * step
+            d1 = d0 + band
+            path.moveTo(d0, 0.0)
+            path.lineTo(d1, 0.0)
+            path.lineTo(d1 - float(h), float(h))
+            path.lineTo(d0 - float(h), float(h))
+            path.closeSubpath()
+        painter.setClipPath(path)
+        _draw(painter, b, 0, 0, w, h)
+    finally:
+        painter.end()
+    return out
+
+
 # User-facing library entries (appended to STANDALONE_TRANSITION_LIBRARY).
 EXTRA_TRANSITION_LIBRARY = [
     ("推出左", "push_out_left"),
@@ -1472,6 +2038,27 @@ EXTRA_TRANSITION_LIBRARY = [
     ("故障", "glitch"),
     ("像素化溶解", "pixelate"),
     ("扫描线", "scanlines"),
+    # ── 新增 20 款行业第一梯队爆款转场 ──
+    ("横向甩镜", "whip_pan_left"),
+    ("纵向甩镜", "whip_pan_up"),
+    ("胶片漏光", "light_leak"),
+    ("胶片烧灼", "film_burn"),
+    ("旋转推进", "spin_in"),
+    ("震动冲击", "shake_impact"),
+    ("菱形展开", "iris_diamond"),
+    ("圆形收缩", "iris_close"),
+    ("矩形画框", "iris_rectangle"),
+    ("棋盘格", "checker_wipe"),
+    ("左右开门", "barn_door_h"),
+    ("上下开门", "barn_door_v"),
+    ("交错滑入", "split_interleave"),
+    ("左向覆叠", "cover_left"),
+    ("下向覆叠", "cover_down"),
+    ("流光穿插", "luma_melt"),
+    ("穿梭拉焦", "cross_zoom_blur"),
+    ("水波涟漪", "wave_ripple"),
+    ("帷幕垂落", "curtain_drop"),
+    ("斜向格栅", "venetian_diag"),
 ]
 
 
@@ -1542,6 +2129,26 @@ TRANSITION_FUNCS = {
     "glitch": glitch,
     "pixelate": pixelate,
     "scanlines": scanlines,
+    "whip_pan_left": whip_pan_left,
+    "whip_pan_up": whip_pan_up,
+    "light_leak": light_leak,
+    "film_burn": film_burn,
+    "spin_in": spin_in,
+    "shake_impact": shake_impact,
+    "iris_diamond": iris_diamond,
+    "iris_close": iris_close,
+    "iris_rectangle": iris_rectangle,
+    "checker_wipe": checker_wipe,
+    "barn_door_h": barn_door_h,
+    "barn_door_v": barn_door_v,
+    "split_interleave": split_interleave,
+    "cover_left": cover_left,
+    "cover_down": cover_down,
+    "luma_melt": luma_melt,
+    "cross_zoom_blur": cross_zoom_blur,
+    "wave_ripple": wave_ripple,
+    "curtain_drop": curtain_drop,
+    "venetian_diag": venetian_diag,
 }
 
 
@@ -1551,7 +2158,12 @@ EXPORT_ONLY_PRESETS = set()
 
 
 def apply_transition(preset, a, b, t, w, h, **params):
-    fn = TRANSITION_FUNCS.get(str(preset or ""))
+    name = str(preset or "")
+    fn = TRANSITION_FUNCS.get(name)
+    if fn is None and "_" in name:
+        parts = name.split("_")
+        if parts[-1] in ("in", "out", "both"):
+            fn = TRANSITION_FUNCS.get("_".join(parts[:-1]))
     if fn is None:
         return None
     params = {k: v for k, v in params.items() if v is not None}

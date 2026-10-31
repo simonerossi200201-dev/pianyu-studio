@@ -211,7 +211,13 @@ def _serve() -> None:
                 continue
             path = str(job.get("path") or "")
             try:
-                audio = load_audio_16k(path)
+                # 可选窗口：只解码一小段（字幕轨道转录用前 30 s 判语种，别把整条长片读进内存）
+                if job.get("win_end") is not None:
+                    audio = load_audio_16k(
+                        path, start=float(job.get("win_start") or 0.0),
+                        end=float(job.get("win_end")))
+                else:
+                    audio = load_audio_16k(path)
                 fw = getattr(model, "model", None) or model
                 _segments, info = fw.transcribe(audio, language=None)
                 reply({
@@ -415,9 +421,14 @@ class AsrClient:
             raise RuntimeError("ASR worker 启动失败: %s" % ((hello or {}).get("error")))
         self.tier_id = hello.get("tier")
 
-    def detect(self, path: str, timeout_sec: float = 180) -> dict:
+    def detect(self, path: str, timeout_sec: float = 180,
+               win_start=None, win_end=None) -> dict:
         """First-clip language. Align model is not loaded yet."""
-        out = self._roundtrip({"cmd": "detect", "path": path}, timeout_sec=timeout_sec)
+        job = {"cmd": "detect", "path": path}
+        if win_end is not None:
+            job["win_start"] = float(win_start or 0.0)
+            job["win_end"] = float(win_end)
+        out = self._roundtrip(job, timeout_sec=timeout_sec)
         if out is None:
             raise WatchdogTimeout("ASR worker 无响应")
         if not out.get("ok"):

@@ -162,87 +162,253 @@ def resolve_source_track_spans(task, source_track_id: str | None = None) -> list
     return spans
 
 
-def _default_transcribe_span(path: str, in_t: float, out_t: float, language: str) -> tuple[list[dict], list[dict]]:
-    """Transcribe [in_t, out_t] of ``path`` in <=30s windows via AsrClient."""
-    from cutora.asr.clip_worker import AsrClient
-    from cutora.batch import text_locate_asr as LOC
+class TranscribeCancelled(RuntimeError):
+    """The user pressed 取消 while a subtitle-track transcription was running."""
 
-    lang = LOC._hello_language(language)
-    # Check if locate_asr cache already has this exact window (e.g. main video)
-    words_hit, sents_hit, _ = LOC.lookup_best(path, in_t, out_t, language)
-    if words_hit:
-        w_filtered = [
-            w for w in words_hit
-            if float(w.get("end") or 0.0) >= in_t and float(w.get("start") or 0.0) <= out_t
-        ]
-        s_filtered = [
-            s for s in (sents_hit or [])
-            if float(s.get("end") or 0.0) >= in_t and float(s.get("start") or 0.0) <= out_t
-        ]
-        if w_filtered:
-            return w_filtered, s_filtered
 
-    if not os.path.isfile(path):
-        return [], []
+def _requested_language(language: str | None) -> str | None:
+    """'auto' / '' → None (= detect from audio); otherwise a whisper language code.
 
-    client = AsrClient()
-    words_all: list[dict] = []
-    sents_all: list[dict] = []
+    The project-wide default (config.LANGUAGE) wins over detection when the user set one.
+    Before this fix '' / 'auto' silently became 'en', so Chinese / Arabic / Malagasy /
+    Swahili audio was decoded as English.
+    """
+    lang = str(language or "").strip().lower()
+    if lang and lang != "auto":
+        return lang
     try:
-        client.start(lang)
+        from cutora.core import config as cfg
+        lang = str(getattr(cfg, "LANGUAGE", "") or "").strip().lower()
+    except Exception:
+        lang = ""
+    if lang and lang != "auto":
+        return lang
+    return None
+
+
+class TrackAsrSession:
+    """One ASR worker process for a whole subtitle-track run.
+
+    Reuses the shared ASR pipeline (``cutora.asr.clip_worker.AsrClient`` → worker process →
+    ``engine.get_whisperx_model`` with hardware-tier model / compute-type selection, Silero
+    VAD, ``transcribe_clip`` punctuation-preserving raw sentences). The model is loaded once
+    per run — previously every clip of the source track spawned its own worker and loaded the
+    model again. Callable with the ``transcribe_fn`` signature
+    ``(path, in_t, out_t, language) -> (words, sentences)``.
+
+    Thread contract: ``__call__`` runs on a worker thread; ``cancel()`` may be called from the
+    GUI thread and never blocks (it kills the worker process tree in a daemon thread so a
+    blocking roundtrip returns at once).
+    """
+
+    def __init__(self, language: str = "auto", *, should_stop=None, on_progress=None,
+                 total_sec: float = 0.0, log=None):
+        self.language = language
+        self.should_stop = should_stop or (lambda: False)
+        self.on_progress = on_progress
+        self.total_sec = max(0.0, float(total_sec or 0.0))
+        self.done_sec = 0.0
+        self.log = log
+        self.client = None
+        self.lang: str | None = None
+        self.detected: str | None = None
+        self._cancelled = False
+
+    # -- helpers ---------------------------------------------------------
+    def _check(self) -> None:
+        if self._cancelled or self.should_stop():
+            raise TranscribeCancelled("cancelled")
+
+    def _report(self, msg: str) -> None:
+        if callable(self.on_progress):
+            pct = int(round(100.0 * self.done_sec / self.total_sec)) if self.total_sec > 0 else 0
+            try:
+                self.on_progress(max(0, min(99, pct)), msg)
+            except Exception:
+                pass
+
+    def _ensure_client(self, path: str, in_t: float, out_t: float) -> None:
+        if self.client is not None:
+            return
+        from cutora.asr.clip_worker import AsrClient
+        from cutora.batch import text_locate_asr as LOC
+        self._check()
+        self._report("正在加载语音识别模型…")
+        client = AsrClient(log=self.log)
+        self.client = client
+        want = _requested_language(self.language)
+        if want:
+            client.start(want)
+            self.lang = want
+            return
+        # Auto-detect: load the model without an aligner, detect on the first ≤30 s of the
+        # source span, then load the aligner for the detected language (if one exists).
+        client.start("en", defer_align=True)
+        self._check()
+        self._report("正在识别语种…")
+        lang = None
+        try:
+            w_end = min(float(out_t), float(in_t) + float(LOC.MAX_LOCATE_WINDOW_SEC))
+            det = client.detect(path, timeout_sec=180, win_start=in_t, win_end=w_end)
+            lang = str(det.get("language") or "").strip().lower() or None
+        except TranscribeCancelled:
+            raise
+        except Exception as exc:
+            self._check()
+            logger.warning("track transcribe: language detect failed (%s), falling back", exc)
+        self._check()
+        if not lang:
+            lang = LOC._hello_language("auto")
+        self.detected = lang
+        self.lang = lang
+        try:
+            client.load_align(lang)
+        except Exception as exc:
+            # No wav2vec2 aligner for this language (e.g. mg / sw): transcribe_clip falls
+            # back to faster-whisper word timestamps, punctuation is unaffected.
+            self._check()
+            logger.info("track transcribe: no aligner for %s (%s)", lang, exc)
+
+    # -- transcribe_fn ---------------------------------------------------
+    def __call__(self, path: str, in_t: float, out_t: float, language: str):
+        from cutora.batch import text_locate_asr as LOC
+        self._check()
+        span_len = max(0.0, float(out_t) - float(in_t))
+        words_hit, sents_hit, win_label = LOC.lookup_best(path, in_t, out_t, language)
+        if words_hit:
+            win_covers = (win_label == "full") or (not os.path.isfile(path))
+            if not win_covers and win_label and "-" in str(win_label):
+                try:
+                    wa, wb = (float(x) for x in str(win_label).split("-", 1))
+                    win_covers = (wa <= float(in_t) + 0.25 and wb >= float(out_t) - 0.5)
+                except (TypeError, ValueError):
+                    win_covers = True
+            if win_covers:
+                w_filtered = [
+                    w for w in words_hit
+                    if float(w.get("end") or 0.0) >= in_t and float(w.get("start") or 0.0) <= out_t
+                ]
+                s_filtered = [
+                    s for s in (sents_hit or [])
+                    if float(s.get("end") or 0.0) >= in_t and float(s.get("start") or 0.0) <= out_t
+                ]
+                if w_filtered:
+                    self.done_sec += span_len
+                    self._report("已复用缓存的识别结果")
+                    return w_filtered, s_filtered
+        if not os.path.isfile(path):
+            self.done_sec += span_len
+            return [], []
+        self._ensure_client(path, in_t, out_t)
+        words_all: list[dict] = []
+        sents_all: list[dict] = []
         chunk_len = float(LOC.MAX_LOCATE_WINDOW_SEC)
         overlap = 1.0
         cur = float(in_t)
+        base_done = self.done_sec
         while cur < float(out_t) - 0.05:
+            self._check()
             wend = min(float(out_t), cur + chunk_len)
-            w_chunk, s_chunk = LOC._transcribe_window(client, path, lang, cur, wend)
+            try:
+                w_chunk, s_chunk = LOC._transcribe_window(self.client, path, self.lang, cur, wend)
+            except Exception:
+                self._check()          # killed by cancel() → report as cancel, not error
+                raise
             cut = words_all[-1]["end"] if words_all else -1.0
             words_all.extend(x for x in w_chunk if float(x.get("start") or 0.0) >= cut - 0.02)
             scut = sents_all[-1]["end"] if sents_all else -1.0
             sents_all.extend(x for x in s_chunk if float(x.get("end") or 0.0) > scut + 0.3)
+            self.done_sec = base_done + (wend - float(in_t))
+            self._report("正在转录 %s  %.0f / %.0f 秒" % (
+                os.path.basename(path), self.done_sec, self.total_sec or span_len))
             if wend >= float(out_t):
                 break
             cur = wend - overlap
+        self.done_sec = base_done + span_len
+        return words_all, sents_all
+
+    def cancel(self) -> None:
+        self._cancelled = True
+        client = self.client
+        if client is None:
+            return
+        import threading
+        threading.Thread(
+            target=lambda: client.close(force=True), name="track-asr-cancel", daemon=True,
+        ).start()
+
+    def close(self) -> None:
+        client, self.client = self.client, None
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+
+def make_default_runner(language: str = "auto", *, should_stop=None, on_progress=None,
+                        total_sec: float = 0.0, log=None) -> TrackAsrSession:
+    """Factory used by the subtitle-track inspector worker (tests monkeypatch this)."""
+    return TrackAsrSession(language, should_stop=should_stop, on_progress=on_progress,
+                           total_sec=total_sec, log=log)
+
+
+def _default_transcribe_span(path: str, in_t: float, out_t: float, language: str) -> tuple[list[dict], list[dict]]:
+    """Transcribe [in_t, out_t] of ``path`` in <=30s windows (one-shot session)."""
+    session = TrackAsrSession(language)
+    try:
+        return session(path, in_t, out_t, language)
     finally:
-        try:
-            client.close()
-        except Exception:
-            pass
-    return words_all, sents_all
+        session.close()
 
 
-def transcribe_track_to_segments(
-    task: dict,
-    sub_track,
+def spans_total_sec(spans: list[dict]) -> float:
+    return float(sum(max(0.0, float(sp.get("out_t") or 0.0) - float(sp.get("in_t") or 0.0))
+                     for sp in spans or []))
+
+
+def compute_track_transcript(
+    spans: list[dict],
     *,
-    source_track_id: str | None = None,
     language: str = "auto",
     transcribe_fn: Callable[[str, float, float, str], tuple[list[dict], list[dict]]] | None = None,
-) -> list[dict]:
-    """Transcribe the selected source track and write punctuated subtitle segments to ``sub_track``."""
-    sid = str(source_track_id or get_track_source_id(sub_track) or MAIN_SOURCE_ID)
-    set_track_source_id(sub_track, sid)
-    spans = resolve_source_track_spans(task, sid)
-    runner = transcribe_fn or _default_transcribe_span
+    sub_track_id: str = "",
+    title_locate: dict | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """Pure part of the transcription (safe on a worker thread: never touches the timeline).
 
+    ``spans`` comes from :func:`resolve_source_track_spans` (resolved on the GUI thread).
+    Returns ``(segments, timeline_words)``; apply them with :func:`apply_track_transcript`.
+    """
+    runner = transcribe_fn or _default_transcribe_span
+    stop = should_stop or (lambda: False)
     tl_words: list[dict] = []
     tl_sents: list[dict] = []
 
-    for sp in spans:
+    for sp in spans or []:
+        if stop():
+            raise TranscribeCancelled("cancelled")
         path = sp["path"]
         in_t = float(sp["in_t"])
         out_t = float(sp["out_t"])
         tl_start = float(sp["tl_start"])
         speed = max(0.05, float(sp["speed"]))
         raw_words, raw_sents = runner(path, in_t, out_t, language)
+        clip_src_span = max(0.05, out_t - in_t)
+        tl_end_max = tl_start + clip_src_span / speed
         for w in raw_words or []:
             ws = float(w.get("start") or 0.0)
             we = float(w.get("end") or ws)
-            # Map from source clip time [in_t, out_t] to timeline time
+            # Map from source clip time [in_t, out_t] to timeline time [tl_start, tl_end_max]
             rel_s = ws - in_t if ws >= in_t - 0.25 else ws
             rel_e = we - in_t if we >= in_t - 0.25 else we
-            t_s = max(tl_start, tl_start + max(0.0, rel_s) / speed)
-            t_e = max(t_s + 0.05, tl_start + max(0.05, rel_e) / speed)
+            if rel_e <= 0.0 or rel_s >= clip_src_span + 0.05:
+                continue
+            rel_s = max(0.0, min(clip_src_span, rel_s))
+            rel_e = max(rel_s + 0.04, min(clip_src_span, rel_e))
+            t_s = max(tl_start, min(tl_end_max, tl_start + rel_s / speed))
+            t_e = max(t_s + 0.04, min(tl_end_max, tl_start + rel_e / speed))
             tl_words.append({
                 "start": round(t_s, 3),
                 "end": round(t_e, 3),
@@ -253,17 +419,21 @@ def transcribe_track_to_segments(
             se = float(s.get("end") or ss)
             rel_s = ss - in_t if ss >= in_t - 0.25 else ss
             rel_e = se - in_t if se >= in_t - 0.25 else se
-            t_s = max(tl_start, tl_start + max(0.0, rel_s) / speed)
-            t_e = max(t_s + 0.1, tl_start + max(0.1, rel_e) / speed)
+            if rel_e <= 0.0 or rel_s >= clip_src_span + 0.05:
+                continue
+            rel_s = max(0.0, min(clip_src_span, rel_s))
+            rel_e = max(rel_s + 0.08, min(clip_src_span, rel_e))
+            t_s = max(tl_start, min(tl_end_max, tl_start + rel_s / speed))
+            t_e = max(t_s + 0.08, min(tl_end_max, tl_start + rel_e / speed))
             tl_sents.append({
                 "start": round(t_s, 3),
                 "end": round(t_e, 3),
                 "text": ensure_sentence_punctuation(str(s.get("text") or "").strip()),
             })
 
-    # If no words came back from runner, check task['_title_locate'] when targeting main track
-    if not tl_words and sid == MAIN_SOURCE_ID and isinstance(task.get("_title_locate"), dict):
-        loc = task["_title_locate"]
+    # If no words came back from runner, use the cached title-locate transcript (main track)
+    if not tl_words and isinstance(title_locate, dict):
+        loc = title_locate
         for w in loc.get("segments") or []:
             if isinstance(w, dict) and str(w.get("text") or "").strip():
                 tl_words.append({
@@ -279,16 +449,8 @@ def transcribe_track_to_segments(
                     "text": ensure_sentence_punctuation(str(s.get("text") or "").strip()),
                 })
 
-    # Store transcribed words on sub_track._extra for subsequent manual script alignment
-    if sub_track is not None and not isinstance(sub_track, dict):
-        extra = getattr(sub_track, "_extra", None)
-        if not isinstance(extra, dict):
-            extra = {}
-            sub_track._extra = extra
-        extra["asr_words"] = tl_words
-
     timed_sents = sentences_with_times(tl_words, tl_sents)
-    sub_tid = str(getattr(sub_track, "id", "") or "") if sub_track is not None else ""
+    sub_tid = str(sub_track_id or "")
     segs: list[dict] = []
     for idx, sent in enumerate(timed_sents):
         s_t = round(float(sent.get("start") or 0.0), 3)
@@ -315,11 +477,56 @@ def transcribe_track_to_segments(
         if sub_tid:
             seg["_track_id"] = sub_tid
         segs.append(seg)
+    return segs, tl_words
 
-    set_track_segments(task, sub_track, segs)
+
+def apply_track_transcript(task: dict, sub_track, segs: list[dict], tl_words: list[dict]) -> list[dict]:
+    """GUI-thread part: write segments onto the subtitle track (+ task['segments'])."""
+    # Store transcribed words on sub_track._extra for subsequent manual script alignment
+    if sub_track is not None and not isinstance(sub_track, dict):
+        extra = getattr(sub_track, "_extra", None)
+        if not isinstance(extra, dict):
+            extra = {}
+            sub_track._extra = extra
+        extra["asr_words"] = list(tl_words or [])
+    segs = set_track_segments(task, sub_track, segs)
     if segs and not get_track_manual_script(sub_track).strip():
         set_track_manual_script(sub_track, "\n".join(s["text"] for s in segs))
     return segs
+
+
+def title_locate_for(task, source_track_id: str) -> dict | None:
+    if str(source_track_id or MAIN_SOURCE_ID) != MAIN_SOURCE_ID or not isinstance(task, dict):
+        return None
+    loc = task.get("_title_locate")
+    if not isinstance(loc, dict):
+        return None
+    import copy
+    return copy.deepcopy({"segments": loc.get("segments") or [],
+                          "sentences": loc.get("sentences") or []})
+
+
+def transcribe_track_to_segments(
+    task: dict,
+    sub_track,
+    *,
+    source_track_id: str | None = None,
+    language: str = "auto",
+    transcribe_fn: Callable[[str, float, float, str], tuple[list[dict], list[dict]]] | None = None,
+) -> list[dict]:
+    """Synchronous convenience wrapper (blocks!). The UI uses ``SubTrackTranscribeWorker``."""
+    sid = str(source_track_id or get_track_source_id(sub_track) or MAIN_SOURCE_ID)
+    set_track_source_id(sub_track, sid)
+    spans = resolve_source_track_spans(task, sid)
+    sub_tid = str(getattr(sub_track, "id", "") or "") if sub_track is not None else ""
+    segs, tl_words = compute_track_transcript(
+        spans,
+        language=language,
+        transcribe_fn=transcribe_fn,
+        sub_track_id=sub_tid,
+        title_locate=title_locate_for(task, sid),
+    )
+    return apply_track_transcript(task, sub_track, segs, tl_words)
 
 
 def _hms_to_sec(h: str, m: str, s: str, ms: str) -> float:

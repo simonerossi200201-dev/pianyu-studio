@@ -577,21 +577,31 @@ def _find_main_content_clip(task):
     return tr, None
 
 def _get_main_video_duration(task):
-    """获取主视频时长（仅主内容片段，不含其他素材）。"""
+    """获取主视频轨道总时长（兼容已被剪气口或剃刀切分为多段的主视频轨，不含缩略图前置静帧）。"""
     task = task if isinstance(task, dict) else {}
     try:
-        _tr, clip = _find_main_content_clip(task)
+        tr = _find_main_video_track(task)
     except Exception:
-        clip = None
-    if clip is not None:
-        try:
-            in_t = float(getattr(clip, "in_t", 0.0))
-            out_t = float(getattr(clip, "out_t", in_t))
-            dur = max(0.0, out_t - in_t)
-            if dur > 0:
-                return dur
-        except Exception:
-            pass
+        tr = None
+    if tr is not None:
+        max_end = 0.0
+        for clip in getattr(tr, "clips", []) or []:
+            if bool(getattr(clip, "is_thumbnail_leadin", False)):
+                continue
+            try:
+                st = max(0.0, float(getattr(clip, "start_t", 0.0) or 0.0))
+                eff = float(getattr(clip, "effective_duration", 0.0) or 0.0)
+                if eff <= 0:
+                    in_t = float(getattr(clip, "in_t", 0.0) or 0.0)
+                    out_t = float(getattr(clip, "out_t", in_t) or in_t)
+                    sp = max(0.01, float(getattr(clip, "speed", 1.0) or 1.0))
+                    eff = max(0.0, (out_t - in_t) / sp)
+                if eff > 0:
+                    max_end = max(max_end, st + eff)
+            except Exception:
+                continue
+        if max_end > 0:
+            return max_end
     try:
         dur = float(task.get("duration", 0.0))
         if dur > 0:
@@ -2916,6 +2926,10 @@ class MainWindow(CommandBodies, QMainWindow):
         self.act_autosave_restore.setEnabled(False)
         self.act_autosave_restore.triggered.connect(self.restore_autosave_from_menu)
         file_menu.addAction(self.act_autosave_restore)
+        act_open_autosave_dir = QAction(tr("打开自动保存文件夹（崩溃后找回工程）"), self)
+        act_open_autosave_dir.setToolTip(tr("在资源管理器中打开自动保存与崩溃备份工程所在的位置"))
+        act_open_autosave_dir.triggered.connect(self.open_autosave_folder)
+        file_menu.addAction(act_open_autosave_dir)
         proj_menu = menu.addMenu(tr("项目"))
         _a = QAction(tr("术语表…"), self)
         _a.triggered.connect(self.open_glossary_dialog)
@@ -5625,12 +5639,31 @@ class MainWindow(CommandBodies, QMainWindow):
                 track = get_or_create_track(tl, "audio")
                 track.audio_role = "main"
                 track.name = "原声"
+            # 若拖入的是副轨/画中画视频且原声轨在该时间区间已有主音频片段，避免直接叠在原声轨上造成重音重叠
+            if slot.get("kind") == "video" and track is not None and getattr(track, "clips", None):
+                vtrack = slot.get("vtrack")
+                s0 = float(start_t)
+                e0 = s0 + max(0.1, float(dur or 0.0))
+                has_overlap = any(
+                    float(getattr(c, "start_t", 0.0) or 0.0) < e0 - 1e-3
+                    and (float(getattr(c, "start_t", 0.0) or 0.0) + max(0.0, float(getattr(c, "effective_duration", 0.0) or (float(getattr(c, "out_t", 0.0) or 0.0) - float(getattr(c, "in_t", 0.0) or 0.0))))) > s0 + 1e-3
+                    for c in (track.clips or [])
+                )
+                if has_overlap and (vtrack is None or not getattr(vtrack, "is_main_video", False)):
+                    role = "bgm"
+                    track = _SFX.ensure_role_track(tl, "bgm") if _SFX is not None else get_or_create_bgm_track(tl)
             slot["atrack"] = track
         else:
             inherited = str(getattr(track, "audio_role", "") or "")
             if inherited:
                 role = inherited
         clip = Clip(src.id, 0.0, float(dur), float(start_t))
+        vclip = slot.get("vclip")
+        gid = slot.get("link_group_id") or (getattr(vclip, "link_group_id", None) if vclip is not None else None)
+        if gid:
+            clip.link_group_id = gid
+            if vclip is not None and not getattr(vclip, "link_group_id", None):
+                vclip.link_group_id = gid
         clip.is_main = bool(role == "main")
         clip.audio_role = role
         if role != "main":
@@ -5823,6 +5856,8 @@ class MainWindow(CommandBodies, QMainWindow):
         else:
             video_track = get_or_create_track(tl, "video")
         vclip = Clip(src.id, 0.0, dur, start_t)
+        drop_gid = uuid.uuid4().hex
+        vclip.link_group_id = drop_gid
         vclip.loop = bool(loop)
         vclip.fit_mode = fit_mode
         vclip.blend_mode = "normal"
@@ -5839,6 +5874,7 @@ class MainWindow(CommandBodies, QMainWindow):
             "source": src,
             "vclip": vclip,
             "aclip": None,
+            "link_group_id": drop_gid,
             "vtrack": video_track,
             "atrack": None,
             "origin": float(start_t),
@@ -6148,12 +6184,13 @@ class MainWindow(CommandBodies, QMainWindow):
                 continue
             if main_vtrack is None or getattr(tr, "is_main_video", False):
                 main_vtrack = tr
-            for clip in getattr(tr, "clips", []) or []:
-                if getattr(clip, "source_id", None) == source_id:
+            v_matches = [c for c in (getattr(tr, "clips", []) or []) if getattr(c, "source_id", None) == source_id]
+            for clip in v_matches:
+                if len(v_matches) == 1 and float(getattr(clip, "in_t", 0.0) or 0.0) <= 1e-4:
                     clip.out_t = dur
-                    if not getattr(clip, "link_group_id", None):
-                        clip.link_group_id = link_id
-                    has_vclip = True
+                if not getattr(clip, "link_group_id", None):
+                    clip.link_group_id = link_id
+                has_vclip = True
         if not has_vclip and main_vtrack is not None:
             vclip = Clip(source_id, 0.0, float(dur or 0.0), 0.0)
             vclip.link_group_id = link_id
@@ -6176,8 +6213,8 @@ class MainWindow(CommandBodies, QMainWindow):
         ]
         if source.has_audio:
             if existing:
-                for clip in existing:
-                    clip.out_t = dur
+                if len(existing) == 1 and float(getattr(existing[0], "in_t", 0.0) or 0.0) <= 1e-4:
+                    existing[0].out_t = dur
             else:
                 audio_clip = Clip(source_id, 0.0, float(dur or 0.0), 0.0)
                 audio_clip.link_group_id = link_id
@@ -8674,6 +8711,47 @@ class MainWindow(CommandBodies, QMainWindow):
         QTimer.singleShot(800, self._start_queue_item)
         return True
 
+    def open_autosave_folder(self):
+        """文件菜单：在资源管理器中打开自动保存 / 崩溃备份所在文件夹，并选中最新的快照文件。"""
+        try:
+            from cutora.core.paths import user_autosave_dir
+            base = user_autosave_dir()
+        except Exception:
+            base = ""
+        if not base:
+            return None
+        os.makedirs(base, exist_ok=True)
+        newest = ""
+        newest_ts = -1.0
+        for root in (base, os.path.join(base, "backups")):
+            try:
+                for fn in os.listdir(root):
+                    fp = os.path.join(root, fn)
+                    if os.path.isfile(fp) and fn.lower().endswith(".json"):
+                        ts = os.path.getmtime(fp)
+                        if ts > newest_ts:
+                            newest, newest_ts = fp, ts
+            except OSError:
+                continue
+        try:
+            import subprocess
+            if newest:
+                subprocess.Popen(["explorer", "/select,", os.path.normpath(newest)])
+            else:
+                os.startfile(os.path.normpath(base))
+        except Exception:
+            try:
+                from PySide6.QtCore import QUrl
+                from PySide6.QtGui import QDesktopServices
+                QDesktopServices.openUrl(QUrl.fromLocalFile(base))
+            except Exception:
+                pass
+        try:
+            self.statusBar().showMessage("自动保存文件夹：%s" % base, 8000)
+        except Exception:
+            pass
+        return newest or base
+
     def _populate_recent_menu(self):
         self.recent_menu.clear()
         recent_list = _get_recent_projects()
@@ -8688,6 +8766,12 @@ class MainWindow(CommandBodies, QMainWindow):
             if not path:
                 continue
             name = os.path.basename(path)
+            try:
+                import time as _t
+                when = _t.strftime("%m-%d %H:%M", _t.localtime(float(item.get("timestamp") or 0)))
+                name = "%s    (%s)" % (name, when)
+            except Exception:
+                pass
             act = QAction(name, self)
             act.setToolTip(path)
             # Use default argument capture for lambda closure
@@ -13984,10 +14068,80 @@ class MainWindow(CommandBodies, QMainWindow):
 
     def _on_apply_transition(self, preset, domain, duration):
         from cutora.core.commands import CommandError, get_bus
-        from cutora.model.seams import clip_span
+        from cutora.model.seams import clip_span, find_seams
         seam = getattr(self.timeline, "selected_seam", None)
         if not seam:
-            self.statusBar().showMessage("请先选中一条接缝再添加转场", 4000)
+            # 1) 如果当前已选中了一条时间线转场，直接替换其预设
+            sel_trans = getattr(self.timeline, "selected_transition", None)
+            if sel_trans and len(sel_trans) == 2:
+                track, trans_obj = sel_trans
+                want = "audio" if str(domain or "visual") == "audio" else "visual"
+                if (getattr(track, "domain", "visual") == "audio") == (want == "audio"):
+                    try:
+                        get_bus().execute("timeline.set_transition", {
+                            "track_id": str(getattr(track, "id", "") or ""),
+                            "transition_id": str(getattr(trans_obj, "id", "") or ""),
+                            "preset": str(preset or ""),
+                            "duration": float(duration or getattr(trans_obj, "duration", 0.35) or 0.35),
+                        }, source="ui")
+                        self.timeline.update()
+                        if hasattr(self, "video_canvas") and self.video_canvas is not None:
+                            self.video_canvas.update()
+                        self.statusBar().showMessage(f"已更新转场效果：{preset}", 3000)
+                        return
+                    except CommandError:
+                        pass
+            # 2) 如果当前选中了图片或文字覆层，直接应用到图层
+            sel_ov_pair = getattr(self.timeline, "selected_overlay", None)
+            ov_targets = []
+            if sel_ov_pair and self.curr_idx >= 0 and self.curr_idx < len(self.tasks):
+                list_name, idx = sel_ov_pair
+                rows = self.tasks[self.curr_idx].get(list_name) or []
+                if 0 <= int(idx) < len(rows) and isinstance(rows[int(idx)], dict):
+                    ov_targets.append(rows[int(idx)])
+            elif getattr(self, "selected_type", None) == "overlay" and self.curr_idx >= 0 and self.curr_idx < len(self.tasks):
+                ov_list = self.tasks[self.curr_idx].get("text_overlays", []) + self.tasks[self.curr_idx].get("image_overlays", [])
+                sidx = getattr(self, "selected_index", -1)
+                if 0 <= int(sidx) < len(ov_list) and isinstance(ov_list[int(sidx)], dict):
+                    ov_targets.append(ov_list[int(sidx)])
+            if ov_targets and str(domain or "visual") != "audio":
+                self.push_undo("应用图层转场")
+                scoped = f"{preset}_both" if preset and not str(preset).endswith(("_in", "_out", "_both")) else str(preset)
+                for ov in ov_targets:
+                    ov["transition_preset"] = scoped
+                    ov["transition_duration"] = float(duration or 0.35)
+                self.capture_undo_after()
+                if hasattr(self, "prop_panel") and self.prop_panel is not None:
+                    self.prop_panel.load_data("overlay", ov_targets[0])
+                if hasattr(self, "video_canvas") and self.video_canvas is not None:
+                    self.video_canvas.update()
+                self.timeline.update()
+                self.statusBar().showMessage(f"已为选中图层应用转场：{preset}", 3000)
+                return
+            # 3) 如果选中了视频/音频片段，自动寻找相邻接缝或直接设到片段上
+            sel_vc = getattr(self.timeline, "selected_video_clip", None)
+            if sel_vc and len(sel_vc) == 2:
+                track, clip = sel_vc
+                clips = list(getattr(track, "clips", []) or [])
+                if clip in clips:
+                    c_idx = clips.index(clip)
+                    seams = list(find_seams(track, fps=self.timeline._timeline_fps()))
+                    cand = [sm for sm in seams if sm[0] == c_idx or sm[1] == c_idx]
+                    if cand:
+                        seam = (track, cand[-1][0], cand[-1][1], cand[-1][2])
+                    elif str(domain or "visual") != "audio":
+                        self.push_undo("应用片段转场")
+                        scoped = f"{preset}_both" if preset and not str(preset).endswith(("_in", "_out", "_both")) else str(preset)
+                        clip.transition_preset = scoped
+                        clip.transition_duration = float(duration or 0.35)
+                        self.capture_undo_after()
+                        if hasattr(self, "video_canvas") and self.video_canvas is not None:
+                            self.video_canvas.update()
+                        self.timeline.update()
+                        self.statusBar().showMessage(f"已为选中视频片段应用转场：{preset}", 3000)
+                        return
+        if not seam:
+            self.statusBar().showMessage("请先选中一条接缝、视频片段或图片/文字图层再添加转场", 4000)
             return
         track, _left_i, right_i = seam[0], int(seam[1]), int(seam[2])
         clips = getattr(track, "clips", []) or []
@@ -14097,6 +14251,9 @@ class MainWindow(CommandBodies, QMainWindow):
         """快捷键加轨道：没工程就提示，加完在状态栏报出轨道名字。"""
         from cutora.ui.i18n import tr
         from cutora.ui.timeline_drop import track_display_name
+        if self.curr_idx < 0 or self.curr_idx >= len(self.tasks):
+            if hasattr(self, "_ensure_task_for_overlay") and callable(self._ensure_task_for_overlay):
+                self._ensure_task_for_overlay()
         if self.curr_idx < 0 or self.curr_idx >= len(self.tasks):
             self.statusBar().showMessage(tr("先导入一个视频，再加轨道"), 3000)
             return None
@@ -16249,10 +16406,7 @@ class MainWindow(CommandBodies, QMainWindow):
         except Exception:
             return 1.0
         from cutora.preview.engine import display_scale_step
-        sc = display_scale_step(fit)
-        if bool(getattr(self, "_timeline_playing", False)):
-            return min(sc, 0.5)
-        return sc
+        return display_scale_step(fit)
 
     def _playback_full_frames(self) -> bool:
         """Q175：播放中、没在拖画布上的东西、没在画布上打字 → 整幅画面交给工作线程合成。"""

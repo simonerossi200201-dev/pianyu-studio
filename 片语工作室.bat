@@ -9,6 +9,11 @@ set "STUDIO_ROOT=%~dp0"
 if "%STUDIO_ROOT:~-1%"=="\" set "STUDIO_ROOT=%STUDIO_ROOT:~0,-1%"
 set "PATH=%STUDIO_ROOT%\runtime\bin;%STUDIO_ROOT%\runtime\ffmpeg;%PATH%"
 
+rem 首次运行且还没合并模型包：先自动执行安装与体检（会自动查找并合并模型与运行环境）
+if not exist "%STUDIO_ROOT%\runtime\venv\Scripts\python.exe" (
+    call "%STUDIO_ROOT%\安装与体检.bat"
+)
+
 if exist "%STUDIO_ROOT%\runtime\bin\portable_venv_python.exe" (
     copy /y "%STUDIO_ROOT%\runtime\bin\portable_venv_python.exe" "%STUDIO_ROOT%\runtime\venv\Scripts\python.exe" >nul 2>&1
 )

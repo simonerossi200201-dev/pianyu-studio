@@ -48,6 +48,7 @@ ISOLATE_FILES = frozenset({
     "test_q144_central_monitor.py",
     "test_q145_canvas_shortcuts.py",
     "test_q145b_timeline_shortcuts.py",
+    "test_timeline_trim_backspace.py",
     "test_q145c_text_runs.py",
     "test_q146_link_image.py",
     "test_q149_layer_panel.py",

@@ -2574,6 +2574,37 @@ def missing_report_dirs(out_dir="", out_dirs=None, folders=None):
     return dirs
 
 
+def _last_report_file():
+    try:
+        from cutora.core.paths import settings_file
+        return settings_file("last_missing_report.json")
+    except Exception:
+        return ""
+
+
+def _remember_missing_report(path):
+    """记住最近一次拼接写出的缺失清单绝对路径（「打开缺失报告」优先用它）。"""
+    rf = _last_report_file()
+    if not rf or not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(rf), exist_ok=True)
+        with open(rf, "w", encoding="utf-8") as f:
+            json.dump({"path": os.path.abspath(path), "ts": time.time()}, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def last_missing_report():
+    rf = _last_report_file()
+    try:
+        with open(rf, "r", encoding="utf-8") as f:
+            p = (json.load(f) or {}).get("path") or ""
+        return p if p and os.path.isfile(p) else ""
+    except Exception:
+        return ""
+
+
 def find_missing_report(dirs):
     """这些目录里最新的一份缺失清单; 没有就返回 ''。"""
     best, best_mtime = "", -1.0
@@ -2591,16 +2622,29 @@ def find_missing_report(dirs):
 
 
 def reveal_in_explorer(path):
-    """在资源管理器里选中这个文件(或打开这个目录)。"""
+    """在资源管理器里选中这个文件(或打开这个目录)。
+
+    注意：不能把 ``/select,<路径>`` 当成列表参数传给 Popen —— 路径里一有空格或括号
+    （例如 ``V01-简单的小天使 (1)``），list2cmdline 会把整段包成 ``"/select,D:\\a b\\x.txt"``，
+    explorer 不认这种写法，会直接打开「文档」文件夹，看起来就是「打开的位置不对」。
+    正确写法是 ``explorer /select,"D:\\a b\\x.txt"``（引号只包路径）。
+    """
     path = os.path.abspath(str(path or ""))
     if not path:
         return False
     try:
         if os.name == "nt":
+            import subprocess as _sp
+            flags = getattr(_sp, "CREATE_NO_WINDOW", 0)
             if os.path.isfile(path):
-                _no_window_popen(["explorer", "/select,%s" % path])
+                _sp.Popen('explorer /select,"%s"' % os.path.normpath(path), creationflags=flags)
+            elif os.path.isdir(path):
+                os.startfile(os.path.normpath(path))
             else:
-                _no_window_popen(["explorer", path])
+                parent = os.path.dirname(path)
+                if not os.path.isdir(parent):
+                    return False
+                os.startfile(os.path.normpath(parent))
             return True
         target = path if os.path.isdir(path) else os.path.dirname(path)
         _no_window_popen(["xdg-open", target])
@@ -3585,6 +3629,7 @@ class AnalyzeWorker(QThread):
                         lines.extend(footer)
                     with open(mpath, "w", encoding="utf-8") as f:
                         f.write("\n".join(lines))
+                    _remember_missing_report(mpath)
                     n_m = sum(len(v["missing"]) for v in self.missing_map.values())
                     if n_m:
                         self.log.emit(
@@ -3596,6 +3641,19 @@ class AnalyzeWorker(QThread):
                         self.log.emit("  " + _fl)
                 except Exception as e:
                     self.log.emit(f"⚠ 缺失清单导出失败: {e}")
+            elif self.out_dir:
+                # 本次没有任何缺失：也写一份「本次无缺失」的清单覆盖旧文件，
+                # 避免「打开缺失报告」打开的是上一轮的过期清单。
+                try:
+                    os.makedirs(self.out_dir, exist_ok=True)
+                    mpath = os.path.join(self.out_dir, MISSING_NAME)
+                    with open(mpath, "w", encoding="utf-8") as f:
+                        f.write(
+                            "缺失文案清单 — %s\n%s\n✓ 本次拼接所有文案均已被片段完整覆盖，没有缺失或疑似缺词。\n"
+                            % (time.strftime("%Y-%m-%d %H:%M:%S"), "=" * 60))
+                    _remember_missing_report(mpath)
+                except Exception:
+                    pass
 
             if self.out_dir and cuts_map:
                 try:
@@ -4517,14 +4575,22 @@ class StitcherDialog(QDialog):
         self._rescan()
 
     def _open_missing_report(self):
+        sess = getattr(self, "_session", None)
+        sess_dir = getattr(sess, "out_dir", "") if sess is not None else ""
+        sess_dirs = getattr(sess, "out_dirs", None) if sess is not None else None
         dirs = missing_report_dirs(
-            getattr(self, "_out_dir", "") or "",
-            getattr(self, "_out_dirs", None),
+            getattr(self, "_out_dir", "") or sess_dir or "",
+            dict(getattr(self, "_out_dirs", None) or {}, **(sess_dirs or {})),
             self._folders() if hasattr(self, "_folders") else [])
         path = find_missing_report(dirs)
+        last = last_missing_report()
+        if last and (not path or os.path.getmtime(last) >= os.path.getmtime(path)):
+            path = last
         if path:
             if not reveal_in_explorer(path):
                 QMessageBox.information(self, "打不开", path)
+            else:
+                self._log(f"📂 已在资源管理器中定位缺失报告：{path}")
             return
         home = ""
         for d in dirs:

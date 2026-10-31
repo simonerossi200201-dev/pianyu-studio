@@ -697,22 +697,19 @@ class PropertyPanel(QWidget):
         from cutora.ui.icons import bind_icon, populate_icon_menu
         self.ov_preset_cat_combo = QComboBox()
         self.ov_preset_cat_combo.setMinimumWidth(0)
-        self.ov_preset_cat_combo.setMinimumHeight(32)
         self.ov_preset_cat_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.ov_preset_cat_combo.setToolTip(_tr("按文件夹分类筛选文本预设"))
         self.ov_preset_cat_combo.currentIndexChanged.connect(self._on_ov_preset_cat_changed)
 
         self.ov_preset_combo = QComboBox()
         self.ov_preset_combo.setMinimumWidth(0)
-        self.ov_preset_combo.setMinimumHeight(38)
-        self.ov_preset_combo.setIconSize(QSize(64, 26))
         self.ov_preset_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.ov_preset_combo.setToolTip(_tr("点击下拉切换文本样式预设（切换时保持当前文字内容不变）"))
         self.ov_preset_combo.currentIndexChanged.connect(self._on_ov_text_preset_changed)
 
         self.ov_preset_gallery_btn = QPushButton(_tr("🖼️ 预设画廊"))
         self.ov_preset_gallery_btn.setMinimumWidth(0)
-        self.ov_preset_gallery_btn.setMinimumHeight(32)
+        self.ov_preset_gallery_btn.setMinimumHeight(28)
         self.ov_preset_gallery_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.ov_preset_gallery_btn.setToolTip(_tr("展开大图样式画廊，按文件夹直观挑选预设（保持文字内容不变）"))
         self.ov_preset_gallery_btn.clicked.connect(self._open_ov_preset_gallery)
@@ -720,7 +717,7 @@ class PropertyPanel(QWidget):
         self.ov_preset_menu_btn = QToolButton()
         self.ov_preset_menu_btn.setObjectName("inspectorIconBtn")
         self.ov_preset_menu_btn.setText(_tr("管理 ▾"))
-        self.ov_preset_menu_btn.setMinimumHeight(32)
+        self.ov_preset_menu_btn.setMinimumHeight(28)
         self.ov_preset_menu_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.ov_preset_menu_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.ov_preset_menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -761,23 +758,16 @@ class PropertyPanel(QWidget):
             "QFrame#ovPresetHeroCard QLabel#presetHeroSub {"
             "  color: #94A3B8; font-size: 11px;"
             "}"
-            "QFrame#ovPresetHeroCard QComboBox {"
-            "  background: #111622; border: 1px solid #47628E; border-radius: 6px;"
-            "  padding: 4px 8px; font-size: 13px; font-weight: 600; color: #F8FAFC;"
-            "}"
-            "QFrame#ovPresetHeroCard QComboBox:hover {"
-            "  border-color: #60A5FA; background: #161E2E;"
-            "}"
             "QFrame#ovPresetHeroCard QPushButton {"
             "  background: #2563EB; color: #FFFFFF; border: 1px solid #60A5FA;"
-            "  border-radius: 6px; padding: 4px 10px; font-weight: 700; font-size: 12px;"
+            "  border-radius: 5px; padding: 2px 8px; font-weight: 700; font-size: 12px;"
             "}"
             "QFrame#ovPresetHeroCard QPushButton:hover {"
             "  background: #3B82F6;"
             "}"
         )
         card_v = QVBoxLayout(preset_card)
-        card_v.setContentsMargins(10, 8, 10, 10)
+        card_v.setContentsMargins(8, 8, 8, 8)
         card_v.setSpacing(6)
 
         hero_top = QHBoxLayout()
@@ -1759,110 +1749,205 @@ class PropertyPanel(QWidget):
         self.prj_grade.scope_mode_changed.connect(self._on_scope_mode)
 
         # ✨ 字幕轨道专属：指定任意源轨道转录 + 手动粘贴完整字幕 + 自动转录 + 逐句检查纠正
+        # 布局（自上而下）：源轨道 / 语言 → [⚡ 自动转录][■ 取消] + 进度 → 粘贴文案对齐（可折叠）
+        # → 逐句校对表（开始 / 结束 / 文本）→ 底部小按钮。尺寸 / 间距 / 圆角全部取 theme tokens。
+        from cutora.ui.theme import tokens as _tk
+        from PySide6.QtWidgets import (
+            QTableWidget, QHeaderView, QAbstractItemView, QProgressBar,
+        )
+        _btn_h = _tk.INSPECTOR_CONTROL_H + _tk.SPACE_QUARTER      # 30
+        _small_h = _tk.INSPECTOR_CONTROL_H                         # 28
         self.sec_sub_track = CollapsibleSection("字幕轨道 · 智能转录与手动校对")
         self.sec_sub_track.setExpanded(True)
         _sub_box = QWidget()
+        _sub_box.setObjectName("subTrackBox")
         _sub_box.setMinimumWidth(0)
+        _sub_box.setStyleSheet(
+            f"QWidget#subTrackBox QLabel#subTrkLbl {{ color: {_tk.FG1}; font-size: {_tk.FONT_LABEL}px; }}"
+            f"QWidget#subTrackBox QLabel#subTrkHint {{ color: {_tk.FG2}; font-size: {_tk.FONT_MICRO}px; }}"
+            f"QWidget#subTrackBox QPushButton {{ border-radius: {_tk.RADIUS_CTL}px;"
+            f" padding: 0px {_tk.SPACE_3}px; font-size: {_tk.FONT_LABEL}px; }}"
+            f"QWidget#subTrackBox QPushButton#subTrkPrimary {{ background: {_tk.ACCENT}; color: {_tk.BG0};"
+            f" border: 1px solid {_tk.ACCENT_HI}; font-weight: {_tk.W_SEMI}; }}"
+            f"QWidget#subTrackBox QPushButton#subTrkPrimary:hover {{ background: {_tk.ACCENT_HI}; }}"
+            f"QWidget#subTrackBox QPushButton#subTrkPrimary:pressed {{ background: {_tk.ACCENT_DIM}; }}"
+            f"QWidget#subTrackBox QPushButton#subTrkPrimary:disabled {{ background: {_tk.BG3};"
+            f" color: {_tk.FG_MUTED}; border-color: {_tk.BORDER}; }}"
+            f"QWidget#subTrackBox QPushButton#subTrkSecondary {{ background: {_tk.BG2}; color: {_tk.FG0};"
+            f" border: 1px solid {_tk.BORDER}; }}"
+            f"QWidget#subTrackBox QPushButton#subTrkSecondary:hover {{ background: {_tk.BG3};"
+            f" border-color: {_tk.ACCENT}; }}"
+            f"QWidget#subTrackBox QPushButton#subTrkSecondary:disabled {{ color: {_tk.FG_MUTED}; }}"
+            f"QWidget#subTrackBox QProgressBar {{ background: {_tk.BG2}; border: 1px solid {_tk.LINE};"
+            f" border-radius: {_tk.RADIUS_SM}px; }}"
+            f"QWidget#subTrackBox QProgressBar::chunk {{ background: {_tk.ACCENT};"
+            f" border-radius: {_tk.RADIUS_SM}px; }}"
+            f"QWidget#subTrackBox QTableWidget {{ background: {_tk.BG1}; alternate-background-color: {_tk.BG2};"
+            f" border: 1px solid {_tk.LINE}; border-radius: {_tk.RADIUS_CTL}px; gridline-color: {_tk.LINE}; }}"
+        )
         _sub_v = QVBoxLayout(_sub_box)
-        _sub_v.setContentsMargins(6, 6, 6, 8)
-        _sub_v.setSpacing(8)
+        _sub_v.setContentsMargins(_tk.SPACE_2, _tk.SPACE_2, _tk.SPACE_2, _tk.SPACE_3)
+        _sub_v.setSpacing(_tk.SPACE_2)
 
-        _src_row = QHBoxLayout()
-        _src_row.setContentsMargins(0, 0, 0, 0)
-        _src_row.setSpacing(6)
-        _src_lbl = QLabel(tr("指定转录源轨道"))
-        _src_lbl.setStyleSheet("color: #F3E5C8; font-weight: 600; font-size: 12px;")
+        def _sub_lbl(text, name="subTrkLbl"):
+            lb = QLabel(tr(text))
+            lb.setObjectName(name)
+            return lb
+
+        def _sub_btn(text, name, height, max_w=None, tip=""):
+            b = QPushButton(tr(text))
+            b.setObjectName(name)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setFixedHeight(height)
+            b.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+            if max_w:
+                b.setMaximumWidth(max_w)
+            if tip:
+                b.setToolTip(tr(tip))
+            return b
+
+        # ① 源轨道 + 语言
+        _src_grid = QGridLayout()
+        _src_grid.setContentsMargins(0, 0, 0, 0)
+        _src_grid.setHorizontalSpacing(_tk.SPACE_2)
+        _src_grid.setVerticalSpacing(_tk.SPACE_1H)
         self.trk_sub_source_combo = QComboBox()
+        self.trk_sub_source_combo.setObjectName("subTrkSourceCombo")
         self.trk_sub_source_combo.setMinimumWidth(0)
-        self.trk_sub_source_combo.setMinimumHeight(30)
+        self.trk_sub_source_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.trk_sub_source_combo.setToolTip(
             "选择要对哪一条轨道生成字幕（默认是媒体库的主视频轨道，也可指定任意视频轨道或音频轨道）"
         )
         self.trk_sub_source_combo.currentIndexChanged.connect(self._on_trk_sub_source_changed)
-        _src_row.addWidget(_src_lbl)
-        _src_row.addWidget(self.trk_sub_source_combo, 1)
-        _sub_v.addLayout(_src_row)
+        self.trk_sub_lang_combo = QComboBox()
+        self.trk_sub_lang_combo.setObjectName("subTrkLangCombo")
+        self.trk_sub_lang_combo.setMinimumWidth(0)
+        for _code, _name in (
+            ("auto", "自动检测"), ("zh", "中文"), ("en", "English"), ("ar", "العربية"),
+            ("mg", "Malagasy"), ("sw", "Kiswahili"), ("ja", "日本語"), ("ko", "한국어"),
+            ("es", "Español"), ("fr", "Français"), ("de", "Deutsch"), ("pt", "Português"),
+            ("ru", "Русский"), ("it", "Italiano"),
+        ):
+            self.trk_sub_lang_combo.addItem(tr(_name), _code)
+        self.trk_sub_lang_combo.setToolTip(tr("转录语言；默认自动检测（支持中 / 英 / 阿拉伯 / 马达加斯加 / 斯瓦希里等）"))
+        _src_grid.addWidget(_sub_lbl("转录源"), 0, 0)
+        _src_grid.addWidget(self.trk_sub_source_combo, 0, 1)
+        _src_grid.addWidget(_sub_lbl("语言"), 1, 0)
+        _src_grid.addWidget(self.trk_sub_lang_combo, 1, 1)
+        _src_grid.setColumnStretch(1, 1)
+        _sub_v.addLayout(_src_grid)
 
-        self.trk_sub_auto_asr_btn = QPushButton("🎙️ 自动转录所选轨道字幕（生成带标点时间轴供检查纠正）")
-        self.trk_sub_auto_asr_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.trk_sub_auto_asr_btn.setMinimumHeight(34)
-        self.trk_sub_auto_asr_btn.setToolTip(
-            "对上方指定的轨道（主视频轨道或其他任意视频/音频轨道）执行智能语音转录，生成带标点字幕并在下方表格中供您检查和手动纠正"
-        )
-        self.trk_sub_auto_asr_btn.setStyleSheet(
-            "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #D99B26, stop:1 #B87D14);"
-            " color: #16130E; font-weight: 700; font-size: 12px; border: 1px solid #F3C668; border-radius: 6px; padding: 5px 10px; }"
-            "QPushButton:hover { background: #EEB43E; color: #0F0D0A; }"
-        )
+        # ② 主操作行：[⚡ 自动转录] [■ 取消] + 进度
+        _act_row = QHBoxLayout()
+        _act_row.setContentsMargins(0, 0, 0, 0)
+        _act_row.setSpacing(_tk.SPACE_2)
+        self.trk_sub_auto_asr_btn = _sub_btn(
+            "⚡ 自动转录", "subTrkPrimary", _btn_h, max_w=_tk.SPACE_6 * 5,
+            tip="无文案自动添加字幕：对上方指定的轨道执行语音转录（后台运行，不卡界面），"
+                "生成带标点的字幕并写入本字幕轨道，可在下方表格逐句校对")
         self.trk_sub_auto_asr_btn.clicked.connect(self._on_trk_sub_auto_transcribe)
-        _sub_v.addWidget(self.trk_sub_auto_asr_btn)
+        self.trk_sub_cancel_btn = _sub_btn(
+            "■ 取消", "subTrkSecondary", _btn_h, max_w=_tk.SPACE_6 * 3, tip="停止正在进行的转录")
+        self.trk_sub_cancel_btn.setEnabled(False)
+        self.trk_sub_cancel_btn.clicked.connect(self._on_trk_sub_cancel_transcribe)
+        _act_row.addWidget(self.trk_sub_auto_asr_btn, 1)
+        _act_row.addWidget(self.trk_sub_cancel_btn)
+        _act_row.addStretch(0)
+        _sub_v.addLayout(_act_row)
 
-        _paste_lbl = QLabel("📋 手动粘贴准确完整的字幕内容（支持纯文本逐句/整段文案，或 SRT/时间轴格式）：")
-        _paste_lbl.setWordWrap(True)
-        _paste_lbl.setStyleSheet("color: #CBD5E1; font-size: 11px; font-weight: 600;")
-        _sub_v.addWidget(_paste_lbl)
+        self.trk_sub_progress = QProgressBar()
+        self.trk_sub_progress.setRange(0, 100)
+        self.trk_sub_progress.setValue(0)
+        self.trk_sub_progress.setTextVisible(False)
+        self.trk_sub_progress.setFixedHeight(_tk.SPACE_1H)
+        self.trk_sub_progress.setVisible(False)
+        _sub_v.addWidget(self.trk_sub_progress)
+        self.trk_sub_status_lbl = _sub_lbl("", "subTrkHint")
+        self.trk_sub_status_lbl.setWordWrap(True)
+        self.trk_sub_status_lbl.setVisible(False)
+        _sub_v.addWidget(self.trk_sub_status_lbl)
 
+        # ③ 粘贴文案对齐（可折叠）
+        self.sec_sub_paste = CollapsibleSection("粘贴文案对齐")
+        self.sec_sub_paste.setExpanded(False)
+        _paste_box = QWidget()
+        _paste_box.setMinimumWidth(0)
+        _paste_v = QVBoxLayout(_paste_box)
+        _paste_v.setContentsMargins(0, _tk.SPACE_1, 0, _tk.SPACE_1)
+        _paste_v.setSpacing(_tk.SPACE_1H)
+        _paste_hint = _sub_lbl("粘贴准确完整的文案：逐句 / 整段纯文本（自动断句补标点并对齐到源轨道时间轴），"
+                               "或 SRT / [00:01.20] 带时间戳字幕。", "subTrkHint")
+        _paste_hint.setWordWrap(True)
+        _paste_v.addWidget(_paste_hint)
         self.trk_sub_paste_edit = QPlainTextEdit()
         self.trk_sub_paste_edit.setPlaceholderText(
             "在此粘贴准确完整的字幕内容...\n"
             "• 每行一句或整段英文/中文文案（自动断句补齐标点并对齐到目标轨道时间轴）\n"
             "• 或直接粘贴 SRT / [00:01.20] 带时间戳字幕"
         )
-        self.trk_sub_paste_edit.setMinimumHeight(86)
-        self.trk_sub_paste_edit.setMaximumHeight(130)
+        self.trk_sub_paste_edit.setMinimumHeight(_tk.SPACE_6 * 3)
+        self.trk_sub_paste_edit.setMaximumHeight(_tk.SPACE_6 * 4)
         self.trk_sub_paste_edit.textChanged.connect(self._on_trk_sub_paste_text_changed)
-        _sub_v.addWidget(self.trk_sub_paste_edit)
-
-        self.trk_sub_apply_paste_btn = QPushButton("⚡ 将粘贴字幕生成 / 对齐到本字幕轨道")
-        self.trk_sub_apply_paste_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.trk_sub_apply_paste_btn.setMinimumHeight(30)
-        self.trk_sub_apply_paste_btn.setStyleSheet(
-            "QPushButton { background: #1E293B; color: #38BDF8; border: 1px solid #0284C7; border-radius: 6px; padding: 4px 10px; font-weight: 600; font-size: 12px; }"
-            "QPushButton:hover { background: #0F172A; border-color: #7DD3FC; color: #BAE6FD; }"
-        )
+        _paste_v.addWidget(self.trk_sub_paste_edit)
+        _paste_row = QHBoxLayout()
+        _paste_row.setContentsMargins(0, 0, 0, 0)
+        _paste_row.addStretch(1)
+        self.trk_sub_apply_paste_btn = _sub_btn(
+            "对齐到本轨道", "subTrkSecondary", _small_h, max_w=_tk.SPACE_6 * 5,
+            tip="将粘贴字幕生成 / 对齐到本字幕轨道")
         self.trk_sub_apply_paste_btn.clicked.connect(self._on_trk_sub_apply_paste)
-        _sub_v.addWidget(self.trk_sub_apply_paste_btn)
+        _paste_row.addWidget(self.trk_sub_apply_paste_btn)
+        _paste_v.addLayout(_paste_row)
+        self.sec_sub_paste.addWidget(_paste_box)
+        _sub_v.addWidget(self.sec_sub_paste)
 
-        _cue_hdr = QHBoxLayout()
-        _cue_hdr.setContentsMargins(0, 2, 0, 0)
-        self.trk_sub_cue_count_lbl = QLabel("✏️ 逐句检查与手动纠正（双击单元格直接修改时间或文字）：")
-        self.trk_sub_cue_count_lbl.setStyleSheet("color: #E2E8F0; font-size: 11px; font-weight: 600;")
-        _cue_hdr.addWidget(self.trk_sub_cue_count_lbl, 1)
-        _sub_v.addLayout(_cue_hdr)
-
-        from PySide6.QtWidgets import QTableWidget, QHeaderView, QAbstractItemView
+        # ④ 逐句校对表
+        self.trk_sub_cue_count_lbl = _sub_lbl("逐句校对（双击单元格修改时间或文字）")
+        _sub_v.addWidget(self.trk_sub_cue_count_lbl)
         self.trk_sub_cue_table = QTableWidget(0, 3)
-        self.trk_sub_cue_table.setHorizontalHeaderLabels(["开始(秒)", "结束(秒)", "字幕内容（双击纠错）"])
+        self.trk_sub_cue_table.setObjectName("subTrkCueTable")
+        self.trk_sub_cue_table.setHorizontalHeaderLabels([tr("开始"), tr("结束"), tr("文本")])
         self.trk_sub_cue_table.verticalHeader().setVisible(False)
+        self.trk_sub_cue_table.verticalHeader().setDefaultSectionSize(_tk.ROW_H)
+        self.trk_sub_cue_table.setAlternatingRowColors(True)
+        self.trk_sub_cue_table.setWordWrap(False)
         self.trk_sub_cue_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.trk_sub_cue_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.trk_sub_cue_table.setMinimumHeight(165)
+        self.trk_sub_cue_table.setMinimumHeight(_tk.SPACE_6 * 6)
         _thdr = self.trk_sub_cue_table.horizontalHeader()
         _thdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         _thdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         _thdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        _thdr.setMinimumSectionSize(_tk.SPACE_6 + _tk.SPACE_4)
         self.trk_sub_cue_table.itemChanged.connect(self._on_trk_sub_cue_item_changed)
         self.trk_sub_cue_table.cellClicked.connect(self._on_trk_sub_cue_clicked)
         _sub_v.addWidget(self.trk_sub_cue_table)
 
+        # ⑤ 底部小按钮
         _cue_btns = QHBoxLayout()
         _cue_btns.setContentsMargins(0, 0, 0, 0)
-        _cue_btns.setSpacing(6)
-        self.trk_sub_add_cue_btn = QPushButton("＋ 新增一句")
-        self.trk_sub_add_cue_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        _cue_btns.setSpacing(_tk.SPACE_1H)
+        self.trk_sub_add_cue_btn = _sub_btn("＋ 新增", "subTrkSecondary", _small_h, tip="在播放头处新增一句")
         self.trk_sub_add_cue_btn.clicked.connect(self._on_trk_sub_add_cue)
-        self.trk_sub_del_cue_btn = QPushButton("－ 删除选中")
-        self.trk_sub_del_cue_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.trk_sub_del_cue_btn = _sub_btn("－ 删除", "subTrkSecondary", _small_h, tip="删除选中的一句")
         self.trk_sub_del_cue_btn.clicked.connect(self._on_trk_sub_del_cue)
-        self.trk_sub_style_btn = QPushButton("🎨 调整字幕样式")
-        self.trk_sub_style_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.trk_sub_style_btn = _sub_btn("🎨 样式", "subTrkSecondary", _small_h, tip="调整字幕样式")
         self.trk_sub_style_btn.clicked.connect(self._on_trk_sub_open_style)
         _cue_btns.addWidget(self.trk_sub_add_cue_btn)
         _cue_btns.addWidget(self.trk_sub_del_cue_btn)
+        _cue_btns.addStretch(1)
         _cue_btns.addWidget(self.trk_sub_style_btn)
         _sub_v.addLayout(_cue_btns)
 
         self.sec_sub_track.addWidget(_sub_box)
+        # 片段在时间线 / 画布 / 撤销里被改动时，表格跟着刷新（反向同步）
+        self._trk_sub_worker = None
+        self._trk_sub_job_track = None
+        self._trk_sub_sig = None
+        self._trk_sub_sync_timer = QTimer(self)
+        self._trk_sub_sync_timer.setInterval(400)
+        self._trk_sub_sync_timer.timeout.connect(self._sync_sub_cue_table_from_track)
 
         cl.addWidget(sec_id)
         cl.addWidget(self.sec_sub_track)
@@ -3050,7 +3135,10 @@ class PropertyPanel(QWidget):
             return
         is_subs = getattr(track, "type", "") in ("subs", "subtitle")
         self.sec_sub_track.setVisible(bool(is_subs))
+        timer = getattr(self, "_trk_sub_sync_timer", None)
         if not is_subs:
+            if timer is not None:
+                timer.stop()
             return
         self.sec_sub_track.setExpanded(True)
         from cutora.subtitle.track_source import (
@@ -3075,12 +3163,26 @@ class PropertyPanel(QWidget):
 
         segs = get_track_segments(task, track)
         manual_txt = get_track_manual_script(track)
+        if hasattr(self, "sec_sub_paste"):
+            # 用户粘贴过文案 → 默认展开；否则折叠，让表格占主要空间
+            self.sec_sub_paste.setExpanded(bool(manual_txt.strip()) and not segs)
         if not manual_txt.strip() and segs:
             manual_txt = "\n".join(str(s.get("text") or "").strip() for s in segs if str(s.get("text") or "").strip())
         self.trk_sub_paste_edit.blockSignals(True)
         self.trk_sub_paste_edit.setPlainText(manual_txt)
         self.trk_sub_paste_edit.blockSignals(False)
         self._refresh_sub_cue_table(segs)
+        self._sync_trk_sub_busy_ui()
+        if timer is not None and not timer.isActive():
+            timer.start()
+
+    @staticmethod
+    def _sub_cue_signature(segs) -> tuple:
+        return tuple(
+            (round(float(s.get("start") or 0.0), 3), round(float(s.get("end") or 0.0), 3),
+             str(s.get("text") or ""))
+            for s in (segs or []) if isinstance(s, dict)
+        )
 
     def _refresh_sub_cue_table(self, segs: list[dict]) -> None:
         if not hasattr(self, "trk_sub_cue_table"):
@@ -3096,15 +3198,36 @@ class PropertyPanel(QWidget):
                 it_s = QTableWidgetItem(s_val)
                 it_e = QTableWidgetItem(e_val)
                 it_t = QTableWidgetItem(t_val)
+                it_t.setToolTip(t_val)
                 self.trk_sub_cue_table.setItem(r, 0, it_s)
                 self.trk_sub_cue_table.setItem(r, 1, it_e)
                 self.trk_sub_cue_table.setItem(r, 2, it_t)
             if hasattr(self, "trk_sub_cue_count_lbl"):
                 self.trk_sub_cue_count_lbl.setText(
-                    f"✏️ 逐句检查与手动纠正（共 {len(segs)} 句，双击单元格直接修改时间或文字）："
+                    f"逐句校对 · 共 {len(segs)} 句（双击单元格修改时间或文字）"
                 )
         finally:
             self.trk_sub_cue_table.blockSignals(False)
+        self._trk_sub_sig = self._sub_cue_signature(segs)
+
+    def _sync_sub_cue_table_from_track(self) -> None:
+        """Timer slot: clips changed elsewhere (timeline drag, canvas edit, undo) → refresh table."""
+        if (self._track_obj is None or not hasattr(self, "sec_sub_track")
+                or self.sec_sub_track.isHidden()
+                or getattr(self._track_obj, "type", "") not in ("subs", "subtitle")):
+            return
+        table = getattr(self, "trk_sub_cue_table", None)
+        if table is None or table.state() == table.State.EditingState:
+            return
+        _win, task = self._win_and_task()
+        from cutora.subtitle.track_source import get_track_segments
+        segs = get_track_segments(task, self._track_obj)
+        if self._sub_cue_signature(segs) == self._trk_sub_sig:
+            return
+        row = table.currentRow()
+        self._refresh_sub_cue_table(segs)
+        if 0 <= row < table.rowCount():
+            table.selectRow(row)
 
     def _notify_sub_track_changed(self, msg: str = "") -> None:
         win, _task = self._win_and_task()
@@ -3113,15 +3236,29 @@ class PropertyPanel(QWidget):
                 win.timeline.update()
             if hasattr(win, "timeline_container") and win.timeline_container is not None:
                 win.timeline_container.track_header.update()
-            if hasattr(win, "update_preview") and callable(win.update_preview):
-                win.update_preview()
-            elif hasattr(win, "video_canvas") and win.video_canvas is not None:
+            win._sync_idle_task = None
+            if hasattr(win, "video_canvas") and win.video_canvas is not None:
                 win.video_canvas.update()
+            if hasattr(win, "sync_ui") and callable(win.sync_ui):
+                try:
+                    win.sync_ui()
+                except Exception:
+                    pass
             if hasattr(win, "mark_dirty") and callable(win.mark_dirty):
                 win.mark_dirty()
             if msg and hasattr(win, "statusBar") and callable(win.statusBar):
                 win.statusBar().showMessage(msg, 4500)
-        self.param_changed.emit(None)
+        prev_flush = getattr(win, "_preview_flushing", False) if win is not None else False
+        prev_pushed = getattr(win, "_canvas_gesture_pushed", False) if win is not None else False
+        if win is not None:
+            win._preview_flushing = True
+            win._canvas_gesture_pushed = True
+        try:
+            self.param_changed.emit(None)
+        finally:
+            if win is not None:
+                win._preview_flushing = prev_flush
+                win._canvas_gesture_pushed = prev_pushed
 
     def _on_trk_sub_source_changed(self, *_args) -> None:
         if self.block_signals or self._track_obj is None:
@@ -3138,39 +3275,154 @@ class PropertyPanel(QWidget):
         from cutora.subtitle.track_source import set_track_manual_script
         set_track_manual_script(self._track_obj, self.trk_sub_paste_edit.toPlainText())
 
+    # ── 自动转录（后台线程；GUI 线程只负责读 / 写时间线） ──
+    def _trk_sub_busy(self) -> bool:
+        w = getattr(self, "_trk_sub_worker", None)
+        return w is not None and w.isRunning()
+
+    def _sync_trk_sub_busy_ui(self) -> None:
+        if not hasattr(self, "trk_sub_auto_asr_btn"):
+            return
+        busy = self._trk_sub_busy()
+        self.trk_sub_auto_asr_btn.setEnabled(not busy)
+        self.trk_sub_auto_asr_btn.setText("⏳ 转录中…" if busy else "⚡ 自动转录")
+        self.trk_sub_cancel_btn.setEnabled(busy)
+        self.trk_sub_source_combo.setEnabled(not busy)
+        self.trk_sub_lang_combo.setEnabled(not busy)
+        self.trk_sub_progress.setVisible(busy)
+
+    def _trk_sub_set_status(self, text: str) -> None:
+        lbl = getattr(self, "trk_sub_status_lbl", None)
+        if lbl is None:
+            return
+        lbl.setText(text or "")
+        lbl.setVisible(bool(text))
+
     def _on_trk_sub_auto_transcribe(self, *_args) -> None:
         if self._track_obj is None:
+            return
+        if self._trk_sub_busy():          # 重入保护：转录中再点无效
             return
         win, task = self._win_and_task()
         if not isinstance(task, dict):
             return
-        from cutora.subtitle.track_transcribe import transcribe_track_to_segments
-        from PySide6.QtWidgets import QApplication
+        from cutora.subtitle.track_source import set_track_source_id
+        from cutora.subtitle.track_transcribe import (
+            resolve_source_track_spans,
+            title_locate_for,
+        )
+        from cutora.ui.panels.sub_track_worker import SubTrackTranscribeWorker
         sid = str(self.trk_sub_source_combo.currentData() or "__main__")
         src_label = self.trk_sub_source_combo.currentText()
-        push = getattr(win, "push_undo", None) if win is not None else None
+        lang = str(self.trk_sub_lang_combo.currentData() or "auto")
+        set_track_source_id(self._track_obj, sid)
+        spans = resolve_source_track_spans(task, sid)       # 读时间线：GUI 线程
+        if not spans:
+            self._trk_sub_set_status("所选轨道上没有可转录的音频 / 视频片段")
+            return
+        track = self._track_obj
+        worker = SubTrackTranscribeWorker(
+            spans,
+            language=lang,
+            sub_track_id=str(getattr(track, "id", "") or ""),
+            title_locate=title_locate_for(task, sid),
+        )
+        self._trk_sub_worker = worker
+        self._trk_sub_job_track = track
+        self._trk_sub_job_task = task
+        self._trk_sub_job_label = src_label
+        worker.progress.connect(self._on_trk_sub_worker_progress)
+        worker.done.connect(self._on_trk_sub_worker_done)
+        worker.failed.connect(self._on_trk_sub_worker_failed)
+        worker.cancelled.connect(self._on_trk_sub_worker_cancelled)
+        worker.finished.connect(self._on_trk_sub_worker_finished)
+        try:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app is not None:
+                app.aboutToQuit.connect(worker.cancel)
+        except Exception:
+            pass
+        self.trk_sub_progress.setValue(0)
+        self._trk_sub_set_status("⏳ 正在转录所选轨道音频，请稍候…（可继续编辑，或点「取消」）")
+        worker.start()
+        self._sync_trk_sub_busy_ui()
+
+    def _on_trk_sub_cancel_transcribe(self, *_args) -> None:
+        w = getattr(self, "_trk_sub_worker", None)
+        if w is None or not w.isRunning():
+            return
+        w.cancel()
+        self.trk_sub_cancel_btn.setEnabled(False)
+        self._trk_sub_set_status("正在取消…")
+
+    def _on_trk_sub_worker_progress(self, pct: int, msg: str) -> None:
+        if self.sender() is not getattr(self, "_trk_sub_worker", None):
+            return
+        self.trk_sub_progress.setValue(max(0, min(100, int(pct))))
+        if msg:
+            self._trk_sub_set_status(f"⏳ {msg}")
+
+    def _on_trk_sub_worker_done(self, payload) -> None:
+        if self.sender() is not getattr(self, "_trk_sub_worker", None):
+            return
+        segs, words, detected = payload
+        track = getattr(self, "_trk_sub_job_track", None)
+        task = getattr(self, "_trk_sub_job_task", None)
+        win, cur_task = self._win_and_task()
+        if track is None or not isinstance(task, dict):
+            return
+        tl = task.get("timeline")
+        if tl is not None and track not in list(getattr(tl, "tracks", None) or []):
+            self._trk_sub_set_status("字幕轨道已被删除，转录结果已丢弃")
+            return
+        from cutora.subtitle.track_transcribe import apply_track_transcript
+        same_task = cur_task is task
+        push = getattr(win, "push_undo", None) if (win is not None and same_task) else None
         if callable(push):
             push("自动转录轨道字幕")
-        self.trk_sub_auto_asr_btn.setEnabled(False)
-        old_btn_text = self.trk_sub_auto_asr_btn.text()
-        self.trk_sub_auto_asr_btn.setText("⏳ 正在转录所选轨道音频，请稍候...")
-        QApplication.processEvents()
-        try:
-            segs = transcribe_track_to_segments(
-                task,
-                self._track_obj,
-                source_track_id=sid,
-            )
-        finally:
-            self.trk_sub_auto_asr_btn.setText(old_btn_text)
-            self.trk_sub_auto_asr_btn.setEnabled(True)
-        cap = getattr(win, "capture_undo_after", None) if win is not None else None
+        segs = apply_track_transcript(task, track, segs, words)
+        cap = getattr(win, "capture_undo_after", None) if (win is not None and same_task) else None
         if callable(cap):
             cap()
-        self._load_sub_track_widgets(self._track_obj)
+        if self._track_obj is track:
+            self._load_sub_track_widgets(track)
+        label = getattr(self, "_trk_sub_job_label", "")
+        lang_note = f"，语言：{detected}" if detected else ""
+        self._trk_sub_set_status(f"✓ 已生成 {len(segs)} 句字幕{lang_note}")
         self._notify_sub_track_changed(
-            f"🎙️ 已完成「{src_label}」字幕转录（共 {len(segs)} 句），可在下方表格手动检查纠正"
+            f"🎙️ 已完成「{label}」字幕转录（共 {len(segs)} 句），可在下方表格手动检查纠正"
         )
+
+    def _on_trk_sub_worker_failed(self, msg: str) -> None:
+        if self.sender() is not getattr(self, "_trk_sub_worker", None):
+            return
+        self._trk_sub_set_status(f"⚠ 转录失败：{msg}")
+        win, _task = self._win_and_task()
+        if win is not None and hasattr(win, "statusBar") and callable(win.statusBar):
+            win.statusBar().showMessage(f"字幕轨道转录失败：{msg}", 8000)
+
+    def _on_trk_sub_worker_cancelled(self) -> None:
+        if self.sender() is not getattr(self, "_trk_sub_worker", None):
+            return
+        self._trk_sub_set_status("已取消转录")
+
+    def _on_trk_sub_worker_finished(self) -> None:
+        w = self.sender()
+        if w is getattr(self, "_trk_sub_worker", None):
+            self._trk_sub_worker = None
+            self._trk_sub_job_track = None
+            self._trk_sub_job_task = None
+        try:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app is not None and w is not None:
+                app.aboutToQuit.disconnect(w.cancel)
+        except Exception:
+            pass
+        if w is not None:
+            w.deleteLater()
+        self._sync_trk_sub_busy_ui()
 
     def _on_trk_sub_apply_paste(self, *_args) -> None:
         if self._track_obj is None:
@@ -3242,6 +3494,7 @@ class PropertyPanel(QWidget):
             "\n".join(str(s.get("text") or "") for s in segs if str(s.get("text") or "").strip())
         )
         self.trk_sub_paste_edit.blockSignals(False)
+        self._trk_sub_sig = self._sub_cue_signature(segs)
         cap = getattr(win, "capture_undo_after", None) if win is not None else None
         if callable(cap):
             cap()
@@ -3925,9 +4178,9 @@ class PropertyPanel(QWidget):
                     from cutora.render.text_layer_paint import overlay_scale
                     self.ov_tscale.setValue(overlay_scale(ov))
             if hasattr(self, "ov_transition"):
-                is_text = ov.get("type") == "text"
-                self._set_ov_transition_visible(not is_text)
-                if not is_text:
+                is_adjust = ov.get("type") == "adjust"
+                self._set_ov_transition_visible(not is_adjust)
+                if not is_adjust:
                     self._set_combo_by_data(self.ov_transition, ov.get("transition_preset", "none"), "none")
                     self.ov_transition_dur.setValue(float(ov.get("transition_duration", anim_engine.DEFAULT_TRANSITION_DURATION)))
             

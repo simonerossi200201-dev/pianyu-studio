@@ -1008,6 +1008,18 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             self._hover_seam = None
             self.selected_overlay = None
             self.selected_track = None
+        elif tl is not None:
+            cur_tracks = list(getattr(tl, "tracks", []) or [])
+            if self.selected_track is not None and self.selected_track not in cur_tracks:
+                want_id = str(getattr(self.selected_track, "id", "") or "")
+                self.selected_track = next(
+                    (t for t in cur_tracks if str(getattr(t, "id", "") or "") == want_id),
+                    None,
+                )
+            if self.selected_video_clip is not None:
+                v_tr, v_c = self.selected_video_clip
+                if v_tr not in cur_tracks or v_c not in (getattr(v_tr, "clips", []) or []):
+                    self.selected_video_clip = None
         opening = bool(getattr(self.window(), "_opening_project", False))
         if not opening:
             self._queue_visible_thumbs()
@@ -6237,6 +6249,45 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         painter.drawLine(QPointF(x, 0), QPointF(x, self.height()))
         painter.restore()
 
+    def _hit_overlay_or_clip_for_transition(self, real_x, y):
+        from cutora.model.seams import clip_span, find_seams, transition_at_seam
+        fps = self._timeline_fps()
+        tracks = self._track_positions()
+        for (t_obj, row_y, row_h) in tracks.get("rows", []):
+            if not (row_y <= y <= row_y + row_h):
+                continue
+            if not getattr(t_obj, "visible", True) or getattr(t_obj, "locked", False):
+                continue
+            t_type = getattr(t_obj, "type", None)
+            if t_type in ("text", "image"):
+                list_name = "text_overlays" if t_type == "text" else "image_overlays"
+                for i, ov in self._get_overlays_for_track(t_obj, list_name):
+                    sx = float(ov.get("start", 0.0)) * self.pixels_per_second
+                    sw = max(1.0, (float(ov.get("end", 0.0)) - float(ov.get("start", 0.0))) * self.pixels_per_second)
+                    if sx <= real_x <= sx + sw:
+                        rel = (real_x - sx) / sw
+                        scope = "in" if rel < 0.25 else ("out" if rel > 0.75 else "both")
+                        return ("overlay", t_obj, list_name, i, ov, scope)
+            elif t_type in ("video", "audio"):
+                clips = list(getattr(t_obj, "clips", []) or [])
+                for c_idx, c_obj in enumerate(clips):
+                    s0, s1 = clip_span(c_obj)
+                    sx = s0 * self.pixels_per_second
+                    sw = max(1.0, (s1 - s0) * self.pixels_per_second)
+                    if sx <= real_x <= sx + sw:
+                        seams = list(find_seams(t_obj, fps=fps))
+                        cand = [sm for sm in seams if sm[0] == c_idx or sm[1] == c_idx]
+                        if cand:
+                            best = min(cand, key=lambda sm: abs(real_x - sm[2] * self.pixels_per_second))
+                            trans = transition_at_seam(t_obj, best[2], fps=fps)
+                            if trans is not None:
+                                return ("transition", t_obj, trans, float(best[2]))
+                            return ("seam", t_obj, int(best[0]), int(best[1]), float(best[2]))
+                        rel = (real_x - sx) / sw
+                        scope = "in" if rel < 0.25 else ("out" if rel > 0.75 else "both")
+                        return ("clip", t_obj, c_idx, c_obj, scope)
+        return None
+
     def dropEvent(self, event):
         from cutora.ui.panels.transition_panel import TRANSITION_MIME
         if event.mimeData().hasFormat(TRANSITION_MIME):
@@ -6251,22 +6302,81 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             real_x = drop_pos.x() + self.scroll_x
             y = drop_pos.y()
             hit = self._hit_seam_at(real_x, y)
-            if hit is None or hit[0] != "seam":
-                self._status("请把转场拖到接缝上")
-                event.ignore()
+            if hit is None:
+                hit = self._hit_overlay_or_clip_for_transition(real_x, y)
+            if hit is not None and hit[0] == "seam":
+                track, left_i, right_i, _t = hit[1], hit[2], hit[3], hit[4]
+                self._select_seam(track, left_i, right_i, _t)
+                ok = self._add_transition_to_seam(
+                    track, left_i, right_i,
+                    payload.get("preset") or "",
+                    payload.get("domain") or "visual",
+                    float(payload.get("duration") or 0.35),
+                )
+                if ok:
+                    event.acceptProposedAction()
+                else:
+                    event.ignore()
                 return
-            track, left_i, right_i, _t = hit[1], hit[2], hit[3], hit[4]
-            self._select_seam(track, left_i, right_i, _t)
-            ok = self._add_transition_to_seam(
-                track, left_i, right_i,
-                payload.get("preset") or "",
-                payload.get("domain") or "visual",
-                float(payload.get("duration") or 0.35),
-            )
-            if ok:
+            if hit is not None and hit[0] == "transition":
+                track, trans_obj, _t = hit[1], hit[2], hit[3]
+                preset = str(payload.get("preset") or "")
+                dur = float(payload.get("duration") or getattr(trans_obj, "duration", 0.35) or 0.35)
+                ok = self._bus_execute("timeline.set_transition", {
+                    "track_id": str(getattr(track, "id", "") or ""),
+                    "transition_id": str(getattr(trans_obj, "id", "") or ""),
+                    "preset": preset,
+                    "duration": dur,
+                })
+                if ok:
+                    self._arm_transition(track, trans_obj)
+                    self._refresh_preview_canvas()
+                    event.acceptProposedAction()
+                else:
+                    event.ignore()
+                return
+            if hit is not None and hit[0] == "overlay":
+                if str(payload.get("domain") or "visual") == "audio":
+                    self._status("不能添加转场：音频转场不能应用到文字或图片图层")
+                    event.ignore()
+                    return
+                track, list_name, idx, ov, scope = hit[1], hit[2], hit[3], hit[4], hit[5]
+                base_preset = str(payload.get("preset") or "")
+                dur = float(payload.get("duration") or 0.35)
+                scoped_preset = f"{base_preset}_{scope}" if base_preset and not base_preset.endswith(("_in", "_out", "_both")) else base_preset
+                win = self.window()
+                if win is not None and hasattr(win, "push_undo"):
+                    win.push_undo("应用图层转场")
+                ov["transition_preset"] = scoped_preset
+                ov["transition_duration"] = dur
+                if win is not None and hasattr(win, "capture_undo_after"):
+                    win.capture_undo_after()
+                self._select_overlay_item(track, list_name, idx)
+                self.item_selected.emit("overlay", ov)
+                self._refresh_preview_canvas()
+                self.update()
+                self._status(f"已应用转场：{scoped_preset}")
                 event.acceptProposedAction()
-            else:
-                event.ignore()
+                return
+            if hit is not None and hit[0] == "clip":
+                track, c_idx, c_obj, scope = hit[1], hit[2], hit[3], hit[4]
+                base_preset = str(payload.get("preset") or "")
+                dur = float(payload.get("duration") or 0.35)
+                scoped_preset = f"{base_preset}_{scope}" if base_preset and not base_preset.endswith(("_in", "_out", "_both")) else base_preset
+                win = self.window()
+                if win is not None and hasattr(win, "push_undo"):
+                    win.push_undo("应用片段转场")
+                c_obj.transition_preset = scoped_preset
+                c_obj.transition_duration = dur
+                if win is not None and hasattr(win, "capture_undo_after"):
+                    win.capture_undo_after()
+                self._refresh_preview_canvas()
+                self.update()
+                self._status(f"已应用片段转场：{scoped_preset}")
+                event.acceptProposedAction()
+                return
+            self._status("请把转场拖到接缝、视频片段或图片/文字图层上")
+            event.ignore()
             return
         if not event.mimeData().hasUrls():
             event.ignore()

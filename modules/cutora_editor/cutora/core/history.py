@@ -77,6 +77,14 @@ def _record_recent_project(path):
     import json
     import os
     import time
+    try:
+        # 自动保存的临时快照（untitled / backups）不算「最近项目」，否则最近列表总被同一个快照霸占
+        from cutora.core.paths import user_autosave_dir
+        _ad = os.path.normcase(os.path.abspath(user_autosave_dir()))
+        if os.path.normcase(os.path.abspath(str(path))).startswith(_ad):
+            return
+    except Exception:
+        pass
     rf = _get_recent_projects_file()
     data = []
     if os.path.exists(rf):
@@ -85,7 +93,7 @@ def _record_recent_project(path):
                 data = safe_json.load(f)
         except Exception:
             pass
-    data = [x for x in data if x.get("path") != path]
+    data = [x for x in data if os.path.normcase(os.path.abspath(str(x.get("path") or ""))) != os.path.normcase(os.path.abspath(str(path)))]
     data.insert(0, {"path": path, "timestamp": time.time()})
     data = data[:50]
     os.makedirs(os.path.dirname(rf), exist_ok=True)
@@ -110,9 +118,17 @@ def _get_recent_projects():
     valid = []
     now = time.time()
     changed = False
+    try:
+        from cutora.core.paths import user_autosave_dir
+        _ad = os.path.normcase(os.path.abspath(user_autosave_dir()))
+    except Exception:
+        _ad = None
     for item in data:
         p = item.get("path")
         ts = item.get("timestamp", 0)
+        if p and _ad and os.path.normcase(os.path.abspath(str(p))).startswith(_ad):
+            changed = True
+            continue
         if p and (now - ts) <= 259200 and os.path.exists(p):
             valid.append(item)
         else:
@@ -123,7 +139,16 @@ def _get_recent_projects():
                 json.dump(valid, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
-    return valid
+    # 永远按最近一次打开 / 保存的时间倒序显示（最新的在最上面），并按路径去重
+    seen = set()
+    ordered = []
+    for item in sorted(valid, key=lambda it: float(it.get("timestamp") or 0.0), reverse=True):
+        key = os.path.normcase(os.path.abspath(str(item.get("path") or "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(item)
+    return ordered
 
 def _own(state):
     """Q159：UndoSnapshot 自己已经只深拷了该拷的那几条，照存；老式整工程字典仍深拷一份。"""

@@ -30,7 +30,9 @@ def test_alt_keys_are_registered():
     assert shortcut_key("track_add_video") == "Alt+V"
     assert shortcut_key("track_add_audio") == "Alt+A"
     assert shortcut_key("track_add_text") == "Alt+T"
+    assert shortcut_key("track_add_subs") == "Alt+S"
     assert shortcut_key("track_add_image") == "Alt+I"
+    assert shortcut_key("track_add_adjust") == "Alt+J"
 
 
 def test_alt_keys_are_not_bound_twice():
@@ -39,7 +41,8 @@ def test_alt_keys_are_not_bound_twice():
     from cutora.ui import shortcuts
     src = inspect.getsource(shortcuts.install_shortcuts)
     for sid in ("track_add_video", "track_add_audio",
-                "track_add_text", "track_add_image"):
+                "track_add_text", "track_add_subs",
+                "track_add_image", "track_add_adjust"):
         assert '"%s"' % sid in src, "%s 必须在 skip 里" % sid
 
 

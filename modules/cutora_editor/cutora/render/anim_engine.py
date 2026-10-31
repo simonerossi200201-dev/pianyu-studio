@@ -212,6 +212,26 @@ STANDALONE_TRANSITION_LIBRARY = list(STANDALONE_TRANSITION_LIBRARY) + list(EXTRA
 STANDALONE_TRANSITION_DEFAULT_DUR = 0.35
 FADE_DARK_RGB = (0x0B, 0x0B, 0x0E)
 
+_EXISTING_PRESET_KEYS = {p for _l, p in TRANSITION_PRESETS}
+for _lab, _p in STANDALONE_TRANSITION_LIBRARY:
+    if _p not in _EXISTING_PRESET_KEYS:
+        TRANSITION_PRESETS.append((f"{_lab}(双向)", _p))
+        _EXISTING_PRESET_KEYS.add(_p)
+    for _scope_lab, _scope in (("仅开头", "in"), ("仅结尾", "out"), ("双向", "both")):
+        _sp = f"{_p}_{_scope}"
+        if _sp not in _EXISTING_PRESET_KEYS:
+            TRANSITION_PRESETS.append((f"{_lab}({_scope_lab})", _sp))
+            _EXISTING_PRESET_KEYS.add(_sp)
+
+_STANDALONE_BASE_SET = {p for _l, p in STANDALONE_TRANSITION_LIBRARY}
+
+
+def is_standalone_transition_preset(preset) -> bool:
+    if not preset or preset == "none":
+        return False
+    base, _scope = _parse_transition_preset(preset)
+    return bool(base and base in _STANDALONE_BASE_SET and base not in ("cross_dissolve",))
+
 # T20-f audio tape library. Seam fade is 30 ms; others default 0.35 s.
 AUDIO_TRANSITION_LIBRARY = [
     ("等功率交叉淡化", "audio_xfade_equal"),
@@ -1055,4 +1075,100 @@ def compose_standalone_transition(prog, preset, out_img, in_img, canvas_w, canva
         painter.end()
 
     return result
+
+
+def apply_overlay_standalone_transition(layer_img, current_time, seg_start, seg_end,
+                                        preset, duration=DEFAULT_TRANSITION_DURATION):
+    """Apply standalone NLE transition to an image or text overlay layer_img (preserving alpha)."""
+    if layer_img is None or layer_img.isNull() or current_time is None:
+        return layer_img
+    if not is_standalone_transition_preset(preset):
+        return layer_img
+    base, scope = _parse_transition_preset(preset)
+    if not base:
+        return layer_img
+    dur = max(0.01, float(duration or DEFAULT_TRANSITION_DURATION))
+    dt_in = float(current_time) - float(seg_start)
+    dt_out = float(seg_end) - float(current_time)
+    entering = None
+    prog = None
+    if scope in ("in", "both") and 0.0 <= dt_in < dur:
+        entering = True
+        prog = max(0.0, min(1.0, dt_in / dur))
+    elif scope in ("out", "both") and 0.0 <= dt_out < dur:
+        entering = False
+        prog = max(0.0, min(1.0, 1.0 - (dt_out / dur)))
+    if entering is None or prog is None:
+        return layer_img
+
+    w = int(layer_img.width())
+    h = int(layer_img.height())
+    if w <= 1 or h <= 1:
+        return layer_img
+
+    try:
+        import numpy as np
+        from PySide6.QtGui import QImage, QPainter, QColor
+        conv = layer_img.convertToFormat(QImage.Format.Format_RGBA8888)
+        bpl = conv.bytesPerLine()
+        raw = np.frombuffer(conv.constBits(), dtype=np.uint8).reshape((h, bpl))[:, :w * 4].reshape((h, w, 4)).copy()
+        alpha_orig = raw[..., 3].astype(np.float32)
+
+        # Build opaque present image over #0B0B0E and empty #0B0B0E image
+        bg_rgb = np.array([0x0B, 0x0B, 0x0E], dtype=np.float32)
+        a_norm = alpha_orig[..., None] / 255.0
+        rgb_present = np.clip(raw[..., :3].astype(np.float32) * a_norm + bg_rgb * (1.0 - a_norm), 0, 255).astype(np.uint8)
+        rgba_present = np.empty((h, w, 4), dtype=np.uint8)
+        rgba_present[..., :3] = rgb_present
+        rgba_present[..., 3] = 255
+        img_present = QImage(rgba_present.data, w, h, w * 4, QImage.Format.Format_RGBA8888).convertToFormat(
+            QImage.Format.Format_ARGB32_Premultiplied
+        )
+        img_empty = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+        img_empty.fill(QColor(0x0B, 0x0B, 0x0E))
+
+        # Build alpha-tracking grayscale images (11..255 mapped so _blank #0B0B0E = 0 alpha)
+        a_mapped = np.clip(11.0 + (alpha_orig / 255.0) * (255.0 - 11.0), 11, 255).astype(np.uint8)
+        mask_rgba = np.empty((h, w, 4), dtype=np.uint8)
+        mask_rgba[..., 0] = a_mapped
+        mask_rgba[..., 1] = a_mapped
+        mask_rgba[..., 2] = a_mapped
+        mask_rgba[..., 3] = 255
+        mask_present = QImage(mask_rgba.data, w, h, w * 4, QImage.Format.Format_RGBA8888).convertToFormat(
+            QImage.Format.Format_ARGB32_Premultiplied
+        )
+
+        out_rgb = img_empty if entering else img_present
+        in_rgb = img_present if entering else img_empty
+        out_msk = img_empty if entering else mask_present
+        in_msk = mask_present if entering else img_empty
+
+        comp_rgb_img = compose_standalone_transition(prog, base, out_rgb, in_rgb, w, h)
+        comp_msk_img = compose_standalone_transition(prog, base, out_msk, in_msk, w, h)
+        if comp_rgb_img is None or comp_rgb_img.isNull() or comp_msk_img is None or comp_msk_img.isNull():
+            return layer_img
+
+        c_rgb_conv = comp_rgb_img.convertToFormat(QImage.Format.Format_RGBA8888)
+        c_msk_conv = comp_msk_img.convertToFormat(QImage.Format.Format_RGBA8888)
+        c_rgb = np.frombuffer(c_rgb_conv.constBits(), dtype=np.uint8).reshape((h, c_rgb_conv.bytesPerLine()))[:, :w * 4].reshape((h, w, 4))[:, :, :3].astype(np.float32)
+        c_msk = np.frombuffer(c_msk_conv.constBits(), dtype=np.uint8).reshape((h, c_msk_conv.bytesPerLine()))[:, :w * 4].reshape((h, w, 4))[:, :, :3].astype(np.float32)
+
+        # Extract transitioned alpha from mask green channel (11 -> 0, 255 -> 255)
+        trans_alpha = np.clip((c_msk[..., 1] - 11.0) * (255.0 / 244.0), 0.0, 255.0)
+        # For flash/white/light transitions where mask is brightened globally, bound by original silhouette + fade
+        if base in ("fade_white", "flash_white", "light_leak", "film_burn", "fade_dark"):
+            fade_env = prog if entering else (1.0 - prog)
+            trans_alpha = np.minimum(trans_alpha, alpha_orig * max(0.0, min(1.0, fade_env * 1.35)))
+
+        # Un-blend #0B0B0E background from RGB where alpha > 0
+        ta_norm = np.maximum(trans_alpha[..., None] / 255.0, 1e-4)
+        out_unpremult = np.clip((c_rgb - bg_rgb * (1.0 - ta_norm)) / ta_norm, 0.0, 255.0)
+        final_rgba = np.empty((h, w, 4), dtype=np.uint8)
+        final_rgba[..., :3] = out_unpremult.astype(np.uint8)
+        final_rgba[..., 3] = trans_alpha.astype(np.uint8)
+        res = QImage(final_rgba.data, w, h, w * 4, QImage.Format.Format_RGBA8888).copy()
+        return res.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+    except Exception:
+        return layer_img
+
 

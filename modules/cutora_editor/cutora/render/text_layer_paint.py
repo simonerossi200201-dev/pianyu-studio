@@ -734,6 +734,25 @@ def paint_text_overlay(painter, ov, current_time=None, backdrop=None, video_w=No
 
     opacity = float(ov.get("opacity") or 255) / 255.0
     rotation = float(ov.get("rotation") or 0)
+    t_preset = str(ov.get("transition_preset") or "none")
+    t_dur = float(ov.get("transition_duration") or 0.35)
+    ov_start = float(ov.get("start") or 0.0)
+    ov_end = float(ov.get("end") or 0.0)
+    t_op, t_scale, t_dx, t_dy = 1.0, 1.0, 0.0, 0.0
+    if current_time is not None and t_preset and t_preset != "none":
+        from cutora.render import anim_engine
+        t_op, t_scale, t_dx, t_dy = anim_engine.compute_transition_params(
+            current_time, ov_start, ov_end, t_preset, t_dur
+        )
+        if anim_engine.is_standalone_transition_preset(t_preset):
+            if bg is not None:
+                bg = anim_engine.apply_overlay_standalone_transition(
+                    bg, current_time, ov_start, ov_end, t_preset, t_dur
+                )
+            if text is not None:
+                text = anim_engine.apply_overlay_standalone_transition(
+                    text, current_time, ov_start, ov_end, t_preset, t_dur
+                )
     painter.save()
     try:
         if rotation:
@@ -741,6 +760,14 @@ def paint_text_overlay(painter, ov, current_time=None, backdrop=None, video_w=No
             cy = y + h * 0.5
             painter.translate(cx, cy)
             painter.rotate(rotation)
+            painter.translate(-cx, -cy)
+        if t_dx or t_dy:
+            painter.translate(t_dx, t_dy)
+        if abs(t_scale - 1.0) > 1e-4:
+            cx = x + w * 0.5
+            cy = y + h * 0.5
+            painter.translate(cx, cy)
+            painter.scale(t_scale, t_scale)
             painter.translate(-cx, -cy)
         # Q129：缩放 —— 静态值和关键帧都认（bake_host 已经把关键帧烤进 ov["scale"]）。
         # 像图片一样绕框中心整体放大缩小，排版（折行 / 字号）一个不动。
@@ -752,8 +779,9 @@ def paint_text_overlay(painter, ov, current_time=None, backdrop=None, video_w=No
             painter.translate(cx, cy)
             painter.scale(sc, sc)
             painter.translate(-cx, -cy)
-        if opacity < 0.999:
-            painter.setOpacity(max(0.0, min(1.0, opacity)) * painter.opacity())
+        eff_op = opacity * t_op
+        if eff_op < 0.999:
+            painter.setOpacity(max(0.0, min(1.0, eff_op)) * painter.opacity())
         pt = QPoint(int(origin[0]), int(origin[1]))
         if bg is not None:
             painter.drawImage(pt, bg)

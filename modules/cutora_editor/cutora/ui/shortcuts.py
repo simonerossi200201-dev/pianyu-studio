@@ -100,7 +100,8 @@ GESTURE_ROWS = (
     ("时间线", "V / C / R", "选择 / 切刀 / 变速工具"),
     ("时间线", "Delete", "波纹删除：片段连同空隙一起删掉，同一轨后面的内容前移补位（达芬奇习惯）"),
     ("时间线", "Backspace", "普通删除：删掉选中的片段、字幕、文字、图片，留下空隙（一次撤销）"),
-    ("时间线", "Q / W 或 Shift+[ / Shift+]", "波纹修剪：播放头所在片段的开头 / 结尾剪到播放头，后面前移"),
+    ("时间线", "Q / W 或 Ctrl+Shift+[ / Ctrl+Shift+]", "波纹修剪：播放头所在片段的开头 / 结尾剪到播放头，后面前移"),
+    ("时间线", "Shift+[ / Shift+]", "修剪（留空隙）：删掉播放头左边 / 右边的部分（视频连同链接的音频、字幕、文字都行），其它片段和总时长不变"),
     ("时间线", "按住播放头拖", "标尺上抓住播放头头部一直拖（擦洗，松手恢复全分辨率）"),
     ("时间线", "↑ / ↓", "跳到上一个 / 下一个剪辑点"),
     ("时间线", ", / .", "选中项微移 1 帧（Shift ×10；片段、字幕、文字、图片都行）"),
@@ -171,7 +172,7 @@ def install_shortcuts(window) -> None:
         "play_pause", "fullscreen", "safe_zones", "add_text", "add_image",
         "zoom_fit", "zoom_selection", "keyframe_editor", "node_editor",
         # 加轨道走「编辑 → 添加轨道」里的 QAction，别在这里重复绑（会变成歧义快捷键）
-        "track_add_video", "track_add_audio", "track_add_text", "track_add_image", "track_add_adjust",
+        "track_add_video", "track_add_audio", "track_add_text", "track_add_subs", "track_add_image", "track_add_adjust",
     }
     window._extra_shortcuts = []
     for sid, key, label, slot in SHORTCUTS:

@@ -7,6 +7,8 @@
   Delete / Backspace    删除选中的全部（片段、文字 / 图片、字幕），一次撤销
   Shift+Delete          波纹删除：删掉并把后面同轨的片段、字幕、标记前移
   Q / W                 把播放头所在片段的开头 / 结尾剪到播放头，后面跟着前移（主流剪辑软件同款）
+  Shift+[ / Shift+]     删掉播放头左边 / 右边（片段、链接的音视频、字幕、文字），原地留空隙，总长不变
+  Ctrl+Shift+[ / ]      同上但波纹：后面跟着前移（= Q / W）
   ↑ / ↓                 跳到上一个 / 下一个剪辑点
   , / .                 选中项（片段、字幕、文字 / 图片）微移 1 帧；Shift ×10
   Ctrl+C / X / V        复制 / 剪切 / 在播放头粘贴（片段、文字 / 图片、字幕可以混着选）
@@ -129,6 +131,14 @@ class TimelineOpsMixin:
     def _after_edit(self):
         """直接改数据以后：时间线重画、预览刷新、主窗口面板同步。"""
         self._snap_edge_cache = None
+        # 删除 / 修剪改了片段的入出点和列表：链接索引重建，缩略图按新的入出点重新排队
+        for name in ("_rebuild_av_link_index", "_queue_visible_thumbs"):
+            fn = getattr(self, name, None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:
+                    _LOG.exception("%s 失败", name)
         self._publish_selection()
         self.update()
         try:
@@ -239,9 +249,23 @@ class TimelineOpsMixin:
                 if self._sel_clips() or self._sel_seg_ids() or self._sel_overlays():
                     return self.ripple_delete_selection()
                 return False
-            if self._sel_clips() or self._sel_overlays():
+            # 字幕段（selected_indices）也要算进去：以前漏了它，切刀切出来的字幕小段
+            # 选中后按 Backspace 没反应（后面的旧分支只认 Delete）。
+            if self._sel_clips() or self._sel_overlays() or self._sel_seg_ids():
                 return self.delete_selection()
             return False
+        # Shift+[ / Shift+]：非波纹修剪（留空隙）；Ctrl+Shift+[ / ]：波纹修剪（后面前移）。
+        # 美式键盘上 Shift+[ 报的是 BraceLeft「{」，两种键码都认。
+        if not alt and key in (Qt.Key.Key_BracketLeft, Qt.Key.Key_BraceLeft,
+                               Qt.Key.Key_BracketRight, Qt.Key.Key_BraceRight):
+            braced = key in (Qt.Key.Key_BraceLeft, Qt.Key.Key_BraceRight)
+            if shift or braced:
+                side = "start" if key in (Qt.Key.Key_BracketLeft, Qt.Key.Key_BraceLeft) else "end"
+                if ctrl:
+                    self.ripple_trim_to_playhead(side)
+                else:
+                    self.trim_to_playhead(side)
+                return True
         if ctrl or alt:
             if ctrl and not alt:
                 if key == Qt.Key.Key_G:          # Q154：Ctrl+G 预合成 / Ctrl+Shift+G 解除
@@ -266,13 +290,7 @@ class TimelineOpsMixin:
             self.nudge_frames(n)
             return True
         if shift:
-            # Q157 达芬奇：Shift+[ 删掉播放头左边（到片段开头），Shift+] 删掉右边（到片段结尾），后面前移
-            if key == Qt.Key.Key_BracketLeft:
-                self.ripple_trim_to_playhead("start")
-                return True
-            if key == Qt.Key.Key_BracketRight:
-                self.ripple_trim_to_playhead("end")
-                return True
+            # Shift+[ / Shift+] 已在上面处理（非波纹修剪）
             return False
         if key == Qt.Key.Key_Q:
             self.ripple_trim_to_playhead("start")
@@ -812,8 +830,11 @@ class TimelineOpsMixin:
         tl = _tl_of(self.task_data)
         tracks = list(getattr(tl, "tracks", []) or [])
         order = []
-        if self.selected_track is not None and getattr(self.selected_track, "type", "") in ("video", "audio"):
-            order.append(self.selected_track)
+        if self.selected_track is not None:
+            sel_tr = (self.selected_track if self.selected_track in tracks
+                      else self._tracks_by_id().get(str(getattr(self.selected_track, "id", ""))))
+            if sel_tr is not None and getattr(sel_tr, "type", "") in ("video", "audio"):
+                order.append(sel_tr)
         order += [tr for tr in tracks if getattr(tr, "type", "") == "video" and getattr(tr, "is_main_video", False)]
         order += [tr for tr in tracks if getattr(tr, "type", "") in ("video", "audio")]
         for tr in order:
@@ -853,6 +874,159 @@ class TimelineOpsMixin:
                 self.seek_request.emit(int(round(s * 1000)))    # 播放头停在新的剪辑点
             self._status("已%s %.2f 秒，后面跟着前移" % ("剪掉开头" if side == "start" else "剪掉结尾",
                                                     t1 - t0))
+
+    # ─────────────────────────── 非波纹修剪到播放头（Shift+[ / Shift+]） ───────────────────────────
+
+    def _linked_partners(self, clip) -> list:
+        """同 link_group_id 的伴侣 [(track, clip)]（不含自己）。"""
+        gid = getattr(clip, "link_group_id", None)
+        if not gid:
+            return []
+        out = []
+        tl = _tl_of(self.task_data)
+        for tr in getattr(tl, "tracks", []) or []:
+            for c in getattr(tr, "clips", []) or []:
+                if c is not clip and getattr(c, "link_group_id", None) == gid:
+                    out.append((tr, c))
+        return out
+
+    def _trim_targets_at_playhead(self, t: float):
+        """播放头 t 处要修剪的对象：(clips[(track, clip)], seg_ids, overlays[(list_name, ov)])。
+
+        先看选中的内容里哪些跨过播放头（片段带上链接的音 / 视频伴侣）；一个也没有就退回
+        播放头下的片段（同 Q / W 的挑法），再退回播放头下的字幕段、文字。"""
+        from cutora.ui.timeline.snap import clip_span
+        eps = 1e-6
+
+        def inside(s, e):
+            return float(s) + eps < t < float(e) - eps
+
+        clips, seen = [], set()
+
+        def add_clip(tr, c):
+            if tr is None or c is None or id(c) in seen or not self._editable_clip(tr):
+                return
+            if inside(*clip_span(c)):
+                seen.add(id(c))
+                clips.append((tr, c))
+
+        def add_with_partners(tr, c):
+            add_clip(tr, c)
+            for tr2, c2 in self._linked_partners(c):
+                add_clip(tr2, c2)
+
+        task = self.task_data or {}
+        all_segs = task.get("segments") or []
+        subs_ok = self.can_edit_track("subs")
+
+        def seg_inside(i):
+            sg = all_segs[i]
+            return isinstance(sg, dict) and inside(sg.get("start") or 0.0, sg.get("end") or 0.0)
+
+        for tr, c in self._sel_clips():
+            add_with_partners(tr, c)
+        segs = [i for i in self._sel_seg_ids() if seg_inside(i)] if subs_ok else []
+        ovs = [(n, o) for n, o in self._sel_overlays()
+               if self._editable_overlay(n, o) and inside(o.get("start") or 0.0, o.get("end") or 0.0)]
+        if not (clips or segs or ovs):
+            tr, c = self._clip_at_playhead()
+            if c is not None:
+                add_with_partners(tr, c)
+        if not (clips or segs or ovs) and subs_ok:
+            segs = [i for i in range(len(all_segs)) if seg_inside(i)]
+        if not (clips or segs or ovs):
+            ovs = [("text_overlays", o) for o in task.get("text_overlays") or []
+                   if isinstance(o, dict) and self._editable_overlay("text_overlays", o)
+                   and inside(o.get("start") or 0.0, o.get("end") or 0.0)]
+        return clips, segs, ovs
+
+    def trim_to_playhead(self, side: str) -> bool:
+        """Shift+[（side="start"）删掉播放头左边、Shift+]（side="end"）删掉右边，原地留空隙：
+        其它片段不动，时间线总长不变。视频 / 音频（链接组一起）、字幕段、文字 / 图片都适用，一次撤销。"""
+        from cutora.model.ripple import _repair_transitions
+        from cutora.subtitle.track_source import set_segments
+        from cutora.ui.timeline.snap import clip_span
+        t = float(self.position or 0) / 1000.0
+        clips, segs, ovs = self._trim_targets_at_playhead(t)
+        if not (clips or segs or ovs):
+            self._status("播放头下面没有可修剪的内容（Shift+[ / Shift+] 修剪的是播放头所在的片段）")
+            return False
+        min_dur = float(getattr(self, "MIN_DUR", 0.08) or 0.08)
+        left = side == "start"
+
+        def keep_span(s, e):
+            ns, ne = (t, e) if left else (s, t)
+            return (ns, ne) if ne - ns >= min_dur - 1e-9 else None
+
+        def fn():
+            changed = False
+            rows, touched = [], []
+            for tr, c in clips:
+                s, e = clip_span(c)
+                if keep_span(s, e) is None:
+                    continue
+                bag = list(getattr(tr, "clips", []) or [])
+                if c not in bag:
+                    continue
+                speed = max(0.01, float(getattr(c, "speed", 1.0) or 1.0))
+                in_t = float(getattr(c, "in_t", 0.0))
+                out_t = float(getattr(c, "out_t", 0.0))
+                if left:
+                    in_t += (t - s) * speed
+                    start = t
+                else:
+                    out_t = in_t + (t - s) * speed
+                    start = s
+                rows.append({"track_id": str(getattr(tr, "id", "")), "clip_index": bag.index(c),
+                             "in_t": in_t, "out_t": out_t, "start_t": start})
+                if tr not in touched:
+                    touched.append(tr)
+            if rows and self._bus_execute("timeline.trim_clips", {"clips": rows}):
+                changed = True
+                for tr in touched:
+                    _repair_transitions(tr)
+            if segs:
+                all_segs = list((self.task_data or {}).get("segments") or [])
+                seg_changed = False
+                for i in segs:
+                    sg = all_segs[i] if 0 <= i < len(all_segs) else None
+                    if not isinstance(sg, dict):
+                        continue
+                    span = keep_span(float(sg.get("start") or 0.0), float(sg.get("end") or 0.0))
+                    if span is None:
+                        continue
+                    ns, ne = span
+                    words = []
+                    for w in sg.get("words") or []:
+                        if not isinstance(w, dict):
+                            continue
+                        ws, we = float(w.get("start") or 0.0), float(w.get("end") or 0.0)
+                        if we <= ns + 1e-9 or ws >= ne - 1e-9:
+                            continue          # 词整个落在剪掉的那边
+                        nw = dict(w)
+                        nw["start"], nw["end"] = max(ws, ns), min(we, ne)
+                        words.append(nw)
+                    if isinstance(sg.get("words"), list):
+                        sg["words"] = words
+                    sg["start"], sg["end"] = ns, ne
+                    seg_changed = True
+                if seg_changed:
+                    set_segments(self.task_data, all_segs)
+                    changed = True
+            for _n, o in ovs:
+                span = keep_span(float(o.get("start") or 0.0), float(o.get("end") or 0.0))
+                if span is None:
+                    continue
+                o["start"], o["end"] = span
+                changed = True
+            return changed
+
+        if self._one_undo("修剪开头" if left else "修剪结尾", fn):
+            self._after_edit()
+            self._status("已%s（留空隙，其它片段不动；Ctrl+Shift+%s = 波纹修剪）"
+                         % ("剪掉播放头左边" if left else "剪掉播放头右边", "[" if left else "]"))
+            return True
+        return False
 
     # ─────────────────────────── 跳剪辑点（↑ / ↓） ───────────────────────────
 

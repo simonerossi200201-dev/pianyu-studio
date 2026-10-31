@@ -175,8 +175,55 @@ def _src_has_audio(tl, source_id) -> bool:
     return bool(getattr(src, "has_audio", True))
 
 
+def clean_orphan_duplicate_audio(task) -> int:
+    """清理因旧版未绑定 link_group_id 遗留的孤立重复视频原声片段，并对齐配乐/音效轨片段角色。"""
+    tl = (task or {}).get("timeline")
+    if tl is None:
+        return 0
+    sources = getattr(tl, "sources", {}) or {}
+    video_sids = set()
+    for tr in getattr(tl, "tracks", []) or []:
+        if getattr(tr, "type", None) == "video":
+            for c in getattr(tr, "clips", []) or []:
+                sid = getattr(c, "source_id", None)
+                if sid:
+                    video_sids.add(sid)
+
+    removed = 0
+    for tr in getattr(tl, "tracks", []) or []:
+        if getattr(tr, "domain", "visual") != "audio" and getattr(tr, "type", None) not in ("audio", "bgm", "sfx"):
+            continue
+        t_role = str(getattr(tr, "audio_role", "") or "")
+        clips = list(getattr(tr, "clips", []) or [])
+        if t_role in _NON_VOICE:
+            for c in clips:
+                if str(getattr(c, "audio_role", "") or "") == "main" or getattr(c, "is_main", False):
+                    c.audio_role = t_role
+                    c.is_main = False
+            continue
+        # 在原声轨上：如果已存在与主视频绑定的主音频片段，清理无 link_group_id 且对应视频轨已被删除的孤立视频源音频片段
+        has_linked_main = any(
+            getattr(c, "link_group_id", None) and getattr(c, "source_id", None) in video_sids
+            for c in clips
+        )
+        if has_linked_main and len(clips) > 1:
+            kept = []
+            for c in clips:
+                sid = getattr(c, "source_id", None)
+                src = sources.get(sid) if sid else None
+                has_vid = bool(src.get("has_video", False) if isinstance(src, dict) else getattr(src, "has_video", False))
+                if not getattr(c, "link_group_id", None) and has_vid and sid not in video_sids:
+                    removed += 1
+                    continue
+                kept.append(c)
+            if len(kept) != len(clips):
+                tr.clips = kept
+    return removed
+
+
 def voice_clips(task) -> list:
     """人声片段 [(track, clip)]。配乐 / 音效轨不算。没有音频轨时退回视频片段的原声。"""
+    clean_orphan_duplicate_audio(task)
     tl = (task or {}).get("timeline")
     rows = []
     for tr in getattr(tl, "tracks", []) or []:
@@ -374,9 +421,22 @@ def silero_speech_frames(sig, n_frames):
     return mask
 
 
+def _task_subtitle_segments(task) -> list:
+    if not isinstance(task, dict):
+        return []
+    try:
+        from cutora.subtitle.track_source import get_segments
+        segs = get_segments(task)
+        if segs:
+            return segs
+    except Exception:
+        pass
+    return list(task.get("segments") or [])
+
+
 def collect_words(task) -> list:
     words = []
-    for seg in (task or {}).get("segments") or []:
+    for seg in _task_subtitle_segments(task):
         if not isinstance(seg, dict):
             continue
         for w in seg.get("words") or []:
@@ -410,7 +470,7 @@ def word_frames(task, n_frames):
     """词 / 无词字幕所占的 10 ms 格子。返回 (mask, n_words)。"""
     mask = np.zeros(n_frames, dtype=bool)
     n_words = 0
-    segs = list((task or {}).get("segments") or [])
+    segs = _task_subtitle_segments(task)
     if not segs:
         loc = (task or {}).get("_title_locate")
         if isinstance(loc, dict) and isinstance(loc.get("segments"), list):
@@ -864,17 +924,65 @@ def envelope(sig, t0, t1, bins=120) -> list:
 def _is_loop_bed_clip(tr, clip, old_end: float) -> bool:
     """判断是否为铺底循环轨（如全程循环的粒子特效覆盖轨、分屏循环副片或全程 BGM）。
     这类轨道不应在每个气口处被切碎产生画面跳切，而是保持连续并随总时长自然缩短。
+    局部定点放置的短音效/配乐片段不视为全程铺底，会随时间线波纹左移对齐。
     """
     if getattr(tr, "is_main_video", False):
         return False
+    s, e = _clip_span(clip)
+    span = max(0.0, e - s)
+    if (
+        getattr(clip, "loop", False)
+        or getattr(clip, "match_duration", False)
+        or float(getattr(clip, "_match_target_dur", 0.0) or 0.0) > 0
+    ):
+        if s <= 0.25 and e >= max(0.5, old_end * 0.85):
+            return True
     role = str(getattr(tr, "audio_role", "") or getattr(clip, "audio_role", "") or "")
     if role in _NON_VOICE:
-        return True
-    if getattr(clip, "loop", False) or getattr(clip, "match_duration", False):
-        s, e = _clip_span(clip)
-        if s <= 0.1 and e >= max(0.5, old_end - 0.25):
+        if s <= 0.25 and span >= max(0.5, old_end * 0.85):
             return True
     return False
+
+
+def _map_subtitle_seg_list(segs: list, enabled_cuts: list[dict]) -> list[dict]:
+    """将字幕段落列表（含词级 words）按切口列表精确涟漪映射，完全落在切口内的段/词自动剔除。"""
+    new_segs: list[dict] = []
+    for seg in segs or []:
+        if not isinstance(seg, dict):
+            continue
+        try:
+            s0 = float(seg.get("start") or 0.0)
+            e0 = float(seg.get("end") or s0)
+        except (TypeError, ValueError):
+            continue
+        ns = map_time(s0, enabled_cuts)
+        ne = map_time(e0, enabled_cuts)
+        if ne <= ns + 1e-4 and e0 > s0 + 1e-4:
+            continue
+        seg_copy = dict(seg)
+        seg_copy["start"] = round(ns, 4)
+        seg_copy["end"] = round(max(ns, ne), 4)
+        if isinstance(seg.get("words"), list):
+            new_words = []
+            for w in seg["words"]:
+                if not isinstance(w, dict):
+                    continue
+                try:
+                    ws = float(w.get("start") or s0)
+                    we = float(w.get("end") or ws)
+                except (TypeError, ValueError):
+                    continue
+                nws = map_time(ws, enabled_cuts)
+                nwe = map_time(we, enabled_cuts)
+                if nwe <= nws + 1e-4 and we > ws + 1e-4:
+                    continue
+                w_copy = dict(w)
+                w_copy["start"] = round(max(ns, nws), 4)
+                w_copy["end"] = round(min(max(ns, ne), max(nws, nwe)), 4)
+                new_words.append(w_copy)
+            seg_copy["words"] = new_words
+        new_segs.append(seg_copy)
+    return new_segs
 
 
 def _cut_clip_interval(clip, c0: float, c1: float, xfade_s: float) -> list:
@@ -936,6 +1044,7 @@ def apply_plan(task: dict, plan: dict, *, force: bool = False) -> dict:
     """
     if not isinstance(task, dict) or not isinstance(plan, dict):
         raise ValueError("task 与 plan 必须为字典")
+    clean_orphan_duplicate_audio(task)
     fp_now = timeline_fingerprint(task)
     fp_plan = str(plan.get("fingerprint") or "")
     if fp_plan and fp_plan != fp_now and not force:
@@ -1002,43 +1111,42 @@ def apply_plan(task: dict, plan: dict, *, force: bool = False) -> dict:
                     speed = max(0.01, float(getattr(c, "speed", 1.0) or 1.0))
                     c.out_t = float(c.in_t) + max(0.1, (new_target_end - s) * speed)
 
-    # 同步映射字幕 segments 与词级 words
+    # 同步映射字幕轨 (Track("subs") subtitle_events) 与 task["segments"] 及词级 words
+    mapped_task_segs = None
     if isinstance(task.get("segments"), list):
-        new_segs = []
-        for seg in task["segments"]:
-            if not isinstance(seg, dict):
-                continue
-            try:
-                s0 = float(seg.get("start") or 0.0)
-                e0 = float(seg.get("end") or s0)
-            except (TypeError, ValueError):
-                continue
-            ns = map_time(s0, enabled_cuts)
-            ne = map_time(e0, enabled_cuts)
-            if ne <= ns + 1e-4 and e0 > s0 + 1e-4:
-                continue
-            seg_copy = dict(seg)
-            seg_copy["start"] = round(ns, 4)
-            seg_copy["end"] = round(max(ns, ne), 4)
-            if isinstance(seg.get("words"), list):
-                new_words = []
-                for w in seg["words"]:
-                    if not isinstance(w, dict):
-                        continue
-                    try:
-                        ws = float(w.get("start") or s0)
-                        we = float(w.get("end") or ws)
-                    except (TypeError, ValueError):
-                        continue
-                    nws = map_time(ws, enabled_cuts)
-                    nwe = map_time(we, enabled_cuts)
-                    w_copy = dict(w)
-                    w_copy["start"] = round(nws, 4)
-                    w_copy["end"] = round(max(nws, nwe), 4)
-                    new_words.append(w_copy)
-                seg_copy["words"] = new_words
-            new_segs.append(seg_copy)
-        task["segments"] = new_segs
+        mapped_task_segs = _map_subtitle_seg_list(task["segments"], enabled_cuts)
+        task["segments"] = mapped_task_segs
+
+    try:
+        from cutora.subtitle.track_source import (
+            events_of,
+            iter_subs_tracks,
+            set_segments,
+            write_events,
+        )
+        subs_tracks = list(iter_subs_tracks(task))
+        if subs_tracks:
+            combined_subs: list[dict] = []
+            for idx_st, st in enumerate(subs_tracks):
+                ev = events_of(st)
+                if isinstance(ev, list) and ev:
+                    m_ev = _map_subtitle_seg_list(ev, enabled_cuts)
+                    write_events(st, m_ev)
+                    combined_subs.extend(m_ev)
+                elif idx_st == 0 and mapped_task_segs is not None:
+                    write_events(st, list(mapped_task_segs))
+                    combined_subs.extend(mapped_task_segs)
+            if len(subs_tracks) == 1:
+                ev0 = events_of(subs_tracks[0])
+                if isinstance(ev0, list):
+                    task["segments"] = ev0
+            elif combined_subs:
+                combined_subs.sort(key=lambda s: float(s.get("start") or 0.0))
+                task["segments"] = combined_subs
+        elif mapped_task_segs is not None:
+            set_segments(task, mapped_task_segs)
+    except Exception:
+        pass
 
     # 同步映射 _title_locate 词级缓存
     if isinstance(task.get("_title_locate"), dict):
@@ -1063,26 +1171,28 @@ def apply_plan(task: dict, plan: dict, *, force: bool = False) -> dict:
                 loc[sub_key] = new_items
         task["_title_locate"] = loc
 
-    # 同步映射轨道级字幕 (sub_track.segments / _extra)
+    # 同步映射轨道级自定义 tr.segments（若有）
     if tl is not None:
         for tr in getattr(tl, "tracks", []) or []:
             t_segs = getattr(tr, "segments", None)
             if isinstance(t_segs, list) and t_segs:
-                mapped_t_segs = []
-                for seg in t_segs:
-                    if not isinstance(seg, dict):
-                        continue
-                    s0 = float(seg.get("start") or 0.0)
-                    e0 = float(seg.get("end") or s0)
-                    ns = map_time(s0, enabled_cuts)
-                    ne = map_time(e0, enabled_cuts)
-                    if ne <= ns + 1e-4 and e0 > s0 + 1e-4:
-                        continue
-                    sc = dict(seg)
-                    sc["start"] = round(ns, 4)
-                    sc["end"] = round(max(ns, ne), 4)
-                    mapped_t_segs.append(sc)
-                tr.segments = mapped_t_segs
+                tr.segments = _map_subtitle_seg_list(t_segs, enabled_cuts)
+
+    # 同步映射时间线标记点 task["markers"]
+    if isinstance(task.get("markers"), list):
+        new_markers = []
+        for mk in task["markers"]:
+            if isinstance(mk, (int, float)):
+                new_markers.append(round(map_time(float(mk), enabled_cuts), 4))
+            elif isinstance(mk, dict):
+                mk_copy = dict(mk)
+                for tk in ("t", "time", "sec", "start"):
+                    if isinstance(mk_copy.get(tk), (int, float)):
+                        mk_copy[tk] = round(map_time(float(mk_copy[tk]), enabled_cuts), 4)
+                new_markers.append(mk_copy)
+            else:
+                new_markers.append(mk)
+        task["markers"] = new_markers
 
     # 同步映射 text_overlays 和 image_overlays
     for key in ("text_overlays", "image_overlays"):

@@ -1450,6 +1450,10 @@ class FrameRenderer:
                         painter.translate(-cx, -cy)
                         scaled_img = img.scaled(int(scaled_w), int(scaled_h), Qt.AspectRatioMode.KeepAspectRatio if keep_aspect else Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
                         scaled_img = _fade_qimage(scaled_img, ov)
+                        if t_preset and t_preset != "none" and anim_engine.is_standalone_transition_preset(t_preset):
+                            scaled_img = anim_engine.apply_overlay_standalone_transition(
+                                scaled_img, current_time, ov_start, ov_end, t_preset, t_dur
+                            )
                         draw_x = (w - scaled_w) / 2 + (scaled_w - scaled_img.width()) / 2
                         draw_y = (h - scaled_h) / 2 + (scaled_h - scaled_img.height()) / 2
                         painter.drawImage(QPointF(draw_x, draw_y), scaled_img)

@@ -101,13 +101,13 @@ class _HoverThinHandle(QSplitterHandle):
             p.drawLine(QPointF(cx, 2), QPointF(cx, h - 2))
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(line_color)
-            p.drawRoundedRect(QRectF(cx - 1.5, max(4.0, h * 0.5 - 14.0), 3.0, min(28.0, h - 8.0)), 1.5, 1.5)
+            p.drawRoundedRect(QRectF(cx - 1.5, max(4.0, h * 0.5 - 14.0), 3.0, min(28.0, h - 8.0)), 3, 3)
         else:
             cy = h * 0.5
             p.drawLine(QPointF(2, cy), QPointF(w - 2, cy))
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(line_color)
-            p.drawRoundedRect(QRectF(max(4.0, w * 0.5 - 14.0), cy - 1.5, min(28.0, w - 8.0), 3.0), 1.5, 1.5)
+            p.drawRoundedRect(QRectF(max(4.0, w * 0.5 - 14.0), cy - 1.5, min(28.0, w - 8.0), 3.0), 3, 3)
         p.end()
 
 
@@ -192,7 +192,7 @@ class SilenceMacroOverview(QWidget):
         h = self.height()
         p.fillRect(0, 0, w, h, QColor("#12151C"))
         p.setPen(QPen(QColor("#262B36"), 1))
-        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 6, 6)
+        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 5, 5)
 
         if not self._bins or self._duration <= 0.02:
             p.setPen(QColor("#7D8590"))
@@ -379,7 +379,7 @@ class SilenceWavePreview(QWidget):
         h = self.height()
         p.fillRect(0, 0, w, h, QColor("#161920"))
         p.setPen(QPen(QColor("#262B36"), 1))
-        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 6, 6)
+        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 5, 5)
 
         if not self._bins or self._win_end <= self._win_start:
             p.setPen(QColor("#788090"))
@@ -533,6 +533,8 @@ class SilenceCutDialog(QDialog):
         self._player = None
         self._audio_out = None
         self._tmp_wavs: list[str] = []
+        self._last_preview_wav: str = ""
+        self._pending_preview_after: bool | None = None
 
         self._build_ui(batch_default=batch_default)
         self._bind_shortcuts()
@@ -541,13 +543,13 @@ class SilenceCutDialog(QDialog):
 
     def _build_ui(self, *, batch_default: bool = False) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 8, 10, 8)
+        root.setContentsMargins(12, 8, 12, 8)
         root.setSpacing(8)
 
         # ── 1. 顶部参数与场景预设卡片 ──
         grp = QGroupBox("⚙ 第一步：设定剪气口参数与场景预设（三路融合防误伤：ASR 词时间戳 + Silero VAD + 10ms 自适应能量包络）")
         top = QVBoxLayout(grp)
-        top.setContentsMargins(10, 8, 10, 8)
+        top.setContentsMargins(12, 8, 12, 8)
         top.setSpacing(6)
 
         # 第一行：作用范围 + 核心阈值 + 一键场景预设
@@ -741,11 +743,13 @@ class SilenceCutDialog(QDialog):
         micro_bar.addStretch(1)
         self.btn_prev_before = QPushButton("▶ 试听原停顿 (B)")
         self.btn_prev_before.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_prev_before.clicked.connect(lambda: self.preview_selected(after=False))
+        self.btn_prev_before.setToolTip("试听当前选中气口裁剪前的原始停顿与前后人声 (快捷键: B)")
+        self.btn_prev_before.clicked.connect(lambda *_a: self.preview_selected(after=False))
         self.btn_prev_after = QPushButton("▶ 试听剪后接缝 (Space)")
         self.btn_prev_after.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_prev_after.setToolTip("试听当前选中气口裁剪并施加 5ms 微淡化后的自然接缝效果 (快捷键: Space)")
         self.btn_prev_after.setStyleSheet("QPushButton { font-weight: bold; color: #56D364; }")
-        self.btn_prev_after.clicked.connect(lambda: self.preview_selected(after=True))
+        self.btn_prev_after.clicked.connect(lambda *_a: self.preview_selected(after=True))
         micro_bar.addWidget(self.btn_prev_before)
         micro_bar.addWidget(self.btn_prev_after)
         vis_lay.addLayout(micro_bar)
@@ -855,7 +859,7 @@ class SilenceCutDialog(QDialog):
 
         # ── 3. 底部自检报告与执行栏 ──
         bot = QHBoxLayout()
-        bot.setSpacing(10)
+        bot.setSpacing(8)
         self.lbl_verify = QLabel(
             "💡 操作流程：① 调整上方参数或点击场景预设 ➔ ② 点击「开始智能分析」 ➔ ③ 在全局/局部视图试听复核 ➔ ④ 点击右侧「执行剪气口并运行无损自检」。"
         )
@@ -889,6 +893,44 @@ class SilenceCutDialog(QDialog):
         QShortcut(QKeySequence("Ctrl+R"), self, activated=self.start_detect_async)
         QShortcut(QKeySequence("F5"), self, activated=self.start_detect_async)
         QShortcut(QKeySequence("Ctrl+Return"), self, activated=self.run_apply)
+        # 安装事件过滤器：确保在全屏 RoomHost 模式下（RoomHost 会静音主窗 QShortcut）
+        # 以及焦点在表格/波形图上时，B / Space / X / [ / ] 等快捷键依然 100% 灵敏响应。
+        for w in (self, self.table, self.task_table, self.wave_view, self.macro_view, self.btn_prev_before, self.btn_prev_after):
+            w.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QAbstractSpinBox, QLineEdit
+        if event.type() == QEvent.Type.KeyPress:
+            fw = QApplication.focusWidget()
+            if isinstance(fw, (QAbstractSpinBox, QLineEdit)):
+                return super().eventFilter(obj, event)
+            key = event.key()
+            mods = event.modifiers()
+            ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+            if ctrl and key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.run_apply()
+                return True
+            if (ctrl and key == Qt.Key.Key_R) or key == Qt.Key.Key_F5:
+                self.start_detect_async()
+                return True
+            if not ctrl and not (mods & Qt.KeyboardModifier.AltModifier):
+                if key == Qt.Key.Key_Space:
+                    self.preview_selected(after=True)
+                    return True
+                if key == Qt.Key.Key_B:
+                    self.preview_selected(after=False)
+                    return True
+                if key == Qt.Key.Key_X:
+                    self.toggle_current_row_checked()
+                    return True
+                if key == Qt.Key.Key_BracketLeft:
+                    self.nudge_selected_cut(-1, 0)
+                    return True
+                if key == Qt.Key.Key_BracketRight:
+                    self.nudge_selected_cut(0, 1)
+                    return True
+        return super().eventFilter(obj, event)
 
     def _apply_preset(self, thr: float, thr_unit: str, keep: float, keep_unit: str, head_f: int, tail_f: int) -> None:
         if self._busy:
@@ -1051,6 +1093,7 @@ class SilenceCutDialog(QDialog):
         self._rebuild_tables_from_plans()
         summary = self._compute_summary_dict()
         if stopped:
+            self._pending_preview_after = None
             self._set_busy(
                 False,
                 f"⏹ 已中止分析（已分析 {len(self._plans)} 条视频，检出可剪气口 {summary['total_cuts']} 处，预计缩短 {summary['total_removed_s']:.2f}s）",
@@ -1062,6 +1105,10 @@ class SilenceCutDialog(QDialog):
                 f"✓ 分析完成：共扫描 {summary['count']} 条视频 · 检出可剪气口 {summary['total_cuts']} 处"
                 f"（预计缩短 {summary['total_removed_s']:.2f} 秒）· 防误伤保护提示 {summary['total_flags']} 处",
             )
+            if self._pending_preview_after is not None:
+                pend = self._pending_preview_after
+                self._pending_preview_after = None
+                self.preview_selected(after=pend)
 
     def run_detect(self) -> dict:
         """同步检测接口（供无头测试、MCP 或脚本直接调用，同时刷新 UI 进度条与表格）。"""
@@ -1416,33 +1463,111 @@ class SilenceCutDialog(QDialog):
         self._on_row_selected()
         self._refresh_summary_banner()
 
-    def preview_selected(self, *, after: bool = False) -> None:
-        row = self.table.currentRow()
-        if not (0 <= row < len(self._row_meta)):
-            return
-        idx, kind, data = self._row_meta[row]
-        an = self._analyses.get(idx)
-        if an is None:
-            return
-        t0 = float(data.get("pause_start") or data.get("start") or 0.0)
-        t1 = float(data.get("pause_end") or data.get("end") or t0)
-        cut_arg = data if (after and kind == "cut") else None
-        wav_arr = preview_wave(an.sig, t0, t1, applied_cut=cut_arg, pad=1.8)
-        fd, path = tempfile.mkstemp(suffix=".wav", prefix="cutora_silence_prev_")
-        os.close(fd)
-        write_wav(path, wav_arr)
-        self._tmp_wavs.append(path)
+    def _play_wav_file(self, path: str) -> bool:
+        """在 Windows 与跨平台环境下可靠播放试听 WAV 文件（无头测试环境自动静默记录）。"""
+        import sys as _sys
+        self._last_preview_wav = path
+        if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            return True
+        if _sys.platform == "win32":
+            try:
+                import winsound
+                winsound.PlaySound(None, winsound.SND_PURGE)
+                winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                return True
+            except Exception:
+                pass
         try:
             from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
             if self._player is None:
                 self._player = QMediaPlayer(self)
                 self._audio_out = QAudioOutput(self)
+                self._audio_out.setVolume(1.0)
                 self._player.setAudioOutput(self._audio_out)
             self._player.stop()
             self._player.setSource(QUrl.fromLocalFile(path))
             self._player.play()
+            return True
         except Exception:
-            pass
+            return False
+
+    def preview_selected(self, *, after: bool = False) -> None:
+        if self._busy:
+            self.lbl_verify.setText("⏳ 正在智能分析气口中，分析完成后将自动为您播放试听…")
+            self._pending_preview_after = bool(after)
+            return
+        if not self._plans:
+            tasks = list(getattr(self.host, "tasks", None) or [])
+            if not tasks:
+                self.lbl_verify.setText("⚠ 当前工程中没有可试听的视频任务。")
+                return
+            self._pending_preview_after = bool(after)
+            self.lbl_verify.setText("🔍 尚未分析气口切点，正在为您自动启动智能分析，完成后立即播放试听…")
+            self.start_detect_async()
+            return
+
+        row = self.table.currentRow()
+        if not (0 <= row < len(self._row_meta)) and self._row_meta:
+            self.table.selectRow(0)
+            row = 0
+
+        tasks = list(getattr(self.host, "tasks", None) or [])
+        if not (0 <= row < len(self._row_meta)):
+            # 已分析但当前阈值下未检出可剪气口：试听第一条已分析视频的开头人声，给用户即时听觉反馈
+            first_idx = next(iter(self._analyses.keys()), None)
+            an = self._analyses.get(first_idx) if first_idx is not None else None
+            if an is not None and len(getattr(an, "sig", [])) > 0:
+                wav_arr = preview_wave(an.sig, 0.0, min(3.0, float(getattr(an, "end", 3.0) or 3.0)), applied_cut=None, pad=0.0)
+                fd, path = tempfile.mkstemp(suffix=".wav", prefix="cutora_silence_prev_")
+                os.close(fd)
+                write_wav(path, wav_arr)
+                self._tmp_wavs.append(path)
+                self._play_wav_file(path)
+                self.lbl_verify.setText(
+                    "🔊 当前参数阈值下未检出超长停顿，正在试听原片开头人声（若需检出更短停顿，请调小上方「当停顿超过」数值后重新分析）。"
+                )
+            else:
+                self.lbl_verify.setText("ℹ 当前列表没有可试听的气口切点，请调整上方阈值后点击「开始智能分析」。")
+            return
+
+        idx, kind, data = self._row_meta[row]
+        if kind == "error":
+            self.lbl_verify.setText(f"⚠ 该任务检测失败，无法试听：{data}")
+            return
+        an = self._analyses.get(idx)
+        if an is None and 0 <= idx < len(tasks):
+            try:
+                an = analyze(tasks[idx], self.current_params(), cache=self._cache)
+                self._analyses[idx] = an
+            except Exception:
+                an = None
+        if an is None or len(getattr(an, "sig", [])) == 0:
+            self.lbl_verify.setText("⚠ 未能读取该视频的音频波形，无法试听。")
+            return
+        t0 = float(data.get("pause_start") or data.get("start") or 0.0)
+        t1 = float(data.get("pause_end") or data.get("end") or t0)
+        cut_arg = data if (after and kind == "cut") else None
+        pad_s = float(self.cb_zoom.currentData() or 1.8) if hasattr(self, "cb_zoom") else 1.8
+        wav_arr = preview_wave(an.sig, t0, t1, applied_cut=cut_arg, pad=max(1.2, min(3.0, pad_s)))
+        fd, path = tempfile.mkstemp(suffix=".wav", prefix="cutora_silence_prev_")
+        os.close(fd)
+        write_wav(path, wav_arr)
+        self._tmp_wavs.append(path)
+        self._play_wav_file(path)
+        tname = os.path.basename(str((tasks[idx] if 0 <= idx < len(tasks) else {}).get("video") or f"任务 {idx + 1}"))
+        if after and kind == "cut":
+            rem_s = float(data.get("remove_s") or 0.0)
+            res_s = float(data.get("result_s") or 0.0)
+            self.lbl_verify.setText(
+                f"🔊 正在试听【剪后接缝 (Space)】：#{idx + 1} {tname}  [{t0:.2f}s – {t1:.2f}s]  "
+                f"已剪除 {rem_s:.2f}s ➔ 保留 {res_s:.2f}s 自然气口（含 5ms 防爆音微淡化）"
+            )
+        else:
+            gap_s = float(data.get("pause_s") or data.get("gap_s") or (t1 - t0))
+            self.lbl_verify.setText(
+                f"🔊 正在试听【原停顿 (B)】：#{idx + 1} {tname}  [{t0:.2f}s – {t1:.2f}s]  "
+                f"原始停顿时长 {gap_s:.2f}s（含切点前后各 {max(1.2, min(3.0, pad_s)):.1f}s 对白语境）"
+            )
 
     def run_apply(self) -> dict:
         if self._busy:
@@ -1538,6 +1663,13 @@ class SilenceCutDialog(QDialog):
         if self._worker is not None and self._worker.isRunning():
             self._worker.request_stop()
             self._worker.wait(1500)
+        try:
+            import sys as _sys
+            if _sys.platform == "win32":
+                import winsound
+                winsound.PlaySound(None, winsound.SND_PURGE)
+        except Exception:
+            pass
         if self._player is not None:
             try:
                 self._player.stop()
