@@ -134,6 +134,22 @@ def main() -> None:
     )
     print(f"\n✅ 全自动安装与体检全部完成！报告已写入: {report_path}")
 
+    # 6. 自动运行黑匣子硬件自适应评估、开发者调优建议与诊断包导出
+    try:
+        cutora_root = str(LTX_ROOT / "modules" / "cutora_editor")
+        if cutora_root not in sys.path:
+            sys.path.insert(0, cutora_root)
+        from cutora.core.blackbox import export_blackbox_zip
+        bb_info = export_blackbox_zip(dest_dir=str(LTX_ROOT / "data"), include_win_events=True)
+        print(f"📦 [黑匣子] 已生成当前电脑专属《设备自适应与开发者性能调优报告》及诊断包:")
+        print(f"  · 设备性能分级 : {bb_info.get('hardware_tier')}")
+        print(f"  · 开发者建议数 : {bb_info.get('developer_findings_count')} 条")
+        print(f"  · 事故追凶结论 : {bb_info.get('post_mortem_summary')}")
+        print(f"  · 诊断包路径   : {bb_info.get('zip_path')}")
+    except Exception as _bb_err:
+        print(f"  [提示] 黑匣子附加分析跳过: {_bb_err}")
+
+
 
 if __name__ == "__main__":
     main()

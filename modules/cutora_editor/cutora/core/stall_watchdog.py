@@ -173,6 +173,11 @@ class StallWatchdog:
                     pass
         except Exception:
             pass
+        try:
+            from cutora.core.blackbox import get_recorder
+            get_recorder().record_ui_stall(seconds, _annotate(stack) or "(取不到栈)")
+        except Exception:
+            pass
 
     def _report(self, seconds: float, stack: str) -> None:
         rec = {"seconds": round(seconds, 2), "stack": stack, "at": time.strftime("%H:%M:%S")}
@@ -180,6 +185,11 @@ class StallWatchdog:
         del self.stalls[:-20]
         try:
             _LOG.warning("界面线程卡了 %.1f 秒，卡住时在：\n%s", seconds, _annotate(stack) or "    (取不到栈)")
+        except Exception:
+            pass
+        try:
+            from cutora.core.blackbox import get_recorder
+            get_recorder().record_ui_stall(seconds, _annotate(stack) or "(取不到栈)")
         except Exception:
             pass
         cb = self.on_stall

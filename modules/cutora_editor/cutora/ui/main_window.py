@@ -2930,6 +2930,11 @@ class MainWindow(CommandBodies, QMainWindow):
         act_open_autosave_dir.setToolTip(tr("在资源管理器中打开自动保存与崩溃备份工程所在的位置"))
         act_open_autosave_dir.triggered.connect(self.open_autosave_folder)
         file_menu.addAction(act_open_autosave_dir)
+        act_blackbox_file = QAction(tr("📦 一键导出黑匣子诊断包（性能调优与卡死追凶）…"), self)
+        act_blackbox_file.setToolTip(tr("检测当前电脑硬件适配、生成给开发者的性能优化建议，并打包所有卡顿/崩溃/断电前黑匣子轨迹到桌面"))
+        act_blackbox_file.triggered.connect(self.export_blackbox_diagnostics)
+        file_menu.addAction(act_blackbox_file)
+        own(act_blackbox_file)
         proj_menu = menu.addMenu(tr("项目"))
         _a = QAction(tr("术语表…"), self)
         _a.triggered.connect(self.open_glossary_dialog)
@@ -3253,6 +3258,15 @@ class MainWindow(CommandBodies, QMainWindow):
         _a.triggered.connect(self.open_about_dialog)
         help_menu.addAction(_a)
         own(_a)
+        _s_bb = QAction(self)
+        _s_bb.setSeparator(True)
+        help_menu.addAction(_s_bb)
+        own(_s_bb)
+        act_blackbox_help = QAction(tr("📦 一键导出黑匣子诊断包（性能调优与卡死追凶）…"), self)
+        act_blackbox_help.setToolTip(tr("检测当前电脑硬件适配、生成给开发者的性能优化建议，并打包所有卡顿/崩溃/断电前黑匣子轨迹到桌面"))
+        act_blackbox_help.triggered.connect(self.export_blackbox_diagnostics)
+        help_menu.addAction(act_blackbox_help)
+        own(act_blackbox_help)
         self._add_mode_corner()
 
     def _add_mode_corner(self):
@@ -17034,3 +17048,35 @@ class MainWindow(CommandBodies, QMainWindow):
             self._changes_made = True
             if task_idx == self.curr_idx:
                 self.update_preview()
+
+    def export_blackbox_diagnostics(self):
+        """一键导出黑匣子诊断包（含设备自适应调优建议 + 崩溃/卡死/断电前根源追凶报告）并定位文件。"""
+        from cutora.core.blackbox import export_blackbox_zip
+        try:
+            self.statusBar().showMessage("正在采集硬件指纹、分析性能瓶颈并打包黑匣子数据…", 5000)
+            QApplication.processEvents()
+        except Exception:
+            pass
+        try:
+            info = export_blackbox_zip(include_win_events=True)
+            zip_path = info.get("zip_path") or ""
+            tier = info.get("hardware_tier") or "未知"
+            pm_summary = info.get("post_mortem_summary") or ""
+            if zip_path and os.path.isfile(zip_path) and os.name == "nt":
+                try:
+                    subprocess.Popen(["explorer", f"/select,{os.path.normpath(zip_path)}"])
+                except Exception:
+                    pass
+            msg = (
+                f"黑匣子诊断包已生成并导出到桌面：\n{zip_path}\n\n"
+                f"• 当前设备分级：{tier}\n"
+                f"• 开发者优化建议：{info.get('developer_findings_count', 0)} 条\n"
+                f"• 事故/卡死诊断结论：{pm_summary}\n\n"
+                "您可以直接将该 ZIP 压缩包发给开发者，内含《00_【必看】黑匣子总览与根源诊断报告.md》与断电前毫秒级操作轨迹。"
+            )
+            QMessageBox.information(self, "📦 黑匣子诊断包已生成", msg)
+            return info
+        except Exception as exc:
+            QMessageBox.warning(self, "导出黑匣子失败", f"打包黑匣子诊断信息时出错：\n{exc}")
+            return {"error": str(exc)}
+

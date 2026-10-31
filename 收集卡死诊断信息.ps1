@@ -1,4 +1,4 @@
-﻿# 片语工作室 · 卡死诊断信息收集（只读，不修改任何设置）
+# 片语工作室 · 卡死诊断信息收集（只读，不修改任何设置）
 # 收集：软件日志、队列/设置文件、Windows 系统事件（显卡驱动重置 / 意外断电 / 硬件错误 / 程序无响应）、硬件信息
 # 结果：桌面上的 片语工作室_卡死诊断_<时间>.zip
 $ErrorActionPreference = "SilentlyContinue"
@@ -7,7 +7,15 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $out  = Join-Path $env:TEMP "pianyu_diag_$ts"
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 
-Write-Host "[1/5] 复制软件日志..."
+Write-Host "[1/5] 复制软件日志与生成黑匣子深度分析报告..."
+$pyExe = Join-Path $root "runtime\venv\Scripts\python.exe"
+if (-not (Test-Path $pyExe)) { $pyExe = Join-Path $root "runtime\python\python.exe" }
+if (Test-Path $pyExe) {
+    $cutoraDir = Join-Path $root "modules\cutora_editor"
+    Push-Location $cutoraDir
+    & $pyExe -c "import sys; sys.path.insert(0, r'$cutoraDir'); from cutora.core.blackbox import export_blackbox_zip; info = export_blackbox_zip(dest_dir=r'$out', include_win_events=True); print('Blackbox generated:', info.get('zip_path'))" 2>&1 | Out-File (Join-Path $out "blackbox_export_run.txt") -Encoding UTF8
+    Pop-Location
+}
 $userData = Join-Path $env:LOCALAPPDATA "CUTORA"
 $portable = Join-Path $root "modules\cutora_editor\UserData"
 foreach ($ud in @($userData, $portable)) {

@@ -154,6 +154,18 @@ def get_align_model(language=None):
         print(f"❌ 错误: 找不到对齐模型！预期路径: {align_dir}")
         raise FileNotFoundError("Align model missing. Please run download_full_models.py")
 
+    _bb_op = None
+    try:
+        from cutora.core.blackbox import get_recorder
+        _bb_op = get_recorder().begin_op(
+            "asr.load_align_model",
+            {"lang": lang, "device": str(DEVICE), "dir": align_dir},
+            sync=True,
+            include_gpu=True,
+        )
+    except Exception:
+        _bb_op = None
+
     try:
         # HF 强制离线; torchaudio 模型若本地缺失会尝试联网下载到 align_dir
         os.environ["HF_HUB_OFFLINE"] = "1"
@@ -166,8 +178,20 @@ def get_align_model(language=None):
             model_dir=align_dir  # 关键：直接传入本地文件夹路径
         )
         _ALIGN_CACHE[key] = (model, metadata)
+        if _bb_op is not None:
+            try:
+                from cutora.core.blackbox import get_recorder
+                get_recorder().end_op(_bb_op, ok=True, sync=True)
+            except Exception:
+                pass
         return model, metadata
     except Exception as e:
+        if _bb_op is not None:
+            try:
+                from cutora.core.blackbox import get_recorder
+                get_recorder().end_op(_bb_op, ok=False, error=str(e), sync=True)
+            except Exception:
+                pass
         print(f"[Error] 对齐模型加载失败 (语言={lang}): {e}")
         if lang == "en":
             print("👉 英文大模型缺失时请双击运行 4_Download_EN_Align_Model.bat 下载")
@@ -304,6 +328,17 @@ def get_whisperx_model(asr_dir=None, log=None):
     last_err = None
     cur = picked
     for _attempt in range(6):
+        _bb_op = None
+        try:
+            from cutora.core.blackbox import get_recorder
+            _bb_op = get_recorder().begin_op(
+                "asr.load_whisperx_model",
+                {"tier": str(cur.get("id", "")), "device": device, "compute": compute, "dir": asr_path},
+                sync=True,
+                include_gpu=True,
+            )
+        except Exception:
+            _bb_op = None
         try:
             os.environ["HF_HUB_OFFLINE"] = "1"
             os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -325,8 +360,20 @@ def get_whisperx_model(asr_dir=None, log=None):
             _WHISPERX_MODEL = model
             _WHISPERX_DEVICE = device
             _WHISPERX_DIR = asr_path
+            if _bb_op is not None:
+                try:
+                    from cutora.core.blackbox import get_recorder
+                    get_recorder().end_op(_bb_op, ok=True, sync=True)
+                except Exception:
+                    pass
             return _WHISPERX_MODEL
         except Exception as e:
+            if _bb_op is not None:
+                try:
+                    from cutora.core.blackbox import get_recorder
+                    get_recorder().end_op(_bb_op, ok=False, error=str(e), sync=True)
+                except Exception:
+                    pass
             last_err = e
             if not is_oom_error(e):
                 _say("FATAL ERROR: 模型加载失败: %s" % e)

@@ -626,3 +626,22 @@ def cmd_table_inspect(ctx: Context, params: dict) -> dict:
         "total": len(body),
         "preview": body[:limit],
     }
+
+
+def cmd_blackbox_status(ctx: Context, params: dict) -> dict:
+    from cutora.core.blackbox import analyze_hardware_and_advise, analyze_post_mortem
+    inc_win = bool(params.get("include_win_events", True))
+    hw = analyze_hardware_and_advise()
+    pm = analyze_post_mortem(include_win_events=inc_win)
+    return {
+        "hardware_advisor": hw,
+        "post_mortem": pm,
+    }
+
+
+def cmd_blackbox_export(ctx: Context, params: dict) -> dict:
+    from cutora.core.blackbox import export_blackbox_zip
+    dest = str(params.get("dest_dir") or "").strip() or None
+    inc_win = bool(params.get("include_win_events", True))
+    return export_blackbox_zip(dest_dir=dest, include_win_events=inc_win)
+

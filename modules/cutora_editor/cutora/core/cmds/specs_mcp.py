@@ -292,4 +292,23 @@ def build() -> list:
             required=["path"],
             headless=True,
         ),
+        spec(
+            "blackbox.status", "查询黑匣子性能建议与事故诊断",
+            "运行片语 Studio 黑匣子系统（Flight Recorder & Optimization Advisor），实时检测当前设备硬件瓶颈、自适应运行参数、给开发者的针对性升级建议，以及上次会话是否发生过崩溃/卡死/强制断电的根源定责分析。只读，支持无头模式。",
+            H + ":cmd_blackbox_status",
+            params={
+                "include_win_events": s("boolean", "是否扫描 Windows 系统事件日志（TDR/Kernel-Power 41/OOM），默认 true"),
+            },
+            headless=True,
+        ),
+        spec(
+            "blackbox.export", "一键导出黑匣子诊断包",
+            "生成包含《00_【必看】黑匣子总览与根源诊断报告.md》、硬件自适应与开发者调优建议、断电前未闭合操作轨迹、界面卡顿调用栈与日志的完整黑匣子 ZIP 压缩包。支持无头模式。",
+            H + ":cmd_blackbox_export",
+            params={
+                "dest_dir": s("string", "输出目录路径；省略则默认导出到桌面"),
+                "include_win_events": s("boolean", "是否包含 Windows 事件日志分析，默认 true"),
+            },
+            headless=True,
+        ),
     ]

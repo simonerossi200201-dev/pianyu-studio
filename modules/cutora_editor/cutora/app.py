@@ -334,6 +334,11 @@ def main(argv=None):
     if not is_render_child():
         from cutora.core.single_instance import acquire_single_instance_or_exit
         acquire_single_instance_or_exit()
+        try:
+            from cutora.core.blackbox import install_blackbox
+            install_blackbox(start_monitor=True)
+        except Exception:
+            pass
 
     from cutora.core.runtime import init_torch_runtime
     init_torch_runtime(render_child=is_render_child())
@@ -703,6 +708,11 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
     try:
         from cutora.fx import gpu as _gpu_fx2
         _gpu_fx2.stop_gui_server()           # Q187：主界面退出，常驻的 GPU 服务跟着退（它自己也盯着 pid）
+    except Exception:
+        pass
+    try:
+        from cutora.core.blackbox import get_recorder
+        get_recorder().mark_clean_exit("gui_quit_rc_%s" % rc)
     except Exception:
         pass
     return rc

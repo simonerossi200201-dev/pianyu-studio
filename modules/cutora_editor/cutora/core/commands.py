@@ -185,6 +185,18 @@ class CommandBus:
         error = None
         result: dict = {}
         pushed = False
+        _bb_op_id = None
+        _is_heavy_cmd = name.startswith(("export.", "subtitle.", "asr.", "batch.", "silence_cut.", "project.open", "project.pack", "media.import"))
+        try:
+            from cutora.core.blackbox import get_recorder
+            _bb_op_id = get_recorder().begin_op(
+                "cmd:%s" % name,
+                sanitize_params(payload),
+                sync=_is_heavy_cmd,
+                include_gpu=_is_heavy_cmd,
+            )
+        except Exception:
+            _bb_op_id = None
         prev_source = getattr(window, "_bus_source", None) if window is not None else None
         if window is not None:
             window._bus_source = src
@@ -203,7 +215,8 @@ class CommandBus:
             if pushed:
                 _capture_after(window)
             return result
-        except (CommandError, SchemaError):
+        except (CommandError, SchemaError) as exc:
+            error = str(exc)
             if pushed:
                 _pop_undo(window)
             raise
@@ -217,6 +230,12 @@ class CommandBus:
             if window is not None:
                 window._bus_source = prev_source
             ms = (time.perf_counter() - t0) * 1000.0
+            if _bb_op_id is not None:
+                try:
+                    from cutora.core.blackbox import get_recorder
+                    get_recorder().end_op(_bb_op_id, ok=ok, error=error, sync=_is_heavy_cmd or (not ok))
+                except Exception:
+                    pass
             keys = list(result.keys()) if ok else []
             append_audit(
                 source=src,
