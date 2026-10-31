@@ -359,3 +359,55 @@ def test_worker_asks_for_one_language_then_continues(tmp_path, monkeypatch):
     worker._ensure_align_downloaded("nl")
     assert asked == ["nl"]
     worker._ensure_align_downloaded("de")
+
+
+def test_stitcher_dialog_wires_align_fetcher_and_supports_builtin_fallback(tmp_path, monkeypatch):
+    from cutora.batch.script_stitcher import StitcherDialog, AnalyzeWorker
+    import cutora.asr.align_fetch as fetch
+
+    app = _app()
+    dlg = StitcherDialog(None, lambda: None, lambda *a, **k: None, lambda *a: None)
+    assert callable(dlg._session._align_fetcher)
+    assert dlg._session._align_fetcher == dlg._fetch_align
+
+    # Also verify that choosing built-in alignment bypasses missing dedicated aligner error
+    monkeypatch.setattr(fetch, "fetch_plan", lambda code: {"id": f"align-{code}", "language": code, "name_zh": "法语"})
+    monkeypatch.setenv("CUTORA_ALLOW_NATIVE_ALIGN", "1")
+    clip = tmp_path / "fr.mp4"
+    clip.write_bytes(b"a")
+    worker = AnalyzeWorker(
+        {"1": [str(clip)]}, {"1": "Bonjour tout le monde"}, lambda: None, lambda *a, **k: None,
+        language="fr", edge_refine=False, out_dir="")
+    worker._ensure_align_downloaded("fr")
+    dlg.close()
+
+
+def test_engine_native_align_fallback_for_french(monkeypatch):
+    import numpy as np
+    import cutora.asr.engine as eng
+    import cutora.asr.align_fetch as fetch
+    import cutora.asr.models as mdl
+
+    # Simulate a 15GB Base Package machine where align_fr is not on disk
+    monkeypatch.setattr(fetch, "weights_present", lambda row: False)
+    monkeypatch.setattr(mdl, "generic_aligner_available", lambda: False)
+    eng._ALIGN_CACHE.clear()
+
+    model, meta = eng.get_align_model(language="fr")
+    assert meta.get("cutora_native_align") is True
+    assert meta.get("cutora_source_lang") == "fr"
+
+    audio = np.zeros(16000 * 3, dtype=np.float32)
+    segments = [{
+        "start": 0.2,
+        "end": 2.6,
+        "text": "Celui qui met Dieu à la première place",
+    }]
+    out = eng.align_transcript(segments, model, meta, audio, device="cpu")
+    words = out.get("word_segments") or []
+    assert len(words) == 8
+    assert [w["word"] for w in words] == ["Celui", "qui", "met", "Dieu", "à", "la", "première", "place"]
+    assert words[0]["start"] >= 0.2
+    assert words[-1]["end"] <= 2.61
+    for i in range(1, len(words)):
+        assert words[i]["start"] >= words[i - 1]["start"]

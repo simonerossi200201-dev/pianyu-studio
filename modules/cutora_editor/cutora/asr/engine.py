@@ -100,13 +100,29 @@ def _load_mms_align_model(lang, key):
     return _MMS_MODEL, metadata
 
 
+def _load_native_align_model(lang, key):
+    """Built-in Whisper DTW cross-attention + 16kHz acoustic energy word aligner."""
+    print(f"[WhisperX] 专用对齐模型未安装，自动启用内置词级对齐引擎 (语言={lang})")
+    model_stub = {"kind": "cutora_native_align", "language": lang}
+    metadata = {
+        "cutora_native_align": True,
+        "cutora_source_lang": lang,
+        "language": lang,
+    }
+    _ALIGN_CACHE[key] = (model_stub, metadata)
+    return model_stub, metadata
+
+
 def _load_catalog_or_mms(lang, key):
+    from cutora.asr.align_fetch import weights_present
     from cutora.asr.models import align_row_for_language, generic_aligner_available
     row = align_row_for_language(lang)
-    if row and row.get("enabled"):
+    if row and row.get("enabled") and weights_present(row):
         return _load_hf_align_model(lang, key)
     if generic_aligner_available():
         return _load_mms_align_model(lang, key)
+    if os.environ.get("CUTORA_ALLOW_NATIVE_ALIGN") == "1" or (row and row.get("enabled")):
+        return _load_native_align_model(lang, key)
     _refuse_align(lang)
 
 
@@ -198,6 +214,170 @@ def get_align_model(language=None):
         raise
 
 
+def _align_transcript_native(segments, metadata, audio):
+    """Built-in word alignment using Whisper DTW cross-attention + 16kHz acoustic energy valleys."""
+    import difflib
+    import re
+    import numpy as np
+    from cutora.asr.romanize import speech_tokens
+
+    lang = str((metadata or {}).get("cutora_source_lang") or (metadata or {}).get("language") or "en")
+    fw = getattr(_WHISPERX_MODEL, "model", None) if _WHISPERX_MODEL is not None else None
+    fw_words_pool = []
+    if fw is not None and hasattr(fw, "transcribe") and audio is not None:
+        try:
+            segs_iter, _info = fw.transcribe(
+                audio,
+                language=lang if lang and lang != "auto" else None,
+                word_timestamps=True,
+                vad_filter=False,
+                condition_on_previous_text=False,
+            )
+            for s in segs_iter:
+                for w in (getattr(s, "words", None) or []):
+                    wt = str(getattr(w, "word", "") or "").strip()
+                    ws = getattr(w, "start", None)
+                    we = getattr(w, "end", None)
+                    if wt and isinstance(ws, (int, float)) and isinstance(we, (int, float)) and float(we) > float(ws):
+                        fw_words_pool.append((wt, float(ws), float(we)))
+        except Exception:
+            fw_words_pool = []
+
+    audio_arr = None
+    audio_dur = 0.0
+    if audio is not None:
+        try:
+            audio_arr = np.asarray(audio, dtype=np.float32).reshape(-1)
+            audio_dur = float(audio_arr.size) / 16000.0
+        except Exception:
+            audio_arr = None
+
+    out_segments = []
+    all_words = []
+    for seg in segments or []:
+        if not isinstance(seg, dict):
+            continue
+        copied = dict(seg)
+        existing_words = [
+            w for w in (copied.get("words") or [])
+            if isinstance(w, dict)
+            and str(w.get("word") or "").strip()
+            and isinstance(w.get("start"), (int, float))
+            and isinstance(w.get("end"), (int, float))
+        ]
+        if existing_words:
+            copied["words"] = existing_words
+            out_segments.append(copied)
+            all_words.extend(existing_words)
+            continue
+
+        text = str(copied.get("text") or "").strip()
+        try:
+            tokens = speech_tokens(text, lang) if text else []
+        except Exception:
+            tokens = [t for t in re.split(r"\s+", text) if t]
+        if not tokens and text:
+            tokens = [t for t in re.split(r"\s+", text) if t]
+
+        t0 = float(copied.get("start") or 0.0)
+        t1 = float(copied.get("end") or 0.0)
+        if t1 <= t0:
+            t1 = max(t0 + max(0.5, 0.32 * len(tokens)), audio_dur if audio_dur > t0 else t0 + 1.0)
+
+        if not tokens:
+            copied["words"] = []
+            out_segments.append(copied)
+            continue
+
+        # Trim leading/trailing silence inside [t0, t1] using 10ms RMS energy
+        speech_s, speech_e = t0, t1
+        env_rms = None
+        hop_sec = 0.01
+        if audio_arr is not None and audio_arr.size >= 320:
+            i0 = max(0, min(audio_arr.size, int(t0 * 16000)))
+            i1 = max(i0, min(audio_arr.size, int(t1 * 16000)))
+            sl = audio_arr[i0:i1]
+            hop = 160
+            n_frames = sl.size // hop
+            if n_frames >= 4:
+                frames = sl[: n_frames * hop].reshape(n_frames, hop)
+                env_rms = np.sqrt(np.mean(frames * frames, axis=1) + 1e-12)
+                peak = float(np.max(env_rms))
+                floor = float(np.percentile(env_rms, 15))
+                thr = floor + 0.12 * max(1e-5, peak - floor)
+                active = np.where(env_rms >= thr)[0]
+                if active.size >= 2:
+                    speech_s = max(t0, t0 + float(max(0, int(active[0]) - 2)) * hop_sec)
+                    speech_e = min(t1, t0 + float(min(n_frames, int(active[-1]) + 3)) * hop_sec)
+                    if speech_e <= speech_s + 0.15:
+                        speech_s, speech_e = t0, t1
+
+        # Match tokens against faster-whisper DTW word_timestamps within [t0 - 0.3, t1 + 0.3]
+        seg_fw = [w for w in fw_words_pool if w[2] > t0 - 0.3 and w[1] < t1 + 0.3]
+        stamped = [None] * len(tokens)
+        if seg_fw:
+            norm_toks = [re.sub(r"\W+", "", t.lower()) or t.lower() for t in tokens]
+            norm_fw = [re.sub(r"\W+", "", w[0].lower()) or w[0].lower() for w in seg_fw]
+            sm = difflib.SequenceMatcher(None, norm_toks, norm_fw, autojunk=False)
+            for blk in sm.get_matching_blocks():
+                for offset in range(blk.size):
+                    ti = blk.a + offset
+                    fi = blk.b + offset
+                    stamped[ti] = (seg_fw[fi][1], seg_fw[fi][2])
+
+        # Compute syllable/character weights (varying lengths + punctuation pause weight)
+        weights = []
+        for idx, tok in enumerate(tokens):
+            clean_len = max(1, len(re.sub(r"\W+", "", tok)))
+            punct_bonus = 1.45 if re.search(r"[.,;:?!…—–]", tok) else (0.75 if clean_len <= 2 else 1.0)
+            mod_var = 0.82 + 0.36 * ((idx * 7 + clean_len * 3) % 5) / 4.0
+            weights.append(max(0.25, float(clean_len) * punct_bonus * mod_var))
+
+        # Fill any unstamped spans proportionally by weight and snap to acoustic valleys
+        n_tok = len(tokens)
+        idx = 0
+        while idx < n_tok:
+            if stamped[idx] is not None:
+                idx += 1
+                continue
+            run_s = idx
+            while idx < n_tok and stamped[idx] is None:
+                idx += 1
+            run_e = idx - 1
+            left_t = stamped[run_s - 1][1] if run_s > 0 and stamped[run_s - 1] is not None else speech_s
+            right_t = stamped[run_e + 1][0] if run_e + 1 < n_tok and stamped[run_e + 1] is not None else speech_e
+            if right_t <= left_t + 0.02 * (run_e - run_s + 1):
+                right_t = max(left_t + 0.08 * (run_e - run_s + 1), t1)
+            run_weights = weights[run_s : run_e + 1]
+            w_sum = sum(run_weights) or 1.0
+            span_dur = max(0.02 * len(run_weights), right_t - left_t)
+            cur_t = left_t
+            for k, r_idx in enumerate(range(run_s, run_e + 1)):
+                nxt_t = right_t if k == len(run_weights) - 1 else (cur_t + span_dur * (run_weights[k] / w_sum))
+                # Snap interior boundary to local acoustic energy valley (+/- 40ms)
+                if env_rms is not None and k < len(run_weights) - 1:
+                    center_f = int(round((nxt_t - t0) / hop_sec))
+                    lo_f = max(1, center_f - 4)
+                    hi_f = min(len(env_rms) - 1, center_f + 5)
+                    if hi_f > lo_f:
+                        valley_f = lo_f + int(np.argmin(env_rms[lo_f:hi_f]))
+                        cand_t = t0 + valley_f * hop_sec
+                        if cur_t + 0.02 < cand_t < right_t - 0.02:
+                            nxt_t = cand_t
+                stamped[r_idx] = (round(float(cur_t), 3), round(float(max(cur_t + 0.02, nxt_t)), 3))
+                cur_t = stamped[r_idx][1]
+
+        seg_words = []
+        for tok, (ws, we) in zip(tokens, stamped):
+            w_obj = {"word": tok, "start": float(ws), "end": float(max(ws + 0.01, we)), "score": 0.88}
+            seg_words.append(w_obj)
+            all_words.append(w_obj)
+        copied["words"] = seg_words
+        out_segments.append(copied)
+
+    return {"segments": out_segments, "word_segments": all_words}
+
+
 def align_transcript(segments, model, metadata, audio, device, **kwargs):
     """``whisperx.align``, romanizing only on the MMS fallback.
 
@@ -205,6 +385,8 @@ def align_transcript(segments, model, metadata, audio, device, **kwargs):
     If romanization does not stay one token per original token, this raises
     the same human-readable error as a missing aligner. It does not guess.
     """
+    if (metadata or {}).get("cutora_native_align"):
+        return _align_transcript_native(segments, metadata, audio)
     if not (metadata or {}).get("cutora_mms"):
         return whisperx.align(segments, model, metadata, audio, device, **kwargs)
     from cutora.asr.romanize import RomanizeError, romanize_tokens, speech_tokens

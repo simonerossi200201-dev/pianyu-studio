@@ -241,6 +241,16 @@ class StitchSession(QObject):
         return self.worker
 
     def _on_need_align(self, code: str) -> None:
+        from PySide6.QtCore import QThread, QTimer
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None and QThread.currentThread() is not app.thread():
+            def _run_ui() -> None:
+                self._on_need_align(code)
+            QTimer.singleShot(0, app, _run_ui)
+            return
+
         ok = False
         try:
             fn = self._align_fetcher

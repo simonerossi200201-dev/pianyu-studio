@@ -162,6 +162,11 @@ class AlignFetchDialog(QDialog):
 
         row = QHBoxLayout()
         row.setSpacing(SPACE_2)
+        self.btn_builtin = QPushButton(tr("免下载，用内置对齐直接拼接"))
+        self.btn_builtin.setObjectName("btnSecondary")
+        self.btn_builtin.setToolTip(tr("若网络无法连接 HuggingFace 或不想等待 1.2GB 下载，可直接启用内置词级对齐开始拼接"))
+        self.btn_builtin.clicked.connect(self._on_use_builtin)
+        row.addWidget(self.btn_builtin)
         row.addStretch(1)
         self.btn_cancel = QPushButton(tr("取消"))
         self.btn_cancel.setObjectName("btnSecondary")
@@ -220,18 +225,34 @@ class AlignFetchDialog(QDialog):
         self.status.setText(tr("{name}的对齐模型已经下载完毕。", name=self.name_zh))
         self.file_line.setText("")
         self.btn_cancel.hide()
+        if hasattr(self, "btn_builtin"):
+            self.btn_builtin.hide()
         QTimer.singleShot(max(0, self.hold_ms), self.accept)
+
+    def _on_use_builtin(self) -> None:
+        import os as _os
+        _os.environ["CUTORA_ALLOW_NATIVE_ALIGN"] = "1"
+        self._succeeded = True
+        self._failed = False
+        if self.worker is not None and self.worker.isRunning():
+            try:
+                self.worker.cancel()
+            except Exception:
+                pass
+        self.accept()
 
     def _on_failed(self, msg) -> None:
         self.worker = None
         self._failed = True
         text = str(msg or "")
         if "取消" in text:
+            if self._succeeded:
+                return
             self.status.setText(tr("已取消。已下载的部分保留，下次会接着下。"))
             self.reject()
             return
         self.title.setText(tr("{name}的对齐模型没有下载完", name=self.name_zh))
-        self.status.setText(tr("下载失败：{msg}", msg=text))
+        self.status.setText(tr("下载失败：{msg}（可点左下角「免下载，用内置对齐直接拼接」）", msg=text))
         self.btn_cancel.setText(tr("重试"))
         self.btn_cancel.setEnabled(True)
 

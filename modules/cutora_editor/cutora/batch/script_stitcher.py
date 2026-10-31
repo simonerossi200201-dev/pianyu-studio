@@ -3116,6 +3116,8 @@ class AnalyzeWorker(QThread):
         from cutora.asr.stitch_language import StitchLanguageError
         if fetch_plan(lang) is None:
             return
+        if os.environ.get("CUTORA_ALLOW_NATIVE_ALIGN") == "1":
+            return
         if not callable(self._align_fetcher):
             raise StitchLanguageError(
                 "这种语言的对齐模型还没下载，这里没有界面可以下载，拼接没有开始。")
@@ -3128,6 +3130,8 @@ class AnalyzeWorker(QThread):
             raise StitchLanguageError("已取消，对齐模型没有下载，拼接没有开始。")
         if not self._align_fetch_ok:
             raise StitchLanguageError("对齐模型没有下载完成，拼接没有开始。")
+        if os.environ.get("CUTORA_ALLOW_NATIVE_ALIGN") == "1":
+            return
         if fetch_plan(lang) is not None:
             raise StitchLanguageError(
                 "对齐模型下载结束后仍然不在本地，拼接没有开始。")
@@ -4376,11 +4380,20 @@ class StitcherDialog(QDialog):
         from cutora.batch.stitch_session import StitchSession
         self._session = StitchSession(
             self.get_model, self.get_align, parent=self, stop_on_missing=False)
+        self._session.set_align_fetcher(self._fetch_align)
         self._session.log.connect(self._log)
         self._session.progress.connect(self.bar.setValue)
         self._session.preflight_ready.connect(self._on_preflight_done)
         self._session.analyzed.connect(self._on_analyzed)
         self._session.failed.connect(self._on_failed)
+
+    def _fetch_align(self, code: str) -> bool:
+        """Open the one-click download dialog (or built-in fallback) when a language aligner is missing."""
+        from cutora.ui.align_fetch_dialog import run_align_fetch
+        ok, msg = run_align_fetch(self.window() or self, str(code or ""))
+        if msg:
+            self._log(msg)
+        return bool(ok)
 
     def _arm_job(self, scripts, folders=None):
         """Groups that have a script, and the _stitched paths _start assigns."""
@@ -4906,6 +4919,10 @@ class StitcherDialog(QDialog):
             if reply != QMessageBox.StandardButton.Yes:
                 return
         self._scripts = scripts
+        lang_code = self._selected_language()
+        if lang_code and lang_code != "auto":
+            if not self._fetch_align(lang_code):
+                return
         # 成品/缓存各回各家: 每组写进它自己素材文件夹下的 _stitched。
         # 只有汇总性的东西 (切点表/报告/缺失清单) 放在第一个文件夹里。
         groups, self._out_dirs, self._out_names, self._out_dir = self._arm_job(
@@ -5031,6 +5048,8 @@ class StitcherDialog(QDialog):
                 if clicked is b_cancel:
                     self.btn_start.setText("开始拼接")
                     self._log("已暂停生成时间线 —— 请在 Orante「全部任务 -> 已标记」中重生缺片后再来拼接" if missing_map else "已取消 (确认阶段)")
+                    if missing_map:
+                        self._wake_orante_window()
                     return
                 need_review = clicked is b_rev
 
@@ -5086,6 +5105,40 @@ class StitcherDialog(QDialog):
                 "已生成时间线工程（%d 个独立片段，铺满画布，硬切）。\n"
                 "没有写出 _stitched 中间视频。\n%s" % (n_places, asproj))
         self.accept()
+
+    def _wake_orante_window(self) -> None:
+        """Bring the running Orante window to foreground (or open its UI) when returning from StitcherDialog."""
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                "http://127.0.0.1:9400/api/window/focus",
+                data=b'{"tab":"collect","filter":"marked"}',
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=1.2)
+            return
+        except Exception:
+            pass
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            def _enum_cb(hwnd, _lparam):
+                if user32.IsWindowVisible(hwnd):
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buf = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buf, length + 1)
+                        title = buf.value or ""
+                        if "Orante" in title or "分镜工作台" in title:
+                            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                            user32.SetForegroundWindow(hwnd)
+                            return False
+                return True
+            user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+        except Exception:
+            pass
 
     def _on_failed(self, msg):
         self.btn_start.setText("开始拼接")
