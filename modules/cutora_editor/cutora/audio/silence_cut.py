@@ -584,6 +584,19 @@ def plan_task(task, params=None, analysis=None, cache=None, base_dir=None,
     tail = params.tail_frames / fps
     end = an.end
     voice_ids = voice_linked_ids(task)
+    word_list = collect_words(task)
+
+    def _neighbor_words(pa: float, pb: float) -> tuple[str, str]:
+        prev_txt = ""
+        next_txt = ""
+        for w in word_list:
+            if w["end"] <= pa + 0.08:
+                prev_txt = str(w.get("text") or "").strip()
+            elif w["start"] >= pb - 0.08 and not next_txt:
+                next_txt = str(w.get("text") or "").strip()
+                break
+        return prev_txt, next_txt
+
     cuts = []
     flags = []
     pauses = silent_runs(an)
@@ -627,6 +640,7 @@ def plan_task(task, params=None, analysis=None, cache=None, base_dir=None,
         c0 = j / fps
         c1 = (j + n) / fps
         result = L - n / fps
+        pw, nw = _neighbor_words(a, b)
         cut = {
             "id": "c%d_%d" % (int(task_index), len(cuts)),
             "start": c0, "end": c1,
@@ -634,6 +648,7 @@ def plan_task(task, params=None, analysis=None, cache=None, base_dir=None,
             "remove_s": n / fps, "remove_frames": n,
             "pause_start": a, "pause_end": b, "pause_s": L,
             "result_s": result,
+            "prev_word": pw, "next_word": nw,
             "kind": "lead" if at_start else ("tail" if at_end else "inner"),
             "enabled": True, "status": "ok", "note": "",
         }

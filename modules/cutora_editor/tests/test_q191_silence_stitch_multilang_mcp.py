@@ -301,3 +301,95 @@ def test_mcp_full_studio_tools_and_headless_execution(tmp_path):
     payload = json.loads(resp["result"]["content"][0]["text"])
     assert payload["ok"] is True
     assert set(payload["result"]["first_class_languages"]) >= {"zh", "mg", "sw", "ar"}
+
+
+def test_silence_cut_studio_ui_and_stitch_hover_splitter(tmp_path):
+    _qapp()
+    import types
+    from cutora.audio.silence_cut import SR
+    from cutora.batch.script_stitcher import StitcherDialog
+    from cutora.ui.silence_cut_dialog import HoverThinSplitter, SilenceCutDialog
+
+    # 1. Build a host with 1 synthetic video task
+    wav_path = tmp_path / "voice.wav"
+    n_samples = int(5.0 * SR)
+    t_arr = np.arange(n_samples, dtype=np.float32) / SR
+    sig = np.random.RandomState(7).normal(0.0, 1e-4, n_samples).astype(np.float32)
+    for a, b in ((0.2, 1.2), (3.0, 4.5)):
+        i0, i1 = int(a * SR), int(b * SR)
+        sig[i0:i1] = 0.25 * np.sin(2.0 * np.pi * 220.0 * t_arr[i0:i1])
+    from cutora.audio.silence_cut import write_wav
+    write_wav(str(wav_path), sig)
+
+    from cutora.model.timeline import Timeline
+    from cutora.model.timeline_model import Clip, MediaSource, Track
+    tl = Timeline(1080, 1920, 30.0)
+    src = MediaSource(str(wav_path), duration=5.0, probe=False)
+    tl.sources[src.id] = src
+    tr = Track("audio")
+    tr.audio_role = "main"
+    ac = Clip(src.id, 0.0, 5.0, 0.0)
+    ac.audio_role = "main"
+    ac.is_main = True
+    tr.clips.append(ac)
+    tl.add_track(tr)
+
+    task = {
+        "video": str(wav_path),
+        "fps": 30.0,
+        "duration": 5.0,
+        "timeline": tl,
+        "segments": [
+            {
+                "id": "seg1",
+                "start": 0.2,
+                "end": 4.5,
+                "text": "Hello world",
+                "words": [
+                    {"word": "Hello", "start": 0.2, "end": 1.2},
+                    {"word": "world", "start": 3.0, "end": 4.5},
+                ],
+            }
+        ],
+    }
+    host = types.SimpleNamespace(tasks=[task], curr_idx=0)
+
+    # 2. Verify SilenceCutDialog opens immediately without blocking analysis in __init__
+    dlg = SilenceCutDialog(host)
+    assert dlg.property("cutora_sheet") == "fill"
+    assert len(dlg._plans) == 0  # Not analyzed until user clicks button!
+    assert dlg.task_table.rowCount() == 2  # "All" row + 1 task row
+    assert isinstance(dlg.v_splitter, HoverThinSplitter)
+    assert isinstance(dlg.h_splitter, HoverThinSplitter)
+
+    # Apply preset and run detection
+    dlg._apply_preset(0.8, "s", 0.22, "s", 2, 2)
+    res = dlg.run_detect()
+    assert res["total_cuts"] == 1
+    assert dlg.progress_bar.value() == 100
+    assert dlg.table.rowCount() >= 1
+    assert "Hello" in dlg.table.item(0, 3).text() and "world" in dlg.table.item(0, 3).text()
+
+    # Test batch selection helpers and frame nudging
+    dlg.batch_set_checked("none")
+    assert dlg._row_meta[0][2]["enabled"] is False
+    dlg.batch_set_checked("all")
+    assert dlg._row_meta[0][2]["enabled"] is True
+    orig_f0 = dlg._row_meta[0][2]["frame_start"]
+    dlg.nudge_selected_cut(1, 0)
+    assert dlg._row_meta[0][2]["frame_start"] == orig_f0 + 1
+
+    # 3. Verify StitcherDialog uses HoverThinSplitter with free dragging and no rigid size cap
+    sdlg = StitcherDialog(None, lambda: None, lambda _l: None, lambda _t: None)
+    assert sdlg.property("cutora_sheet") == "fill"
+    assert sdlg.minimumWidth() <= 320 and sdlg.minimumHeight() <= 240
+    assert isinstance(sdlg.main_splitter, HoverThinSplitter)
+    assert isinstance(sdlg.outer_splitter, HoverThinSplitter)
+    assert sdlg.main_splitter.childrenCollapsible() is True
+    assert sdlg.outer_splitter.childrenCollapsible() is True
+    handle = sdlg.main_splitter.handle(1)
+    assert handle._hover is False
+    sdlg._cycle_layout_mode()
+    assert sdlg._layout_lock == "h"
+    sdlg.close()
+    dlg.close()

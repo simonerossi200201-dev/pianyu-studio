@@ -3882,8 +3882,10 @@ class StitcherDialog(QDialog):
         self._pending_groups = None
         self._pending_scripts = None
         self._auto_handoff_mode = False
+        self._layout_lock = "auto"  # "auto" | "h" | "v"
         self.setWindowTitle("片段智能拼接")
-        self.setMinimumSize(760, 620)
+        self.setProperty("cutora_sheet", "fill")
+        self.setMinimumSize(320, 220)
         self.setAcceptDrops(True)
         self._build_ui()
         try:
@@ -3904,13 +3906,14 @@ class StitcherDialog(QDialog):
 
     def _build_ui(self):
         from PySide6.QtGui import QAction, QShortcut
-        from PySide6.QtWidgets import QFrame, QMenu, QSplitter, QToolButton, QWidget
+        from PySide6.QtWidgets import QFrame, QMenu, QToolButton, QWidget
         from cutora.ui.i18n import tr as _tr
+        from cutora.ui.silence_cut_dialog import HoverThinSplitter
 
         v = QVBoxLayout(self)
-        v.setSpacing(8)
+        v.setSpacing(6)
 
-        # ── 顶部工具栏：标题 + Orante 同步 + ⓘ 使用指南 ──
+        # ── 顶部工具栏：标题 + 排版切换 + Orante 同步 + ⓘ 使用指南 ──
         top_bar = QHBoxLayout()
         lbl_title = QLabel("🔗 片段智能拼接")
         lbl_title.setObjectName("sectionHeader")
@@ -3924,6 +3927,9 @@ class StitcherDialog(QDialog):
             "• 自动识别（推荐）：添加或粘贴文件夹瞬间自动解析文件名形状与数字/字母序号\n"
             "  （支持 01a/01b、01 (1)、Tik001_v01、V01-简单的小天使 (1)-1 等任意规律）。\n"
             "• 按文件夹分组：每个素材文件夹直接算作一组，内部按文件名自然排序。\n\n"
+            "【自由分界线与排版】\n"
+            "• 分界线平时自动隐藏，鼠标移到两栏之间即显现极细微光线，可自由无限制拖拽任意比例。\n"
+            "• 点击「⇄ 自动排版」可在横屏左右双栏 / 竖屏上下分栏之间自由切换或锁定。\n\n"
             "【原文案粘贴说明】\n"
             "• 与 Google Sheet 一一对应：一格 = 一个视频。\n"
             "• 在 Sheet 中复制整列文案后，点击右侧表格按 Ctrl+V 或点「从剪贴板批量粘贴」即可。"
@@ -3931,6 +3937,12 @@ class StitcherDialog(QDialog):
         self.btn_info.setToolTip(info_tip)
         self.btn_info.clicked.connect(lambda: QMessageBox.information(self, "片段智能拼接说明", info_tip))
         top_bar.addWidget(self.btn_info)
+
+        self.btn_layout_mode = QPushButton("⇄ 自动排版")
+        self.btn_layout_mode.setToolTip("点击切换：自动随窗口横竖屏切换 / 强制左右双栏 / 强制上下分栏（分界线悬停即显，可自由拖动）")
+        self.btn_layout_mode.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_layout_mode.clicked.connect(self._cycle_layout_mode)
+        top_bar.addWidget(self.btn_layout_mode)
 
         top_bar.addStretch(1)
         self.ed_orante_range = QLineEdit()
@@ -3946,14 +3958,18 @@ class StitcherDialog(QDialog):
         top_bar.addWidget(b_miss)
         v.addLayout(top_bar)
 
-        # ── 响应式双栏 Splitter（宽屏/横屏左右布局，窄屏/竖屏自动切换为上下布局）──
-        self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        self.main_splitter.setChildrenCollapsible(False)
+        # ── 外层纵向悬停极细分割器（上方为主工作区，下方为操作与日志区，均可无限制自由拖拽）──
+        self.outer_splitter = HoverThinSplitter(Qt.Orientation.Vertical, self)
 
-        # === 左/上栏：素材文件夹与智能分组 ===
+        # ── 主工作区响应式双栏 HoverThinSplitter（平时隐藏分界线，悬停显现细线自由拖拽）──
+        self.main_splitter = HoverThinSplitter(Qt.Orientation.Horizontal, self.outer_splitter)
+
+        # === 左/上栏：素材文件夹与智能分组卡片 ===
         self.pane_folders = QFrame(self.main_splitter)
+        self.pane_folders.setObjectName("stitchCardPane")
+        self.pane_folders.setMinimumSize(40, 40)
         pf_lay = QVBoxLayout(self.pane_folders)
-        pf_lay.setContentsMargins(0, 0, 4, 0)
+        pf_lay.setContentsMargins(6, 6, 6, 6)
         pf_lay.setSpacing(6)
 
         row_f = QHBoxLayout()
@@ -3980,7 +3996,7 @@ class StitcherDialog(QDialog):
 
         self.lst_folders = QListWidget()
         self.lst_folders.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.lst_folders.setMinimumHeight(110)
+        self.lst_folders.setMinimumHeight(36)
         self.lst_folders.setToolTip("可将文件夹或视频直接拖入此处，或选中后按 Delete 移除")
         pf_lay.addWidget(self.lst_folders, 1)
 
@@ -4025,14 +4041,21 @@ class StitcherDialog(QDialog):
         self.lbl_scan.setWordWrap(True)
         pf_lay.addWidget(self.lbl_scan)
 
-        # === 右/下栏：原文案与智能认领预览表 ===
+        # === 右/下栏：原文案与智能认领预览表卡片 ===
         self.pane_scripts = QFrame(self.main_splitter)
+        self.pane_scripts.setObjectName("stitchCardPane")
+        self.pane_scripts.setMinimumSize(40, 40)
         ps_lay = QVBoxLayout(self.pane_scripts)
-        ps_lay.setContentsMargins(4, 0, 0, 0)
+        ps_lay.setContentsMargins(6, 6, 6, 6)
         ps_lay.setSpacing(6)
 
         rowp = QHBoxLayout()
         rowp.addWidget(QLabel("📝 原文案与分组匹配表 (一格一视频):"))
+        self.ed_filter_group = QLineEdit()
+        self.ed_filter_group.setPlaceholderText("🔎 筛选组号或文案…")
+        self.ed_filter_group.setMaximumWidth(170)
+        self.ed_filter_group.textChanged.connect(self._filter_script_rows)
+        rowp.addWidget(self.ed_filter_group)
         rowp.addStretch(1)
         btn_paste = QPushButton("📋 从剪贴板批量粘贴")
         btn_paste.setToolTip("在 Google Sheet 中复制文案列后点此粘贴，或在表格内按 Ctrl+V")
@@ -4051,19 +4074,28 @@ class StitcherDialog(QDialog):
         ps_lay.addLayout(rowp)
 
         self.tbl_script = PasteTable(self._paste_clipboard, 0, 3)
+        self.tbl_script.setMinimumHeight(36)
         self.tbl_script.setHorizontalHeaderLabels(["组", "文案 (双击可单独编辑)", "智能分组与片段序"])
-        self.tbl_script.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_script.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         self.tbl_script.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.tbl_script.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_script.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        self.tbl_script.setColumnWidth(0, 120)
+        self.tbl_script.setColumnWidth(2, 220)
         ps_lay.addWidget(self.tbl_script, 1)
 
         self.main_splitter.addWidget(self.pane_folders)
         self.main_splitter.addWidget(self.pane_scripts)
         self.main_splitter.setStretchFactor(0, 2)
         self.main_splitter.setStretchFactor(1, 3)
-        v.addWidget(self.main_splitter, 1)
+        self.main_splitter.setSizes([460, 740])
 
-        # ── 底部参数与执行栏（默认语言必须为 auto 自动识别，繁琐选项收纳进高级菜单）──
+        # ── 下半部：控制栏 + 进度条 + 可自由拉伸的实时日志框 ──
+        self.pane_bottom = QFrame(self.outer_splitter)
+        self.pane_bottom.setMinimumSize(40, 44)
+        bot_lay = QVBoxLayout(self.pane_bottom)
+        bot_lay.setContentsMargins(0, 4, 0, 0)
+        bot_lay.setSpacing(6)
+
         opt = QHBoxLayout()
         opt.addWidget(QLabel("识别语言:"))
         self.cmb_lang = QComboBox()
@@ -4150,17 +4182,24 @@ class StitcherDialog(QDialog):
         self.btn_start.setMinimumWidth(180)
         self.btn_start.clicked.connect(self._start)
         opt.addWidget(self.btn_start)
-        v.addLayout(opt)
+        bot_lay.addLayout(opt)
 
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
         self.bar.setMaximumHeight(14)
-        v.addWidget(self.bar)
+        bot_lay.addWidget(self.bar)
 
         self.ed_log = QPlainTextEdit()
         self.ed_log.setReadOnly(True)
-        self.ed_log.setMaximumHeight(110)
-        v.addWidget(self.ed_log)
+        self.ed_log.setMinimumHeight(24)
+        bot_lay.addWidget(self.ed_log, 1)
+
+        self.outer_splitter.addWidget(self.main_splitter)
+        self.outer_splitter.addWidget(self.pane_bottom)
+        self.outer_splitter.setStretchFactor(0, 5)
+        self.outer_splitter.setStretchFactor(1, 1)
+        self.outer_splitter.setSizes([580, 140])
+        v.addWidget(self.outer_splitter, 1)
 
         self._update_responsive_layout()
 
@@ -4296,13 +4335,47 @@ class StitcherDialog(QDialog):
         return groups, out_dirs, out_names, out_dir
 
     # ---------- 交互 ----------
+    def _cycle_layout_mode(self):
+        order = ("auto", "h", "v")
+        cur = getattr(self, "_layout_lock", "auto")
+        nxt = order[(order.index(cur) + 1) % len(order)] if cur in order else "auto"
+        self._layout_lock = nxt
+        labels = {
+            "auto": "⇄ 自动排版",
+            "h": "◫ 左右双栏",
+            "v": "⊟ 上下分栏",
+        }
+        if hasattr(self, "btn_layout_mode"):
+            self.btn_layout_mode.setText(labels[nxt])
+        self._update_responsive_layout()
+
+    def _filter_script_rows(self, text: str = ""):
+        q = (text or "").strip().lower()
+        for r in range(self.tbl_script.rowCount()):
+            if not q:
+                self.tbl_script.setRowHidden(r, False)
+                continue
+            hit = False
+            for col in range(self.tbl_script.columnCount()):
+                it = self.tbl_script.item(r, col)
+                if it is not None and q in (it.text() or "").lower():
+                    hit = True
+                    break
+            self.tbl_script.setRowHidden(r, not hit)
+
     def _update_responsive_layout(self):
         sp = getattr(self, "main_splitter", None)
         if sp is None:
             return
-        w = max(1, self.width())
-        h = max(1, self.height())
-        want = Qt.Orientation.Vertical if (w < 980 or w < h) else Qt.Orientation.Horizontal
+        lock = getattr(self, "_layout_lock", "auto")
+        if lock == "h":
+            want = Qt.Orientation.Horizontal
+        elif lock == "v":
+            want = Qt.Orientation.Vertical
+        else:
+            w = max(1, self.width())
+            h = max(1, self.height())
+            want = Qt.Orientation.Vertical if (w < 920 or w < h) else Qt.Orientation.Horizontal
         if sp.orientation() != want:
             sp.setOrientation(want)
 

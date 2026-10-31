@@ -808,6 +808,26 @@ def _enter_stitch_room(dlg, **_kw):
     return None
 
 
+def _make_silence_room(win, **kw):
+    from cutora.ui.silence_cut_dialog import SilenceCutDialog
+    batch_def = bool(kw.get("batch_default", False))
+    dlg = SilenceCutDialog(win, parent=None, batch_default=batch_def)
+    embed_dialog(dlg)
+    dlg.finished.connect(lambda _c=0: win.room_host.close_room("silence"))
+    return dlg
+
+
+def _enter_silence_room(dlg, **kw):
+    try:
+        if "batch_default" in kw and hasattr(dlg, "cb_scope"):
+            dlg.cb_scope.setCurrentIndex(1 if kw["batch_default"] else 0)
+        if hasattr(dlg, "_populate_initial_task_overview") and not getattr(dlg, "_busy", False):
+            dlg._populate_initial_task_overview()
+    except Exception:
+        _LOG.exception("剪气口房间刷新失败")
+    return None
+
+
 def install(win) -> RoomHost:
     """MainWindow 建好外壳后调一次。"""
     host = RoomHost(win)
@@ -821,6 +841,9 @@ def install(win) -> RoomHost:
     host.register("stitch", "片段拼接", "link", _make_stitch_room, keep_alive=True,
                   on_enter=_enter_stitch_room,
                   tip="片段智能拼接：按文案把素材片段拼成时间线工程（切走时后台照样跑）")
+    host.register("silence", "剪气口", "scissors", _make_silence_room, keep_alive=True,
+                  on_enter=_enter_silence_room,
+                  tip="智能剪气口工作台：三路信号防误伤、全局鸟瞰+局部切点显微镜、支持批量停顿裁剪与无损自检")
     host.register("ai_studio", "✨ AI 工坊", "sparkles", _make_ai_studio_room, keep_alive=True,
                   on_enter=_enter_ai_studio_room,
                   tip="本地 AI 视频生成 (LTX-2.5) · 去人物/去话筒 (SAM 2.1) · 深度音频降噪 (Resemble) · Simone 人像精修与 3D LUT")

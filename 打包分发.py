@@ -73,10 +73,8 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "licenses",
     "resources/brand",
     "片语工作室 me.png",
-    "runtime/bin",
-    "runtime/mimalloc",
-    "runtime/venv/Scripts/python.exe",
-    "runtime/venv/Scripts/pythonw.exe",
+    "片语工作室_安装与使用说明书.pdf",
+    "runtime/venv/Lib/site-packages/cutora_rust_core",
     "modules/table_tool/app/表格工具.py",
     "modules/table_tool/install.py",
     "modules/table_tool/uninstall.py",
@@ -90,6 +88,7 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "modules/studio_gateway",
     "studio_launcher.py",
     "install_studio.py",
+    "打包分发.py",
     "片语工作室.bat",
     "片语工作室.vbs",
     "代码热更新_双击同步最新功能.bat",
@@ -98,6 +97,8 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "启动本地算力网关.bat",
     "打开表格工具.bat",
     "安装与体检.bat",
+    "收集卡死诊断信息.bat",
+    "收集卡死诊断信息.ps1",
     "README.md",
     "安装与扩展包使用指南.md",
     "SECURITY_AUDIT_REPORT.md",
@@ -332,30 +333,43 @@ def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
     }
 
 
-def verify_and_build_zip(edition: str = "standard") -> dict[str, Any]:
+def verify_and_build_zip(edition: str = "code-only") -> dict[str, Any]:
     DIST_DIR.mkdir(parents=True, exist_ok=True)
     date_tag = time.strftime("%Y.%m.%d")
     tag_map = {
         "cutora-only": f"片语工作室_极简CUTORA专享代码包_{date_tag}.zip",
-        "standard": f"10_【日常代码热更新包_563MB】片语工作室_四翼全代码热更新包_{date_tag}.zip",
+        "code-only": "02_【代码主程序包_日常更新只下此包】片语工作室_v3.0_全功能代码包.zip",
+        "standard": "02_【代码主程序包_日常更新只下此包】片语工作室_v3.0_全功能代码包.zip",
+        "models-once": "01_【模型与环境底座包_只需下载一次】片语工作室_v3.0_AI模型与运行环境包.zip",
         "full-portable": f"片语工作室_完整便携解释器版_{date_tag}.zip",
         "base-25gb": f"01_【必下底座_17.5GB】片语工作室_标准核心版_含CUTORA_表格工具_运行环境_25G核心字幕抠像立体声模型_{date_tag}.zip",
     }
     zip_name = tag_map.get(edition, f"片语工作室_{edition}_{date_tag}.zip")
     zip_path = DIST_DIR / zip_name
 
-    # 注意：base-25gb 底座默认包含统一工作室外壳 + CUTORA + 右键表格工具 + 完整运行环境 + 25GB 基础模型；
-    # Orante 与 Robota 作为 02 / 03 号独立扩展包按需选择（如果用户下载了 02/03 放入 packs/ 会自动一键拼装）
-    include_roots = list(CORE_SHELL_AND_CUTORA_ROOTS if edition in ("cutora-only", "base-25gb") else BASE_APP_ROOTS)
-    if edition in ("full-portable", "base-25gb"):
-        include_roots.append("runtime/python")
-        include_roots.append("runtime/ffmpeg")
-    if edition == "base-25gb":
-        include_roots.append("runtime/venv")
+    if edition == "models-once":
+        # 模型与环境底座包：只含 runtime 环境与核心 AI 模型，用户只需下载一次，后续升级代码永不重下！
+        include_roots = [
+            "runtime/python",
+            "runtime/venv",
+            "runtime/bin",
+            "runtime/ffmpeg",
+            "runtime/mimalloc",
+        ]
         manifest = load_manifest()
         for mp in manifest.get("base_edition", {}).get("included_model_paths", []):
             if mp not in include_roots:
                 include_roots.append(mp)
+    else:
+        include_roots = list(CORE_SHELL_AND_CUTORA_ROOTS if edition in ("cutora-only", "base-25gb", "code-only", "standard") else BASE_APP_ROOTS)
+        if edition in ("full-portable", "base-25gb"):
+            include_roots.extend(["runtime/python", "runtime/ffmpeg", "runtime/bin", "runtime/mimalloc"])
+        if edition == "base-25gb":
+            include_roots.append("runtime/venv")
+            manifest = load_manifest()
+            for mp in manifest.get("base_edition", {}).get("included_model_paths", []):
+                if mp not in include_roots:
+                    include_roots.append(mp)
 
     files_added = 0
     security_violations: list[str] = []
@@ -500,8 +514,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="片语工作室安全脱敏与模块化插件包打包工具")
     parser.add_argument(
         "--edition",
-        default="standard",
-        choices=["cutora-only", "standard", "full-portable", "base-25gb", "pack", "cloud-drive-all", "plan"],
+        default="code-only",
+        choices=["code-only", "models-once", "cutora-only", "standard", "full-portable", "base-25gb", "pack", "cloud-drive-all", "plan"],
         help="打包版本档位",
     )
     parser.add_argument("--pack-id", default="", help="当 --edition pack 时指定扩展包 ID (如 pack-ltx25-video)")
