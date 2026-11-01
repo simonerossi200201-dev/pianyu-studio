@@ -352,13 +352,16 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
     zip_path = DIST_DIR / zip_name
 
     if edition == "models-once":
-        include_roots = [
-            "runtime/python",
-            "runtime/venv",
-            "runtime/bin",
-            "runtime/ffmpeg",
-            "runtime/mimalloc",
-        ]
+        if target_platform == "macos-arm64":
+            include_roots = []
+        else:
+            include_roots = [
+                "runtime/python",
+                "runtime/venv",
+                "runtime/bin",
+                "runtime/ffmpeg",
+                "runtime/mimalloc",
+            ]
         manifest = load_manifest()
         for mp in manifest.get("base_edition", {}).get("included_model_paths", []):
             if mp not in include_roots:
@@ -386,6 +389,31 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
 
     print(f"[打包开始] 正在生成主程序包: {zip_name} ...", flush=True)
     arc_prefix = "片语工作室/" if edition in ("code-only", "standard", "models-once") else ""
+
+    def _add_file_to_zip(zf_obj: zipfile.ZipFile, src_p: Path, arc_name: str, comp_type: int) -> None:
+        is_unix_exec = (
+            src_p.suffix.lower() in (".command", ".sh")
+            or "/bin/" in arc_name.replace("\\", "/")
+            or arc_name.endswith(("/ffmpeg", "/ffprobe", "/rclone", "/uv", "/uvx"))
+        )
+        if src_p.suffix.lower() in (".command", ".sh"):
+            raw_lf = src_p.read_bytes().replace(b"\r\n", b"\n")
+            zi = zipfile.ZipInfo(arc_name, time.localtime(src_p.stat().st_mtime)[:6])
+            zi.compress_type = zipfile.ZIP_DEFLATED
+            zi.create_system = 3  # Unix
+            zi.external_attr = (0o100755 << 16)  # -rwxr-xr-x
+            zf_obj.writestr(zi, raw_lf)
+        elif is_unix_exec and target_platform == "macos-arm64":
+            zi = zipfile.ZipInfo.from_file(src_p, arc_name)
+            zi.compress_type = comp_type
+            zi.create_system = 3  # Unix
+            zi.external_attr = (0o100755 << 16)  # -rwxr-xr-x
+            with src_p.open("rb") as fsrc, zf_obj.open(zi, "w") as fdst:
+                import shutil as _sh
+                _sh.copyfileobj(fsrc, fdst, 1024 * 1024 * 4)
+        else:
+            zf_obj.write(src_p, arc_name, compress_type=comp_type)
+
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as zf:
         if edition == "models-once":
             zf.writestr(
@@ -400,14 +428,18 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
                 "====================================================================\n"
                 "  《片语工作室》(Pianyu Studio v3.0) — macOS Apple Silicon (M1~M4) 版\n"
                 "====================================================================\n\n"
-                "1. 解压后进入「片语工作室」文件夹，双击运行『安装与体检.command』：\n"
+                "1. 模型包与代码包说明：\n"
+                "   - 『01_模型与环境底座包.zip』中的 AI 模型权重 (runtime/models) 在 Windows 与 Mac 上 100% 通用！\n"
+                "   - 您只需把『01_模型与环境底座包.zip』与本包放在同一目录（或保留在「下载 Downloads」文件夹，甚至无需手动解压 01 包），\n"
+                "     或者若已用 Finder 双击解压出「片语工作室 2」，双击本包内的『安装与体检.command』会自动为您提取/合并通用 AI 模型，\n"
+                "     并自动跳过 Windows 专属的 .exe/.dll 文件！\n\n"
+                "2. 一键安装与体检：\n"
+                "   - 双击运行『安装与体检.command』（若首次提示安全拦截，右键 -> 打开）：\n"
                 "   - 自动配置 ARM64 原生 Python 环境与 Metal / VideoToolbox / Accelerate 硬件加速\n"
                 "   - 自动在桌面生成《片语工作室.app》与《右键表格工具.app》\n"
                 "   - 自动注册 macOS 访达 (Finder) 右键『快速操作 -> 用表格工具打开』\n\n"
-                "2. 日常启动：\n"
-                "   - 双击桌面《片语工作室.app》或目录内『启动片语工作室.command』即可启动\n"
-                "   - 支持 Orante 2.0（含 0 多账号池、首尾帧/素材双模式、预设库、播放器模式）、\n"
-                "     CUTORA 剪辑台（VideoToolbox 硬编解码 + Metal MPS + 统一内存零拷贝）与右键表格工具。\n",
+                "3. 日常启动：\n"
+                "   - 双击桌面《片语工作室.app》或目录内『启动片语工作室.command』即可启动。\n",
             )
         zf.writestr(
             arc_prefix + "packs/README_如何安装扩展包.txt",
@@ -415,6 +447,8 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
             "然后双击根目录的《安装与体检.bat》（macOS 双击《安装与体检.command》）或打开《片语工作室》点击右上角【📦 模块与模型扩展中心】，即可一键无缝拼装！\n",
         )
         for item in include_roots:
+            if target_platform == "macos-arm64" and item.endswith(("cutora_rust_core", ".bat", ".vbs", ".ps1")):
+                continue
             target = LTX_ROOT / item
             is_runtime_tree = item.startswith("runtime/")
             if target.is_file():
@@ -423,7 +457,7 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
                     if target.suffix == ".py" and not is_runtime_tree:
                         py_compile.compile(str(target), doraise=True)
                     comp = zipfile.ZIP_STORED if (is_runtime_tree or target.suffix.lower() in STORED_EXTS) else zipfile.ZIP_DEFLATED
-                    zf.write(target, arc_prefix + rel.replace("\\", "/"), compress_type=comp)
+                    _add_file_to_zip(zf, target, arc_prefix + rel.replace("\\", "/"), comp)
                     files_added += 1
             elif target.is_dir():
                 for dirpath, dirnames, filenames in os.walk(target):
@@ -436,6 +470,8 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
                         sfx = p.suffix.lower()
                         if sfx in (".pyc", ".pyo", ".mp4", ".mov", ".zip", ".ltxpack", ".ltxpart"):
                             continue
+                        if target_platform == "macos-arm64" and sfx in (".pyd", ".exe", ".dll", ".bat", ".vbs", ".ps1"):
+                            continue
                         if not is_runtime_tree and sfx in (".py", ".toml", ".json", ".md", ".bat", ".command") and "secrets_vault.py" not in rel:
                             try:
                                 txt = p.read_text(encoding="utf-8", errors="ignore")
@@ -447,8 +483,20 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
                             except Exception:
                                 pass
                         comp = zipfile.ZIP_STORED if (is_runtime_tree or sfx in STORED_EXTS) else zipfile.ZIP_DEFLATED
-                        zf.write(p, arc_prefix + rel.replace("\\", "/"), compress_type=comp)
+                        _add_file_to_zip(zf, p, arc_prefix + rel.replace("\\", "/"), comp)
                         files_added += 1
+
+        # 若为 macOS ARM64 打包，自动注入预置的原生 Apple Silicon (aarch64-apple-darwin) Python 3.11 + FFmpeg + uv + rclone 运行时
+        mac_stage_rt = DIST_DIR / "_macos_runtime_staged" / "runtime"
+        if target_platform == "macos-arm64" and mac_stage_rt.is_dir():
+            for dirpath, _dirnames, filenames in os.walk(mac_stage_rt):
+                for fn in filenames:
+                    p = Path(dirpath) / fn
+                    rel_rt = "runtime/" + str(p.relative_to(mac_stage_rt)).replace("\\", "/")
+                    sfx = p.suffix.lower()
+                    comp = zipfile.ZIP_STORED if sfx in STORED_EXTS else zipfile.ZIP_DEFLATED
+                    _add_file_to_zip(zf, p, arc_prefix + rel_rt, comp)
+                    files_added += 1
 
     elapsed = round(time.time() - t0, 1)
     sz_gb = round(zip_path.stat().st_size / (1024 ** 3), 3)

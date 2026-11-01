@@ -5,9 +5,23 @@ reject pixels where the forward-backward flow disagrees or the warped neighbour 
 centre by more than a few noise sigmas (occlusion / mouth / hands -> no ghosting), and average the rest.
 Then an NL-means spatial pass: chroma-focused, optional gentle luma. Gentler inside the face mask so skin texture stays.
 No shell=True, no eval; ffmpeg via argument lists."""
-import argparse, os, subprocess, time
+import argparse, os, shutil, subprocess, time
 from collections import deque
 import numpy as np, cv2
+
+_LTX_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+_DEF_FFMPEG = next(
+    (c for c in (
+        os.path.join(_LTX_ROOT, "runtime", "bin", "ffmpeg.exe"),
+        os.path.join(_LTX_ROOT, "runtime", "ffmpeg", "ffmpeg.exe"),
+        os.path.join(_LTX_ROOT, "runtime", "ffmpeg", "bin", "ffmpeg"),
+        os.path.join(_LTX_ROOT, "runtime", "bin", "ffmpeg"),
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe",
+    ) if os.path.isfile(c)),
+    shutil.which("ffmpeg") or "ffmpeg",
+)
 
 ap = argparse.ArgumentParser()
 ap.add_argument("input"); ap.add_argument("out")
@@ -18,11 +32,13 @@ ap.add_argument("--chroma", type=float, default=0.6, help="chroma NL-means stren
 ap.add_argument("--luma-nl", type=float, default=0.0, help="NL-means h on luma (0=off, 2-4 gentle)")
 ap.add_argument("--face-npz", default="", help="faces.npz (alpha) from face_pass.py")
 ap.add_argument("--face-strength", type=float, default=0.5, help="multiplier inside the face")
-ap.add_argument("--ffmpeg", default=r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe")
+ap.add_argument("--ffmpeg", default=_DEF_FFMPEG)
 ap.add_argument("--fps", type=float, default=30.0); ap.add_argument("--seconds", type=float, default=0)
 a = ap.parse_args()
 a.radius = int(np.clip(a.radius, 1, 3)); a.strength = float(np.clip(a.strength, 0, 1))
-fp = a.ffmpeg.replace("ffmpeg.exe", "ffprobe.exe")
+fp = os.path.join(os.path.dirname(a.ffmpeg), "ffprobe.exe" if a.ffmpeg.lower().endswith(".exe") else "ffprobe")
+if not os.path.isfile(fp):
+    fp = shutil.which("ffprobe") or "ffprobe"
 W, H = [int(v) for v in subprocess.run([fp, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
                                          "-of", "csv=p=0", a.input], capture_output=True, text=True, check=True).stdout.strip().split(",")[:2]]
 FA = np.load(a.face_npz)["alpha"] if a.face_npz else None

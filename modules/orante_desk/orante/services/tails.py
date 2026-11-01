@@ -209,7 +209,7 @@ def video_info(path: Path) -> dict:
     if key in _INFO_CACHE:
         return _INFO_CACHE[key]
     exe = _ffmpeg()
-    ffprobe = exe.replace("ffmpeg.exe", "ffprobe.exe").replace("ffmpeg", "ffprobe")
+    ffprobe = str(Path(exe).with_name("ffprobe.exe" if exe.lower().endswith(".exe") else "ffprobe"))
     if not Path(ffprobe).is_file():
         ffprobe = exe  # 有的发行版 ffmpeg 也能 -f ffprobe，下面走 ffmpeg -i 兜底
         cmd = [exe, "-hide_banner", "-i", str(path)]

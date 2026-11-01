@@ -193,6 +193,16 @@ def _ffmpeg_candidates() -> list[tuple[str, str]]:
             out.append((c, "设置"))
     for name in ("ffmpeg.exe", "ffmpeg"):
         out.append((str(_paths.ROOT / "bin" / name), "Orante/bin"))
+        try:
+            ltx_rt = _paths.ROOT.parents[1] / "runtime"
+            out.append((str(ltx_rt / "ffmpeg" / "bin" / name), "Studio/runtime"))
+            out.append((str(ltx_rt / "ffmpeg" / name), "Studio/runtime"))
+            out.append((str(ltx_rt / "bin" / name), "Studio/runtime"))
+        except Exception:
+            pass
+    if os.name != "nt":
+        for mac_ff in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"):
+            out.append((mac_ff, "macOS/Homebrew"))
     try:
         import imageio_ffmpeg as _iio  # type: ignore
         try:

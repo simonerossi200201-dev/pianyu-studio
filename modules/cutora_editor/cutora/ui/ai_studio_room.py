@@ -83,9 +83,14 @@ def _resolve_tool_py(dev_rel: str) -> Path:
     dev_p = _DEV_LLM_ROOT / dev_rel
     if dev_p.is_file():
         return dev_p
-    studio_py = LTX_ROOT / "runtime" / "venv" / "Scripts" / "python.exe"
-    if studio_py.is_file():
-        return studio_py
+    for cand in (
+        LTX_ROOT / "runtime" / "venv" / "Scripts" / "python.exe",
+        LTX_ROOT / "runtime" / "venv" / "bin" / "python3",
+        LTX_ROOT / "runtime" / "venv" / "bin" / "python",
+        LTX_ROOT / "runtime" / "python" / "bin" / "python3",
+    ):
+        if cand.is_file():
+            return cand
     return Path(sys.executable)
 
 
@@ -1010,16 +1015,26 @@ COMFY_ROOT = (
     if (LTX_ROOT / "runtime" / "comfyui" / "main.py").is_file()
     else (_DEV_LLM_ROOT / "ComfyUI")
 )
-COMFY_PY = (
-    (COMFY_ROOT / "venv" / "Scripts" / "python.exe")
-    if (COMFY_ROOT / "venv" / "Scripts" / "python.exe").is_file()
-    else _resolve_tool_py(r"ComfyUI\venv\Scripts\python.exe")
+COMFY_PY = next(
+    (
+        c for c in (
+            COMFY_ROOT / "venv" / "Scripts" / "python.exe",
+            COMFY_ROOT / "venv" / "bin" / "python3",
+            COMFY_ROOT / "venv" / "bin" / "python",
+        )
+        if c.is_file()
+    ),
+    _resolve_tool_py(r"ComfyUI\venv\Scripts\python.exe"),
 )
 COMFY_INPUT = COMFY_ROOT / "input"
 COMFY_OUTPUT = COMFY_ROOT / "output"
 _FFMPEG_CANDIDATES = (
     LTX_ROOT / "runtime" / "bin" / "ffmpeg.exe",
     LTX_ROOT / "runtime" / "ffmpeg" / "ffmpeg.exe",
+    LTX_ROOT / "runtime" / "ffmpeg" / "bin" / "ffmpeg",
+    LTX_ROOT / "runtime" / "bin" / "ffmpeg",
+    Path("/opt/homebrew/bin/ffmpeg"),
+    Path("/usr/local/bin/ffmpeg"),
     Path(r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe"),
 )
 FFMPEG_EXE = next((str(p) for p in _FFMPEG_CANDIDATES if p.is_file()), "ffmpeg")

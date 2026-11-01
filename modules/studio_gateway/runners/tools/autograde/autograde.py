@@ -20,15 +20,19 @@ SECURITY: no shell, argv lists only, fixed filter templates, every number clampe
 LLM text is never executed nor put in a filter, network only to localhost Ollama,
 input is never overwritten, all outputs stay inside the output folder.
 """
-import argparse, base64, ipaddress, json, math, os, subprocess, sys, time, urllib.parse, urllib.request
+import argparse, base64, ipaddress, json, math, os, shutil, subprocess, sys, time, urllib.parse, urllib.request
 import numpy as np, cv2
 
 _LTX_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
 FF_CANDIDATES = [
     os.path.join(_LTX_ROOT, "runtime", "bin", "ffmpeg.exe"),
     os.path.join(_LTX_ROOT, "runtime", "ffmpeg", "ffmpeg.exe"),
+    os.path.join(_LTX_ROOT, "runtime", "ffmpeg", "bin", "ffmpeg"),
+    os.path.join(_LTX_ROOT, "runtime", "bin", "ffmpeg"),
+    "/opt/homebrew/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
     r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe",
-]   # fixed binary, no PATH lookup
+]
 LUT_N = 33
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".mts", ".webm"}
 LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
@@ -57,6 +61,8 @@ def clampp(p):
 def ffbin():
     for c in FF_CANDIDATES:
         if os.path.isfile(c): return c
+    w = shutil.which("ffmpeg")
+    if w and os.path.isfile(w): return w
     sys.exit("ffmpeg not found at fixed path")
 
 def run(cmd, **kw):

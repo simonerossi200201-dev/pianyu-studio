@@ -1917,7 +1917,7 @@ def matte_item(
     engine_used = "point_grabcut"
 
     if mode == "rmbg" and not prefer_fast and not points:
-        rmbg_py = LTX_ROOT / "runtime" / "venv" / "Scripts" / "python.exe"
+        rmbg_py = _resolve_comfy_py()
         if not rmbg_py.is_file():
             rmbg_py = Path(r"D:\0_LLM\tools\venv_rmbg\Scripts\python.exe")
         rmbg_script = LTX_ROOT / "modules" / "studio_gateway" / "runners" / "tools" / "rmbg" / "rmbg.py"

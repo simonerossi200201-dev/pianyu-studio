@@ -10,21 +10,37 @@ Method (after Zhang et al., SIGGRAPH 2020 'Portrait Shadow Manipulation', ratio-
  7 feathered MediaPipe+SAM-free face mask; R ~ 1 on eyes/lenses/lips
  Y_out = Y*R applied as one gain on R,G,B in linear light -> chroma unchanged.
 Deterministic, offline, no shell=True / eval."""
-import argparse, json, os, re, subprocess, time
+import argparse, json, os, re, shutil, subprocess, time
 import numpy as np, cv2
+
+_LTX_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+_DEF_FFMPEG = next(
+    (c for c in (
+        os.path.join(_LTX_ROOT, "runtime", "bin", "ffmpeg.exe"),
+        os.path.join(_LTX_ROOT, "runtime", "ffmpeg", "ffmpeg.exe"),
+        os.path.join(_LTX_ROOT, "runtime", "ffmpeg", "bin", "ffmpeg"),
+        os.path.join(_LTX_ROOT, "runtime", "bin", "ffmpeg"),
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe",
+    ) if os.path.isfile(c)),
+    shutil.which("ffmpeg") or "ffmpeg",
+)
 
 ap = argparse.ArgumentParser()
 ap.add_argument("input"); ap.add_argument("faces"); ap.add_argument("out")
 ap.add_argument("--k", type=float, default=0.2); ap.add_argument("--rmax", type=float, default=1.5)
 ap.add_argument("--soft", type=float, default=0.5, help="lerp S_old toward its blur (shadow edge softening)")
 ap.add_argument("--gain", type=float, default=1.0, help="global linear exposure gain 0.5-2 (soft shoulder)")
-ap.add_argument("--ffmpeg", default=r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe")
+ap.add_argument("--ffmpeg", default=_DEF_FFMPEG)
 a = ap.parse_args()
 a.k = float(np.clip(a.k, 0, 0.5)); a.rmax = float(np.clip(a.rmax, 1, 2)); a.soft = float(np.clip(a.soft, 0, 1)); a.gain = float(np.clip(a.gain, 0.5, 2))
 for p in (a.input, a.faces, a.out):
     if re.search(r"[\"'`;|&<>$%*?\n\r]", p): raise SystemExit("unsafe path")
 if os.path.abspath(a.out).lower() == os.path.abspath(a.input).lower(): raise SystemExit("refusing to overwrite input")
-ffprobe = os.path.join(os.path.dirname(a.ffmpeg), "ffprobe.exe")
+ffprobe = os.path.join(os.path.dirname(a.ffmpeg), "ffprobe.exe" if a.ffmpeg.lower().endswith(".exe") else "ffprobe")
+if not os.path.isfile(ffprobe):
+    ffprobe = shutil.which("ffprobe") or "ffprobe"
 s = json.loads(subprocess.run([ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
                "stream=width,height,r_frame_rate", "-of", "json", a.input], capture_output=True, text=True).stdout)["streams"][0]
 W, H = int(s["width"]), int(s["height"]); num, den = s["r_frame_rate"].split("/"); fps = float(num) / float(den)

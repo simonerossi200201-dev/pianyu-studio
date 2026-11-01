@@ -794,6 +794,7 @@ def launch_cutora_room(room: str = "stitch", project_path: str = "") -> bool:
         env["CUTORA_OPEN_PROJECT"] = str(project_path)
     bin_dirs = [
         str(LTX_ROOT / "runtime" / "bin"),
+        str(LTX_ROOT / "runtime" / "ffmpeg" / "bin"),
         str(LTX_ROOT / "runtime" / "ffmpeg"),
     ]
     env["PATH"] = os.pathsep.join(bin_dirs + [env.get("PATH", "")])

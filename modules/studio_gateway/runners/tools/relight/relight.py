@@ -552,12 +552,39 @@ def main():
     ap.add_argument("--depth-res", type=int, default=512)
     ap.add_argument("--seconds", type=float, default=0)
     ap.add_argument("--max-width", type=int, default=1920)
-    ap.add_argument("--sam", default=r"D:\0_Dev\CUTORA\runtime\models\matte_sam21_base_plus",
+    _ltx_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+    _def_sam = next(
+        (c for c in (
+            os.path.join(_ltx_root, "runtime", "models", "matte_sam21_base_plus"),
+            r"D:\0_Dev\CUTORA\runtime\models\matte_sam21_base_plus",
+        ) if os.path.isdir(c)),
+        os.path.join(_ltx_root, "runtime", "models", "matte_sam21_base_plus"),
+    )
+    _def_depth = next(
+        (c for c in (
+            os.path.join(_ltx_root, "runtime", "models", "dpt_hybrid"),
+            r"D:\0_LLM\tools\relight\models\dpt-hybrid-midas",
+        ) if os.path.isdir(c)),
+        os.path.join(_ltx_root, "runtime", "models", "dpt_hybrid"),
+    )
+    _def_ff = next(
+        (c for c in (
+            os.path.join(_ltx_root, "runtime", "bin", "ffmpeg.exe"),
+            os.path.join(_ltx_root, "runtime", "ffmpeg", "ffmpeg.exe"),
+            os.path.join(_ltx_root, "runtime", "ffmpeg", "bin", "ffmpeg"),
+            os.path.join(_ltx_root, "runtime", "bin", "ffmpeg"),
+            "/opt/homebrew/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
+            r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe",
+        ) if os.path.isfile(c)),
+        "ffmpeg",
+    )
+    ap.add_argument("--sam", default=_def_sam,
                     help="SAM 2.1 folder (read-only); empty string = OpenCV fallback")
     ap.add_argument("--seg-every", type=int, default=5)
-    ap.add_argument("--depth-model", default=r"D:\0_LLM\tools\relight\models\dpt-hybrid-midas")
-    ap.add_argument("--ffmpeg", default=r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe")
-    ap.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto",
+    ap.add_argument("--depth-model", default=_def_depth)
+    ap.add_argument("--ffmpeg", default=_def_ff)
+    ap.add_argument("--device", choices=["auto", "cuda", "mps", "cpu"], default="auto",
                     help="auto = GPU only if >=3 GiB free (GPU is shared)")
     ap.add_argument("--iclight", action="store_true", help="IC-Light keyframe refinement if installed")
     ap.add_argument("--debug", action="store_true", help="also write mask/normal preview")

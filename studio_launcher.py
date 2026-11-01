@@ -137,7 +137,12 @@ def launch_orante(start_node: str = "") -> bool:
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env["PATH"] = os.pathsep.join(
-        [str(LTX_ROOT / "runtime" / "bin"), str(LTX_ROOT / "runtime" / "ffmpeg"), env.get("PATH", "")]
+        [
+            str(LTX_ROOT / "runtime" / "bin"),
+            str(LTX_ROOT / "runtime" / "ffmpeg" / "bin"),
+            str(LTX_ROOT / "runtime" / "ffmpeg"),
+            env.get("PATH", ""),
+        ]
     )
     if start_node:
         env["ORANTE_START_NODE"] = start_node

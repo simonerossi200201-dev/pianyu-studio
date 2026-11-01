@@ -3,21 +3,50 @@
 Run with D:\\0_LLM\\tools\\venv_mediapipe python. Offline: uses a local .task model file.
 Writes an .npz with float16 normals (N,h,w,3) and alpha (N,h,w) at 1/4 resolution, which
 relight.py blends into its depth normals. No shell=True, no eval; ffmpeg via argument list."""
-import argparse, os, subprocess, sys, time
+import argparse, os, shutil, subprocess, sys, time
 import numpy as np, cv2
 import mediapipe as mp
 from mediapipe.tasks import python as mpt
 from mediapipe.tasks.python import vision
 
+_LTX_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+_DEF_MODEL = next(
+    (c for c in (
+        os.path.join(_LTX_ROOT, "runtime", "models", "mediapipe", "face_landmarker.task"),
+        r"D:\0_LLM\tools\relight\models\mediapipe\face_landmarker.task",
+    ) if os.path.isfile(c)),
+    os.path.join(_LTX_ROOT, "runtime", "models", "mediapipe", "face_landmarker.task"),
+)
+_DEF_FFMPEG = next(
+    (c for c in (
+        os.path.join(_LTX_ROOT, "runtime", "bin", "ffmpeg.exe"),
+        os.path.join(_LTX_ROOT, "runtime", "ffmpeg", "ffmpeg.exe"),
+        os.path.join(_LTX_ROOT, "runtime", "ffmpeg", "bin", "ffmpeg"),
+        os.path.join(_LTX_ROOT, "runtime", "bin", "ffmpeg"),
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe",
+    ) if os.path.isfile(c)),
+    shutil.which("ffmpeg") or "ffmpeg",
+)
+
 ap = argparse.ArgumentParser()
 ap.add_argument("input"); ap.add_argument("out")
-ap.add_argument("--model", default=r"D:\0_LLM\tools\relight\models\mediapipe\face_landmarker.task")
-ap.add_argument("--ffmpeg", default=r"D:\0_Dev\CUTORA\runtime\ffmpeg\ffmpeg.exe")
-ap.add_argument("--width", type=int, required=True); ap.add_argument("--height", type=int, required=True)
+ap.add_argument("--model", default=_DEF_MODEL)
+ap.add_argument("--ffmpeg", default=_DEF_FFMPEG)
+ap.add_argument("--width", type=int, default=0); ap.add_argument("--height", type=int, default=0)
 ap.add_argument("--fps", type=float, default=30.0); ap.add_argument("--seconds", type=float, default=0)
 ap.add_argument("--ema", type=float, default=0.5)
 a = ap.parse_args()
-W, H = a.width, a.height; w4, h4 = W // 4, H // 4
+if a.width <= 0 or a.height <= 0:
+    _cap = cv2.VideoCapture(a.input)
+    a.width = int(_cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1080)
+    a.height = int(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1920)
+    _fps = _cap.get(cv2.CAP_PROP_FPS)
+    if _fps and 1.0 <= _fps <= 240.0:
+        a.fps = float(_fps)
+    _cap.release()
+W, H = a.width, a.height; w4, h4 = max(1, W // 4), max(1, H // 4)
 opts = vision.FaceLandmarkerOptions(base_options=mpt.BaseOptions(model_asset_path=a.model),
                                     running_mode=vision.RunningMode.VIDEO, num_faces=2)
 lm = vision.FaceLandmarker.create_from_options(opts)
