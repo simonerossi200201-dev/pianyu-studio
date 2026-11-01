@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -23,12 +24,21 @@ _LOAD_TRIED = False
 
 def _find_dll() -> Optional[Path]:
     here = Path(__file__).resolve().parent
-    candidates = [
-        here / "cutora_rust_core.dll",
-        here.parent.parent / "rust_core" / "target" / "release" / "cutora_rust_core.dll",
-        here.parent.parent.parent.parent / "runtime" / "bin" / "cutora_rust_core.dll",
-        Path(r"D:\0_LTX\runtime\bin\cutora_rust_core.dll"),
-    ]
+    if sys.platform == "darwin":
+        lib_names = ("libcutora_rust_core.dylib", "cutora_rust_core.dylib")
+    elif os.name == "nt":
+        lib_names = ("cutora_rust_core.dll",)
+    else:
+        lib_names = ("libcutora_rust_core.so", "cutora_rust_core.so")
+    candidates = []
+    for name in lib_names:
+        candidates.extend([
+            here / name,
+            here.parent.parent / "rust_core" / "target" / "release" / name,
+            here.parent.parent.parent.parent / "runtime" / "bin" / name,
+        ])
+    if os.name == "nt":
+        candidates.append(Path(r"D:\0_LTX\runtime\bin\cutora_rust_core.dll"))
     for p in candidates:
         if p.is_file():
             return p

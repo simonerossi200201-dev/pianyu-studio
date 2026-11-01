@@ -4,14 +4,24 @@ from __future__ import annotations
 from pathlib import Path
 import logging
 log = logging.getLogger("orante.caps")
-# 规格 98：studio = 本地模型（MiniMax H3）。4~15 秒都能出，Flow 的 4/6/8、Grok 的 6/10/15 换过去都原样保留。
-DURATIONS = {"flow": (4, 6, 8), "grok": (6, 10, 15), "studio": tuple(range(4, 16))}
+# 规格 98：studio = 本地模型（MiniMax H3）。4~15 秒都能出，Flow 的 4/6/8/10、Grok 的 6/10/15 换过去都原样保留。
+# Omni 1.1 Flash 支持 10 秒时长档位。
+DURATIONS = {"flow": (4, 6, 8, 10), "grok": (6, 10, 15), "studio": tuple(range(4, 16))}
+FLOW_VEO_DURATIONS = (4, 6, 8)
+FLOW_OMNI_DURATIONS = (4, 6, 8, 10)
 ASPECTS = {"flow": ("9:16", "16:9"), "grok": ("follow_image",), "studio": ("9:16", "16:9")}
 FLOW_ASPECT_CODE = {"9:16": 1, "16:9": 2}
 NO_COPY_DEFAULT = {"flow": 8, "grok": 10, "studio": 10}
 # 本地模型（LTX）与 Grok 统一按 6/10/15 秒自动拆段；手选仍兼容 4/6/8/10/15
 COPY_TIERS = {"flow": (4, 6, 8), "grok": (6, 10, 15), "studio": (4, 6, 8, 10, 15)}
 STUDIO_AUTO_TIERS = (6, 10, 15)
+
+
+def flow_durations_for(model_name: str = "") -> tuple[int, ...]:
+    """返回指定 Flow 模型支持的时长档位：Omni 系列支持 (4, 6, 8, 10)，其余 Veo 系列 (4, 6, 8)。"""
+    if "omni" in (model_name or "").lower():
+        return FLOW_OMNI_DURATIONS
+    return FLOW_VEO_DURATIONS
 
 def aspect_for_image(path, engine: str = "flow") -> str:
     """横（w≥h）→ 16:9，竖 → 9:16；正方形按横并打日志。"""

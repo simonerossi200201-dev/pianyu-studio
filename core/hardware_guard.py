@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import ctypes
 import os
+import platform
+import re
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -65,12 +68,21 @@ class HardwareProfile:
             return "Tier 2 (8GB中量级GPU模式)"
         return "Tier 1 (32GB内存+CPU安全模式)"
 
+    @property
+    def tier_code(self) -> str:
+        if self.recommended_tier >= 3:
+            return "tier_1_flagship"
+        if self.recommended_tier == 2:
+            return "tier_2_mainstream"
+        return "tier_3_entry"
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["gpu_available"] = self.gpu_available
         d["gpu_vram_total_gb"] = self.gpu_vram_total_gb
         d["gpu_vram_free_gb"] = self.gpu_vram_free_gb
         d["tier"] = self.tier_label
+        d["tier_code"] = self.tier_code
         d["tier_label"] = self.tier_label
         return d
 
@@ -90,6 +102,11 @@ class CapabilityVerdict:
         return asdict(self)
 
 
+def _get_system_ram_gb() -> float:
+    """获取系统总物理内存 (GB)，支持 Windows GlobalMemoryStatusEx 与 macOS sysctl hw.memsize。"""
+    return query_system_memory()[0]
+
+
 def query_system_memory() -> tuple[float, float, int]:
     """返回 (总物理内存GB, 可用物理内存GB, 内存占用百分比)。"""
     if os.name == "nt":
@@ -99,11 +116,96 @@ def query_system_memory() -> tuple[float, float, int]:
             total_gb = round(stat.ullTotalPhys / (1024 ** 3), 2)
             avail_gb = round(stat.ullAvailPhys / (1024 ** 3), 2)
             return total_gb, avail_gb, int(stat.dwMemoryLoad)
+
+    if sys.platform == "darwin":
+        try:
+            r_mem = subprocess.run(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+            )
+            total_bytes = int((r_mem.stdout or "").strip() or "0")
+            if total_bytes > 0:
+                total_gb = round(total_bytes / (1024 ** 3), 2)
+                avail_gb = round(total_gb * 0.65, 2)
+                try:
+                    r_vm = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=2.0)
+                    vm_txt = r_vm.stdout or ""
+                    m_ps = re.search(r"page size of (\d+) bytes", vm_txt)
+                    page_size = int(m_ps.group(1)) if m_ps else 16384
+                    free_pages = 0
+                    for key in ("Pages free", "Pages inactive", "Pages speculative"):
+                        m_p = re.search(rf"{re.escape(key)}:\s+(\d+)", vm_txt)
+                        if m_p:
+                            free_pages += int(m_p.group(1))
+                    if free_pages > 0:
+                        avail_gb = min(total_gb, round((free_pages * page_size) / (1024 ** 3), 2))
+                except Exception:
+                    pass
+                load_pct = max(1, min(99, int(round((1.0 - avail_gb / max(total_gb, 0.1)) * 100))))
+                return total_gb, avail_gb, load_pct
+        except Exception:
+            pass
+
     return 32.0, 16.0, 50
 
 
+def detect_gpu_hardware() -> dict[str, Any]:
+    """跨平台 GPU 与统一内存探测：
+    - Windows / Linux: 通过 nvidia-smi 无窗探测 NVIDIA GPU
+    - macOS Apple Silicon (arm64 / MPS): 通过 sysctl -n machdep.cpu.brand_string 与统一内存预算 (ram_total_gb * 0.75) 评估
+    """
+    return query_nvidia_gpu()
+
+
 def query_nvidia_gpu() -> dict[str, Any]:
-    """通过 nvidia-smi 无窗探测显卡状态，绝不初始化 CUDA Context。"""
+    """探测本机 GPU 状态（NVIDIA CUDA 或 macOS Apple Silicon 统一内存），绝不强行初始化重型 Context。"""
+    if sys.platform == "darwin":
+        is_arm_mac = platform.machine().lower() in ("arm64", "aarch64")
+        if not is_arm_mac:
+            torch_mod = sys.modules.get("torch")
+            if torch_mod is not None and hasattr(torch_mod, "backends") and hasattr(torch_mod.backends, "mps"):
+                try:
+                    is_arm_mac = bool(torch_mod.backends.mps.is_available())
+                except Exception:
+                    pass
+        if is_arm_mac:
+            brand = "Apple Silicon Unified GPU"
+            try:
+                r_brand = subprocess.run(
+                    ["sysctl", "-n", "machdep.cpu.brand_string"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2.0,
+                )
+                b_txt = (r_brand.stdout or "").strip()
+                if b_txt:
+                    brand = f"{b_txt} (Unified Memory MPS)"
+            except Exception:
+                pass
+            ram_total_gb, ram_avail_gb, _ = query_system_memory()
+            unified_total_gb = round(ram_total_gb * 0.75, 2)
+            unified_free_gb = round(min(unified_total_gb, ram_avail_gb * 0.85), 2)
+            unified_used_gb = round(max(0.0, unified_total_gb - unified_free_gb), 2)
+            if ram_total_gb >= 36.0:
+                hw_tier = "tier_1_flagship"
+            elif ram_total_gb >= 16.0:
+                hw_tier = "tier_2_mainstream"
+            else:
+                hw_tier = "tier_3_entry"
+            return {
+                "has_gpu": True,
+                "backend": "mps",
+                "is_apple_silicon": True,
+                "hardware_tier": hw_tier,
+                "name": brand,
+                "vram_total_gb": unified_total_gb,
+                "vram_free_gb": unified_free_gb,
+                "vram_used_gb": unified_used_gb,
+                "driver": "Metal/MPS",
+            }
+
     try:
         proc = subprocess.run(
             [
@@ -125,6 +227,8 @@ def query_nvidia_gpu() -> dict[str, Any]:
                 used_mb = float(parts[3])
                 return {
                     "has_gpu": True,
+                    "backend": "cuda",
+                    "is_apple_silicon": False,
                     "name": parts[0],
                     "vram_total_gb": round(total_mb / 1024.0, 2),
                     "vram_free_gb": round(free_mb / 1024.0, 2),
@@ -135,7 +239,9 @@ def query_nvidia_gpu() -> dict[str, Any]:
         pass
     return {
         "has_gpu": False,
-        "name": "CPU-Only (未检测到 NVIDIA 独立显卡)",
+        "backend": "cpu",
+        "is_apple_silicon": False,
+        "name": "CPU-Only (未检测到独立显卡)",
         "vram_total_gb": 0.0,
         "vram_free_gb": 0.0,
         "vram_used_gb": 0.0,
@@ -144,12 +250,19 @@ def query_nvidia_gpu() -> dict[str, Any]:
 
 
 def probe_hardware() -> HardwareProfile:
-    """获取当前机器完整硬件画像。"""
+    """获取当前机器完整硬件画像（兼容 Windows NVIDIA 与 macOS Apple Silicon 统一内存分级）。"""
     ram_total, ram_avail, ram_pct = query_system_memory()
     gpu = query_nvidia_gpu()
     cores = os.cpu_count() or 8
 
-    if gpu["has_gpu"] and gpu["vram_total_gb"] >= 12.0:
+    if gpu.get("is_apple_silicon"):
+        if ram_total >= 36.0:
+            tier = 3
+        elif ram_total >= 16.0:
+            tier = 2
+        else:
+            tier = 1
+    elif gpu["has_gpu"] and gpu["vram_total_gb"] >= 12.0:
         tier = 3
     elif gpu["has_gpu"] or ram_total >= 28.0:
         tier = 2
@@ -233,9 +346,11 @@ def evaluate_model_capability(model_id: str, profile: HardwareProfile | None = N
     except Exception:
         pass
 
+    accel_dev = "mps" if prof.driver_version == "Metal/MPS" else "cuda"
+
     # Tier 1: 原生支持 CPU 极速运行
     if tier == 1:
-        dev = "cuda" if (prof.has_nvidia_gpu and prof.vram_free_gb >= 3.0) else "cpu"
+        dev = accel_dev if (prof.has_nvidia_gpu and prof.vram_free_gb >= 3.0) else "cpu"
         return CapabilityVerdict(
             model_id=model_id,
             name=name,
@@ -255,7 +370,7 @@ def evaluate_model_capability(model_id: str, profile: HardwareProfile | None = N
                 name=name,
                 tier=tier,
                 can_run=True,
-                execution_device="cuda",
+                execution_device=accel_dev,
                 badge="🟢 GPU 硬件加速",
                 user_message=f"检测到 {prof.gpu_name} ({prof.vram_total_gb}GB)，使用显卡高速推理。",
                 cloud_fallback_available=False,
@@ -281,7 +396,7 @@ def evaluate_model_capability(model_id: str, profile: HardwareProfile | None = N
             name=name,
             tier=3,
             can_run=True,
-            execution_device="cuda",
+            execution_device=accel_dev,
             badge=f"⚡ 16GB GPU 独享算力 ({min_vram}GB+)",
             user_message=f"将通过 VRAMBroker 自动清空其他显存占用，独享 {prof.gpu_name} 全速生成。",
             cloud_fallback_available=True,

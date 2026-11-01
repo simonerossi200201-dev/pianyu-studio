@@ -47,6 +47,7 @@ from cutora.core.paths import REPO_ROOT, resolve_user_data, user_logs_dir
 
 logger = get_logger("cutora.core.blackbox")
 IS_WINDOWS = os.name == "nt"
+IS_MACOS = sys.platform == "darwin"
 TZ8 = timezone(timedelta(hours=8))
 
 BLACKBOX_DIR_NAME = "blackbox"
@@ -148,6 +149,70 @@ def _read_jsonl(path: str, max_items: int = 500) -> list[dict[str, Any]]:
 # Fast, Zero-Torch System Resource Snapshot
 # ---------------------------------------------------------------------------
 
+def _macos_mem_snapshot(res: dict[str, float]) -> None:
+    """Populate physical Unified Memory, swap usage, and process RSS on macOS."""
+    g = 1024.0 ** 3
+    try:
+        p_tot = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=2)
+        tot_bytes = int((p_tot.stdout or "").strip() or 0)
+        if tot_bytes > 0:
+            tot_p = tot_bytes / g
+            res["ram_total_gb"] = round(tot_p, 2)
+            p_vm = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=2)
+            out = p_vm.stdout or ""
+            page_size = 16384 if platform.machine().lower() in ("arm64", "aarch64") else 4096
+            for line in out.splitlines():
+                if "page size of" in line:
+                    for tok in line.split():
+                        if tok.isdigit():
+                            page_size = int(tok)
+                            break
+            avail_pages = 0
+            for line in out.splitlines():
+                if any(k in line for k in ("Pages free", "Pages inactive", "Pages speculative", "Pages purgeable")):
+                    parts = line.split(":")
+                    if len(parts) == 2:
+                        val = parts[1].strip().rstrip(".")
+                        if val.isdigit():
+                            avail_pages += int(val)
+            avl_p = (avail_pages * page_size) / g if avail_pages > 0 else tot_p * 0.5
+            res["ram_avail_gb"] = round(avl_p, 2)
+            res["ram_used_pct"] = round(max(0.0, (tot_p - avl_p) * 100.0 / tot_p), 1)
+    except Exception:
+        pass
+    try:
+        # Query vm.swapusage: "vm.swapusage: total = 2048.00M  used = 512.00M  free = 1536.00M  (encrypted)"
+        p_swp = subprocess.run(["sysctl", "-n", "vm.swapusage"], capture_output=True, text=True, timeout=2)
+        swp_out = (p_swp.stdout or "").strip()
+        swap_tot_gb = 0.0
+        swap_free_gb = 0.0
+        for part in swp_out.replace("=", " ").split():
+            if part.endswith("M") or part.endswith("G"):
+                pass
+        import re
+        m_tot = re.search(r"total\s*=\s*([0-9.]+)([MG])", swp_out)
+        m_free = re.search(r"free\s*=\s*([0-9.]+)([MG])", swp_out)
+        if m_tot:
+            swap_tot_gb = float(m_tot.group(1)) / (1024.0 if m_tot.group(2) == "M" else 1.0)
+        if m_free:
+            swap_free_gb = float(m_free.group(1)) / (1024.0 if m_free.group(2) == "M" else 1.0)
+        tot_c = res["ram_total_gb"] + swap_tot_gb
+        avl_c = res["ram_avail_gb"] + swap_free_gb
+        res["commit_total_gb"] = round(tot_c, 2)
+        res["commit_avail_gb"] = round(avl_c, 2)
+        if tot_c > 0:
+            res["commit_used_pct"] = round(max(0.0, (tot_c - avl_c) * 100.0 / tot_c), 1)
+    except Exception:
+        pass
+    try:
+        import resource
+        ru = resource.getrusage(resource.RUSAGE_SELF)
+        # ru_maxrss is in bytes on macOS
+        res["proc_rss_mb"] = round(float(ru.ru_maxrss) / (1024.0 * 1024.0), 1)
+    except Exception:
+        pass
+
+
 def query_memory_snapshot() -> dict[str, float]:
     """Return physical RAM and Windows Commit Charge (pagefile) in GB, plus process RSS."""
     res = {
@@ -210,6 +275,8 @@ def query_memory_snapshot() -> dict[str, float]:
             hproc = ctypes.windll.kernel32.GetCurrentProcess()
             if ctypes.windll.psapi.GetProcessMemoryInfo(hproc, ctypes.byref(pmc), pmc.cb):
                 res["proc_rss_mb"] = round(pmc.WorkingSetSize / (1024.0 * 1024.0), 1)
+        elif IS_MACOS:
+            _macos_mem_snapshot(res)
     except Exception:
         pass
     return res
@@ -218,11 +285,62 @@ def query_memory_snapshot() -> dict[str, float]:
 _GPU_SNAP_CACHE: dict[str, Any] = {"t": 0.0, "data": None}
 
 
+def _macos_gpu_snapshot() -> dict[str, Any] | None:
+    """Query Apple Silicon Metal GPU and Unified Memory telemetry via sysctl + ioreg."""
+    try:
+        p_brand = subprocess.run(
+            ["sysctl", "-n", "machdep.cpu.brand_string"],
+            capture_output=True, text=True, timeout=2,
+        )
+        chip_name = (p_brand.stdout or "").strip() or "Apple Silicon GPU"
+        mem = query_memory_snapshot()
+        # Apple Silicon allows up to ~75% of Unified Memory to be wired by Metal GPU
+        tot_gb = round(mem.get("ram_total_gb", 0.0) * 0.75, 2)
+        free_gb = round(min(tot_gb, mem.get("ram_avail_gb", 0.0)), 2)
+        used_gb = round(max(0.0, tot_gb - free_gb), 2)
+        gpu_util = 0.0
+        try:
+            p_io = subprocess.run(
+                ["ioreg", "-r", "-d", "1", "-w", "0", "-c", "IOAccelerator"],
+                capture_output=True, text=True, timeout=2,
+            )
+            io_out = p_io.stdout or ""
+            import re
+            m_util = re.search(r'"Device Utilization %"\s*=\s*(\d+)', io_out)
+            if m_util:
+                gpu_util = float(m_util.group(1))
+            m_mem = re.search(r'"In use system memory"\s*=\s*(\d+)', io_out)
+            if m_mem:
+                used_gb = round(int(m_mem.group(1)) / (1024.0 ** 3), 2)
+                free_gb = round(max(0.0, tot_gb - used_gb), 2)
+        except Exception:
+            pass
+        return {
+            "name": "%s (Unified Memory + VideoToolbox)" % chip_name,
+            "driver": "Metal/VideoToolbox",
+            "vram_total_gb": tot_gb,
+            "vram_used_gb": used_gb,
+            "vram_free_gb": free_gb,
+            "vram_used_pct": round(used_gb * 100.0 / tot_gb, 1) if tot_gb > 0 else 0.0,
+            "gpu_util_pct": gpu_util,
+            "temp_c": 0.0,
+            "power_w": 0.0,
+            "power_limit_w": 0.0,
+        }
+    except Exception:
+        return None
+
+
 def query_gpu_snapshot(max_age: float = 2.0) -> dict[str, Any] | None:
-    """Query nvidia-smi for GPU name, driver, VRAM, utilization, temperature, and power."""
+    """Query nvidia-smi (or macOS Apple Silicon Metal/Unified Memory) for GPU telemetry."""
     now = time.monotonic()
     if _GPU_SNAP_CACHE["data"] is not None and (now - _GPU_SNAP_CACHE["t"]) < max_age:
         return _GPU_SNAP_CACHE["data"]
+    if IS_MACOS:
+        data = _macos_gpu_snapshot()
+        _GPU_SNAP_CACHE["t"] = now
+        _GPU_SNAP_CACHE["data"] = data
+        return data
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if IS_WINDOWS else 0
     try:
         proc = subprocess.run(
@@ -754,6 +872,15 @@ def _probe_cpu_info() -> dict[str, Any]:
                 info["name"] = str(val or "").strip()
         except Exception:
             pass
+    elif IS_MACOS:
+        try:
+            proc = subprocess.run(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],
+                capture_output=True, text=True, timeout=2,
+            )
+            info["name"] = (proc.stdout or "").strip()
+        except Exception:
+            pass
     if not info["name"]:
         info["name"] = info["processor"]
     return info
@@ -761,6 +888,20 @@ def _probe_cpu_info() -> dict[str, Any]:
 
 def _probe_all_gpus() -> list[dict[str, Any]]:
     gpus: list[dict[str, Any]] = []
+    if IS_MACOS:
+        snap = _macos_gpu_snapshot()
+        if snap:
+            gpus.append({
+                "vendor": "Apple",
+                "index": "0",
+                "name": snap.get("name", "Apple Silicon GPU"),
+                "driver": snap.get("driver", "Metal/VideoToolbox"),
+                "vram_total_gb": snap.get("vram_total_gb", 0.0),
+                "vram_free_gb": snap.get("vram_free_gb", 0.0),
+                "compute_cap": "mps",
+                "power_limit_w": "",
+            })
+        return gpus
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if IS_WINDOWS else 0
     try:
         proc = subprocess.run(
@@ -874,11 +1015,34 @@ def analyze_hardware_and_advise(base_logs_dir: str | None = None) -> dict[str, A
         cc_float = 0.0
 
     # Determine tier:
-    # - Tier S (Workstation / Flagship): RAM >= 32GB, VRAM >= 12GB, CC >= 8.0
-    # - Tier A (High-End Mainstream): RAM >= 24GB, VRAM >= 8GB, CC >= 7.5
-    # - Tier B (Legacy / Mid-Range GPU like GTX 1070/1080 or 6GB VRAM): RAM >= 16GB, VRAM 6-8GB, CC 6.1-7.0
+    # - Tier S (Workstation / Flagship): RAM >= 32GB, VRAM >= 12GB, CC >= 8.0 (or Apple Silicon >= 32GB Unified Memory)
+    # - Tier A (High-End Mainstream): RAM >= 24GB, VRAM >= 8GB, CC >= 7.5 (or Apple Silicon 16-24GB Unified Memory)
+    # - Tier B (Legacy / Mid-Range GPU like GTX 1070/1080 or 6GB VRAM / Apple Silicon 8GB): RAM >= 16GB, VRAM 6-8GB
     # - Tier C (Entry / Low RAM / iGPU): RAM < 16GB or VRAM < 6GB
-    if ram_total >= 32 and vram_total >= 12 and cc_float >= 8.0:
+    is_apple_silicon = IS_MACOS and (
+        platform.machine().lower() in ("arm64", "aarch64")
+        or (primary_gpu and primary_gpu.get("vendor") == "Apple")
+    )
+    if is_apple_silicon:
+        if ram_total >= 32:
+            tier = "S (Apple Silicon 旗舰工作站级 · Unified Memory + VideoToolbox)"
+            rec_workers = min(4, max(2, int((ram_avail - 4.0) // 2.8)))
+            rec_nvenc_slots = rec_workers
+            rec_preview_fps = 30
+            rec_asr_batch = 16
+        elif ram_total >= 16:
+            tier = "A (Apple Silicon 高性能主力级 · Unified Memory + VideoToolbox)"
+            rec_workers = min(3, max(2, int((ram_avail - 4.0) // 3.0)))
+            rec_nvenc_slots = rec_workers
+            rec_preview_fps = 30
+            rec_asr_batch = 12
+        else:
+            tier = "B (Apple Silicon 紧凑统一内存级 · 8GB Unified Memory + VideoToolbox)"
+            rec_workers = 1
+            rec_nvenc_slots = 1
+            rec_preview_fps = 24
+            rec_asr_batch = 8
+    elif ram_total >= 32 and vram_total >= 12 and cc_float >= 8.0:
         tier = "S (旗舰工作站级)"
         rec_workers = min(4, max(2, int((ram_avail - 6.0) // 3.0)))
         rec_nvenc_slots = 3
@@ -919,8 +1083,23 @@ def analyze_hardware_and_advise(base_logs_dir: str | None = None) -> dict[str, A
     # Build targeted Developer Optimization Recommendations ("给开发者的针对性升级与优化建议")
     dev_findings: list[dict[str, str]] = []
 
-    # 1. Pascal / older architecture (e.g. GTX 1070 sm_61)
-    if primary_gpu and 0 < cc_float < 7.0:
+    # 1. Apple Silicon / Pascal / TensorCore / CPU architecture
+    if is_apple_silicon:
+        dev_findings.append({
+            "severity": "INFO",
+            "category": "GPU_ARCH_APPLE_SILICON",
+            "title": "检测到 Apple Silicon 统一内存架构 (%s, 统一内存 %.1f GB)" % (gpu_name, ram_total),
+            "hardware_adapt": (
+                "已启用分离式异构加速架构：导出与跳帧解码采用 Apple Media Engine (h264_videotoolbox / hevc_videotoolbox / prores_videotoolbox)，"
+                "PyTorch 特效/对齐采用 Metal MPS 加速，CTranslate2/faster-whisper 锁定 ARM NEON int8（可选 mlx-whisper 金属加速）。"
+            ),
+            "developer_advice": (
+                "【开发者优化方向】Apple Silicon 零拷贝统一内存 (Unified Memory) 与独立硬件媒体引擎具备极高能效比："
+                "① 导出全程使用 `-c:v h264_videotoolbox -realtime 0 -prio_speed true -allow_sw 1` 并配合分段并行导出将吞吐推向 250-400+ fps；"
+                "② 对齐后及时调用 `torch.mps.empty_cache()` 归还 Metal wired 内存页。"
+            ),
+        })
+    elif primary_gpu and 0 < cc_float < 7.0:
         dev_findings.append({
             "severity": "HIGH",
             "category": "GPU_ARCH_PASCAL",
@@ -961,7 +1140,7 @@ def analyze_hardware_and_advise(base_logs_dir: str | None = None) -> dict[str, A
 
     # 2. Windows Pagefile / Commit Charge check (crucial even on 64GB RAM machines if pagefile is disabled)
     pagefile_size_gb = max(0.0, commit_total - ram_total)
-    if ram_total > 0 and pagefile_size_gb < 4.0:
+    if IS_WINDOWS and ram_total > 0 and pagefile_size_gb < 4.0:
         dev_findings.append({
             "severity": "HIGH",
             "category": "WINDOWS_PAGEFILE_TOO_SMALL",
@@ -1171,10 +1350,56 @@ def format_hardware_advisor_markdown(report: dict[str, Any]) -> str:
 # Post-Mortem Hard-Lock / Crash Forensics ("失事原因自动定责分析器")
 # ---------------------------------------------------------------------------
 
+def _query_macos_crash_events(max_events: int = 10) -> list[dict[str, Any]]:
+    """Scan ~/Library/Logs/DiagnosticReports for recent .ips / .crash reports on macOS."""
+    if not IS_MACOS:
+        return []
+    diag_dir = os.path.expanduser("~/Library/Logs/DiagnosticReports")
+    if not os.path.isdir(diag_dir):
+        return []
+    cutoff = time.time() - 48 * 3600.0
+    out: list[dict[str, Any]] = []
+    try:
+        entries = []
+        for fname in os.listdir(diag_dir):
+            if not (fname.endswith(".ips") or fname.endswith(".crash")):
+                continue
+            low = fname.lower()
+            if not any(k in low for k in ("python", "cutora", "ffmpeg", "qt")):
+                continue
+            fpath = os.path.join(diag_dir, fname)
+            try:
+                mtime = os.path.getmtime(fpath)
+                if mtime >= cutoff:
+                    entries.append((mtime, fname, fpath))
+            except OSError:
+                continue
+        entries.sort(reverse=True)
+        for mtime, fname, fpath in entries[:max_events]:
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
+                    head = fh.read(1500)
+                out.append({
+                    "id": "MACOS_IPS",
+                    "provider": "DiagnosticReports",
+                    "level": "Error",
+                    "time": datetime.fromtimestamp(mtime, TZ8).isoformat(timespec="seconds"),
+                    "message": redact_text(("%s: %s" % (fname, head.strip()))[:350]),
+                })
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return out
+
+
 def _query_windows_crash_events(max_events: int = 15) -> list[dict[str, Any]]:
     """Query Windows Event Log for GPU TDR (nvlddmkm 4101/153), Kernel-Power 41,
     RAM Exhaustion (2004), and Application Error/Hang (1000/1002) in the last 48h.
+    On macOS, delegates to _query_macos_crash_events().
     """
+    if IS_MACOS:
+        return _query_macos_crash_events(max_events=max_events)
     if not IS_WINDOWS:
         return []
     ps_script = (
@@ -1354,6 +1579,16 @@ def analyze_post_mortem(
                 "code": "FORCED_POWER_OFF_KERNEL_41",
                 "summary": "检测到非正常断电重启 (Kernel-Power Event 41)",
                 "explanation": "电脑曾发生整机硬锁死并被强制断电重启，结合上方最后未闭合的黑匣子操作即可锁定触发死机的动作。",
+            })
+            break
+
+    for ev in win_events:
+        if ev.get("id") == "MACOS_IPS":
+            root_causes.append({
+                "confidence": "高 (macOS DiagnosticReports)",
+                "code": "MACOS_DIAGNOSTIC_CRASH_REPORT",
+                "summary": "检测到 macOS 崩溃诊断报告 (.ips / .crash)",
+                "explanation": "macOS DiagnosticReports 记录了近期相关进程异常崩溃：%s" % ev.get("message", "")[:240],
             })
             break
 

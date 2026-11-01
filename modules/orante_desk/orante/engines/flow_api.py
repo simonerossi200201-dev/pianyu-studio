@@ -63,6 +63,42 @@ MODEL_FAMILY = {
     "Veo 3.1 - Quality": ("", ""),
     "Omni 1.1 Flash": ("omni", ""),
 }
+MODEL_MAP = {
+    "Veo 3.1 - Lite [Lower Priority]": "veo_3_1_i2v_lite_low_priority",
+    "Veo 3.1 - Lite": "veo_3_1_i2v_lite",
+    "Veo 3.1 - Fast": "veo_3_1_i2v_fast",
+    "Veo 3.1 - Quality": "veo_3_1_i2v",
+    "Omni 1.1 Flash": "omni_1_1_flash",
+}
+FLOW_MODES = ("frames", "ingredients")
+VIDEO_RADIO_NAMES = ("Video", "视频", "Vídeo")
+FRAMES_RADIO_NAMES = ("Frames", "Fotogrammi", "帧", "首尾帧", "Fotogramas", "Bilder", "Images")
+INGREDIENTS_RADIO_NAMES = (
+    "Ingredients", "Riferimenti", "素材", "参考",
+    "Ingrédients", "Ingredientes", "Referenzen",
+)
+INGREDIENT_BTN_NAMES = (
+    "Add ingredients to the prompt box",
+    "Aggiungi riferimenti",
+    "Aggiungi riferimenti alla casella del prompt",
+    "添加素材",
+    "添加参考",
+    "Add ingredients",
+    "Ingredients",
+    "Riferimenti",
+)
+
+
+def normalize_flow_mode(mode: str | None, default: str = "frames") -> str:
+    """规范化生成模式：'frames'（首尾帧模式 Fotogrammi）或 'ingredients'（素材模式 Riferimenti）。"""
+    m = (mode or "").strip().lower()
+    if m in ("ingredients", "ingredient", "riferimenti", "素材", "素材模式", "ref"):
+        return "ingredients"
+    if m in ("frames", "frame", "fotogrammi", "首尾帧", "首尾帧模式"):
+        return "frames"
+    return default if default in FLOW_MODES else "frames"
+
+
 # 生图模型 key（0907 抓包核对）：GEM_PIX_2 = Nano Banana Pro（默认）、NARWHAL = Nano Banana 2。
 # 两个在 Flow 里 UI 都写 0 crediti。Nano Banana 2 Lite 的 id 等 C 节抓包后再加白名单。
 IMAGE_MODELS = {"pro": "GEM_PIX_2", "nb2": "NARWHAL",
@@ -73,11 +109,18 @@ FLOW_FREE_MODEL_IDS = frozenset({
     "veo_3_1_i2v_lite_low_priority",
     "veo_3_1_i2v_s_lite_4s_low_priority",
     "veo_3_1_i2v_s_lite_6s_low_priority",
+    "veo_3_1_i2v_s_lite_10s_low_priority",
+    "omni_1_1_flash",
+    "omni_1_1_flash_4s",
+    "omni_1_1_flash_6s",
+    "omni_1_1_flash_8s",
+    "omni_1_1_flash_10s",
     "GEM_PIX_2",
     "NARWHAL",
 })
 FLOW_FREE_VIDEO_NAMES = frozenset({
     "Veo 3.1 - Lite [Lower Priority]",
+    "Omni 1.1 Flash",
 })
 # 生图 inner 的数量位。永远 ×1；UI 里 ×1 才显示 0 crediti，多张计价没核过。
 IMAGE_ONCE_COUNT = 1
@@ -306,7 +349,7 @@ def _parse_batchexecute(text: str, rpc: str) -> dict:
 
 
 def model_id_for(model_name: str, duration: int) -> str:
-    """按时长拼 Veo 模型 id。规格 84：不在 caps.DURATIONS['flow'] 里的时长直接抛错。"""
+    """按时长拼 Veo / Omni 模型 id。规格 84：不在 caps.DURATIONS['flow'] 里的时长直接抛错。"""
     from . import caps
     fam, suffix = MODEL_FAMILY.get(model_name or "", ("lite", "_low_priority"))
     d = int(duration or 0)
@@ -314,6 +357,10 @@ def model_id_for(model_name: str, duration: int) -> str:
         raise ValueError(
             f"Flow 不支持 {d} 秒（只能是 {', '.join(map(str, caps.DURATIONS['flow']))} 秒）"
         )
+    if fam == "omni" or "omni" in (model_name or "").lower():
+        if d == 8:
+            return f"omni_1_1_flash{suffix}"
+        return f"omni_1_1_flash_{d}s{suffix}"
     if d == 8:
         return f"veo_3_1_i2v{('_' + fam) if fam else ''}{suffix}"
     return f"veo_3_1_i2v_s{('_' + fam) if fam else ''}_{d}s{suffix}"
@@ -758,6 +805,35 @@ def _wiz_eval(page) -> dict:
         return {}
 
 
+def read_credits(page, src_path: str = "/") -> int | None:
+    """从打开的 Flow 页面读取剩余积分（优先走 nzlxg RPC，兜底读取页面 DOM）。"""
+    if page is None:
+        return None
+    try:
+        res = page.evaluate(RPC_JS, ["nzlxg", "[]", src_path or "/"])
+        if isinstance(res, dict) and res.get("status") == 200 and res.get("err") is None:
+            n = _first_int(res.get("payload"))
+            if n is not None and n >= 0:
+                return int(n)
+    except Exception:
+        pass
+    try:
+        dom_n = page.evaluate(r"""() => {
+            const txt = document.body ? (document.body.innerText || '') : '';
+            const m = txt.match(/(\d[\d,\.]*)\s*(?:credits?|crediti|积分|點數|crédits?|créditos?)/i)
+                   || txt.match(/(?:credits?|crediti|积分|點數)\s*[:：]?\s*(\d[\d,\.]*)/i);
+            if (!m) return null;
+            const raw = (m[1] || '').replace(/[,\.]/g, '');
+            const num = parseInt(raw, 10);
+            return Number.isFinite(num) ? num : null;
+        }""")
+        if isinstance(dom_n, int) and dom_n >= 0:
+            return dom_n
+    except Exception:
+        pass
+    return None
+
+
 def _walk_strs(obj, out=None) -> list:
     out = out if out is not None else []
     if isinstance(obj, str):
@@ -928,6 +1004,10 @@ class FlowEngine(Engine):
         self.project_id, self.collection_id = m.group(1), m.group(2)
         self.src_path = f"/project/{self.project_id}" + (f"/collection/{self.collection_id}" if self.collection_id else "")
         self.model_name = account.get("model") or "Veo 3.1 - Lite [Lower Priority]"
+        self.flow_mode = normalize_flow_mode(
+            account.get("flow_mode") or (account.get("extra") or {}).get("flow_mode"),
+            default="frames",
+        )
         self.aspect = None  # 规格 84：画幅跟图片走，不读账号
         self.max_conc = int(account.get("max_concurrent") or 5)
         self._br = None
@@ -954,6 +1034,7 @@ class FlowEngine(Engine):
         self._ui_warmup_failed = False
         self._ui_stage = ""   # 真人操作走到哪一步了（报错、落盘现场时用）
         self._ui_model_ok = False
+        self._ui_flow_mode = None
         self._ui_silent_state = None   # 网页「Return silent videos」开关现在拨在哪（None=还没看过）   # 这个标签页里模型读回来核对过没有（核对过就不用每段开设置面板）
 
     # ---------------- 连接 ----------------
@@ -1462,9 +1543,18 @@ class FlowEngine(Engine):
         return max(0, cap - len(self._active))
 
     def submit(self, seg: dict, image: Path, prompt: str, duration: int,
-               last_image: Path | None = None, silent: bool = False) -> str:
+               last_image: Path | None = None, silent: bool = False,
+               flow_mode: str | None = None) -> str:
         """silent=True：这一段要无声视频（0922 抓包：网页「返回无声视频」开着时，
-        eb1hJf 最后一项是 [uuid, 1]；关着是 [uuid, 2]）。只影响这一次请求，不改账号设置。"""
+        eb1hJf 最后一项是 [uuid, 1]；关着是 [uuid, 2]）。只影响这一次请求，不改账号设置。
+        flow_mode：'frames'（首尾帧模式 Fotogrammi）| 'ingredients'（素材模式 Riferimenti）。
+        优先级：显式参数 > seg['flow_mode'] > self.flow_mode > 'frames'。"""
+        raw_seg_mode = (seg or {}).get("flow_mode") if isinstance(seg, dict) else None
+        cand_mode = (
+            flow_mode if (flow_mode and flow_mode != "auto")
+            else (raw_seg_mode if (raw_seg_mode and raw_seg_mode != "auto") else self.flow_mode)
+        )
+        eff_mode = normalize_flow_mode(cand_mode, default=self.flow_mode or "frames")
         mid = model_id_for(self.model_name, duration)
         reject_paid_model(mid)
         self.tick_credits()
@@ -1480,20 +1570,12 @@ class FlowEngine(Engine):
                     "接龙的首帧和尾帧必须同一方向（都横或都竖）。",
                 )
 
-        # 规格 96（2026-09-27 定稿）：用户明确要求——每一段都在网页界面上真点、
-        # 真粘贴、真点生成，跟人手动操作一模一样；**不再**落回接口直连。
-        # 冷标签页走接口直连的结果已经在真机上看了三次：必被 Google 判
-        # UNUSUAL_ACTIVITY，还把冷却从 20 分钟翻成 40 分钟。所以界面上哪一步
-        # 对不上，这一段就直接报错（截图 + 页面结构落盘），不交给 Google、
-        # 不耗额度、不触发限流；下一段照旧先走界面。
-        # 设置里把 flow.human_warmup 关掉，才走原来的接口直连（留给极少数
-        # "这个环境反而信任接口直连"的情况）。
         if config.get("flow.human_warmup", True):
             try:
                 gid = self._submit_via_ui(
                     seg, Path(image), prompt, int(duration),
                     last_image=Path(last_image) if last_image else None, aspect=aspect,
-                    silent=bool(silent))
+                    silent=bool(silent), flow_mode=eff_mode)
             except (FlowThrottled, BlockedImage, CreditHalted):
                 raise  # 真人操作也被拒——这是 Flow 的真答案
             except Exception as e:  # noqa: BLE001 —— 界面上某一步对不上
@@ -1675,14 +1757,60 @@ class FlowEngine(Engine):
             page.get_by_role("button", name="Settings trigger").first.click(timeout=UI_CLICK_TIMEOUT)
             self._ui_pace(0.3, 0.6)
 
-    def _ui_radio(self, page, name: str) -> None:
-        page.get_by_role("radio", name=name, exact=True).click(timeout=UI_CLICK_TIMEOUT)
+    def _ui_radio(self, page, name: str | tuple[str, ...], fallback_pos: int | None = None) -> None:
+        names = (name,) if isinstance(name, str) else tuple(name)
+        for nm in names:
+            loc = page.get_by_role("radio", name=nm, exact=True)
+            try:
+                if loc.count() > 0 and loc.first.is_visible():
+                    loc.first.click(timeout=UI_CLICK_TIMEOUT)
+                    self._ui_pace(0.15, 0.4)
+                    return
+            except Exception:
+                pass
+        for nm in names:
+            pat = re.compile(re.escape(nm), re.I)
+            loc = page.get_by_role("radio", name=pat)
+            try:
+                if loc.count() > 0 and loc.first.is_visible():
+                    loc.first.click(timeout=UI_CLICK_TIMEOUT)
+                    self._ui_pace(0.15, 0.4)
+                    return
+            except Exception:
+                pass
+        if fallback_pos is not None:
+            try:
+                # 兜底：在 Video 子模式行按位置点第 fallback_pos 个单选按钮（0=Frames，1=Ingredients）
+                clicked = page.evaluate(r"""(pos) => {
+                    const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+                    const groups = [...document.querySelectorAll('[role="radiogroup"]')].filter(vis);
+                    for (const g of groups) {
+                        const rs = [...g.querySelectorAll('[role="radio"]')].filter(vis);
+                        const txts = rs.map(r => (r.innerText || '').trim().toLowerCase());
+                        if (rs.length === 2 && !txts.includes('16:9') && !txts.includes('9:16')
+                            && !txts.includes('video') && !txts.includes('image')) {
+                            if (rs[pos]) { rs[pos].click(); return true; }
+                        }
+                    }
+                    return false;
+                }""", int(fallback_pos))
+                if clicked:
+                    self._ui_pace(0.15, 0.4)
+                    return
+            except Exception:
+                pass
+        page.get_by_role("radio", name=names[0], exact=True).click(timeout=UI_CLICK_TIMEOUT)
         self._ui_pace(0.15, 0.4)
 
-    def _ui_set_mode(self, page, aspect: str) -> None:
-        self._ui_radio(page, "Video")
-        self._ui_radio(page, "Frames")
+    def _ui_set_mode(self, page, aspect: str, flow_mode: str = "frames") -> None:
+        eff = normalize_flow_mode(flow_mode, default="frames")
+        self._ui_radio(page, VIDEO_RADIO_NAMES)
+        if eff == "ingredients":
+            self._ui_radio(page, INGREDIENTS_RADIO_NAMES, fallback_pos=1)
+        else:
+            self._ui_radio(page, FRAMES_RADIO_NAMES, fallback_pos=0)
         self._ui_radio(page, aspect)
+        self._ui_flow_mode = eff
 
     def _ui_pick_model(self, page, model_name: str) -> None:
         btn = page.get_by_role("button", name="Select model family")
@@ -1718,10 +1846,12 @@ class FlowEngine(Engine):
                 f"Flow 模型没切成「{want}」，现在是「{shown or '读不出来'}」",
                 "这一次没交。去这个账号的 Flow 页面设置里手动选一次这个模型再试。")
 
-    def _ui_settings_already_ok(self, page, aspect: str, duration: int) -> bool:
+    def _ui_settings_already_ok(self, page, aspect: str, duration: int,
+                                flow_mode: str = "frames") -> bool:
         """设置按钮上写着「Video · 720p · 8s crop_9_16 x1」。模型在这个标签页里核对过、
-        按钮上的模式/时长/画幅/条数又都对，就不用打开面板——人也不会每段都去点一遍。"""
-        if not self._ui_model_ok:
+        按钮上的模式/时长/画幅/条数又都对、且子模式（frames/ingredients）没变，就不用打开面板。"""
+        eff = normalize_flow_mode(flow_mode, default="frames")
+        if not self._ui_model_ok or getattr(self, "_ui_flow_mode", None) != eff:
             return False
         try:
             t = page.get_by_role("button", name="Settings trigger").first.inner_text(timeout=3000)
@@ -1971,11 +2101,33 @@ class FlowEngine(Engine):
             return 0
 
     def _ui_attach_ingredient(self, page, img: Path) -> None:
-        """图片模式挂参考图：点「Add ingredients to the prompt box」（那个 +）走同一个资产库弹窗；
-        挂上以后作曲区里会多一张缩略图，以此核对。"""
+        """素材模式 / 图片模式挂参考图：点「Add ingredients to the prompt box」（或多语言『添加素材』/『Aggiungi riferimenti』）
+        走同一个资产库弹窗；挂上以后作曲区里会多一张缩略图，以此核对。"""
         n0 = self._ui_composer_images(page)
-        page.get_by_role("button", name="Add ingredients to the prompt box").first.click(
-            timeout=UI_CLICK_TIMEOUT)
+        clicked = False
+        for nm in INGREDIENT_BTN_NAMES:
+            try:
+                loc = page.get_by_role("button", name=nm)
+                if loc.count() > 0 and loc.first.is_visible():
+                    loc.first.click(timeout=UI_CLICK_TIMEOUT)
+                    clicked = True
+                    break
+            except Exception:
+                pass
+        if not clicked:
+            css = (
+                'button[aria-label*="ingredient" i], '
+                'button[aria-label*="riferiment" i], '
+                'button[aria-label*="素材"], '
+                'button[aria-label*="参考"]'
+            )
+            loc = page.locator(css)
+            if loc.count() > 0 and loc.first.is_visible():
+                loc.first.click(timeout=UI_CLICK_TIMEOUT)
+                clicked = True
+        if not clicked:
+            page.get_by_role("button", name="Add ingredients to the prompt box").first.click(
+                timeout=UI_CLICK_TIMEOUT)
         self._ui_pace(0.3, 0.8)
         self._ui_upload_in_picker(page, img, lambda: self._ui_composer_images(page) > n0)
 
@@ -2101,20 +2253,23 @@ class FlowEngine(Engine):
 
     # ---------------- 视频 ----------------
     def _ui_fill_and_generate(self, page, image: Path, prompt: str, duration: int, *,
-                              last_image: Path | None, aspect: str, silent: bool = False) -> dict:
+                              last_image: Path | None, aspect: str, silent: bool = False,
+                              flow_mode: str = "frames") -> dict:
+        eff_mode = normalize_flow_mode(flow_mode, default="frames")
         self._ui_step("清场")
         self._ui_clear_composer(page)
         self._ui_step("设无声开关")
         self._ui_set_silent(page, silent)
         self._ui_wander_mouse(page)
-        if self._ui_settings_already_ok(page, aspect, duration):
+        if self._ui_settings_already_ok(page, aspect, duration, flow_mode=eff_mode):
             self._ui_close_settings(page)
         else:
             self._ui_step("打开设置")
             self._ui_open_settings(page)
             self._ui_pace(0.3, 0.7)
-            self._ui_step("选 Video/Frames/画幅")
-            self._ui_set_mode(page, aspect)
+            mode_label = "Ingredients(素材)" if eff_mode == "ingredients" else "Frames(首尾帧)"
+            self._ui_step(f"选 Video/{mode_label}/画幅")
+            self._ui_set_mode(page, aspect, flow_mode=eff_mode)
             self._ui_step("选模型")
             self._ui_pick_model(page, self.model_name)
             self._ui_step(f"选时长 {int(duration)}s")
@@ -2129,36 +2284,55 @@ class FlowEngine(Engine):
             self._ui_step("关设置")
             self._ui_close_settings(page)
         self._ui_pace(0.2, 0.5)
-        self._ui_step("找空的首帧格子")
-        if not self._ui_slot_empty(page, "Start") or (last_image and not self._ui_slot_empty(page, "End")):
-            # × 没把上一段的图清掉（极少见）：重新打开一次项目页，设置 Flow 自己记着
-            self.log("  · 作曲区里还挂着上一段的图，重新打开一次项目页")
-            self._ui_reload(page)
-            page.get_by_role("button", name="Start", exact=True).first.wait_for(
-                state="visible", timeout=UI_STEP_TIMEOUT)
-        self._ui_step("挂首帧")
-        self._ui_attach_frame(page, image, "Start", aspect=aspect)
-        if last_image:
-            self._ui_step("挂尾帧")
-            self._ui_attach_frame(page, last_image, "End", aspect=aspect)
-        self._ui_step("粘贴提示词")
-        self._ui_type_prompt(page, prompt)
-        self._ui_pace(0.4, 1.3)
-        self._ui_step("核对首帧还在")
-        need = 2 if last_image else 1
-        if (self._ui_composer_images(page) < need or self._ui_empty_chip(page, "Start")
-                or (last_image and self._ui_empty_chip(page, "End"))):
-            raise OranteError("填完提示词再看，首帧/尾帧格子又空了", "这一次没交。")
+        if eff_mode == "ingredients":
+            if self._ui_composer_images(page) > 0:
+                self.log("  · 作曲区里还挂着上一段的素材图，重新打开一次项目页")
+                self._ui_reload(page)
+            self._ui_step("挂素材图")
+            self._ui_attach_ingredient(page, image)
+            if last_image:
+                self._ui_step("挂第二张素材图")
+                self._ui_attach_ingredient(page, last_image)
+            self._ui_step("粘贴提示词")
+            self._ui_type_prompt(page, prompt)
+            self._ui_pace(0.4, 1.3)
+            self._ui_step("核对素材图还在")
+            need = 2 if last_image else 1
+            if self._ui_composer_images(page) < need:
+                raise OranteError("填完提示词再看，素材图不在作曲区里了", "这一次没交。")
+        else:
+            self._ui_step("找空的首帧格子")
+            if not self._ui_slot_empty(page, "Start") or (last_image and not self._ui_slot_empty(page, "End")):
+                # × 没把上一段的图清掉（极少见）：重新打开一次项目页，设置 Flow 自己记着
+                self.log("  · 作曲区里还挂着上一段的图，重新打开一次项目页")
+                self._ui_reload(page)
+                page.get_by_role("button", name="Start", exact=True).first.wait_for(
+                    state="visible", timeout=UI_STEP_TIMEOUT)
+            self._ui_step("挂首帧")
+            self._ui_attach_frame(page, image, "Start", aspect=aspect)
+            if last_image:
+                self._ui_step("挂尾帧")
+                self._ui_attach_frame(page, last_image, "End", aspect=aspect)
+            self._ui_step("粘贴提示词")
+            self._ui_type_prompt(page, prompt)
+            self._ui_pace(0.4, 1.3)
+            self._ui_step("核对首帧还在")
+            need = 2 if last_image else 1
+            if (self._ui_composer_images(page) < need or self._ui_empty_chip(page, "Start")
+                    or (last_image and self._ui_empty_chip(page, "End"))):
+                raise OranteError("填完提示词再看，首帧/尾帧格子又空了", "这一次没交。")
         self._ui_step("等生成按钮变亮")
         return self._ui_click_generate(page, prompt=prompt)
 
     def _submit_via_ui(self, seg: dict, image: Path, prompt: str, duration: int, *,
-                       last_image: Path | None, aspect: str, silent: bool = False) -> str:
+                       last_image: Path | None, aspect: str, silent: bool = False,
+                       flow_mode: str = "frames") -> str:
         """真点上传框、真粘贴、真点「开始生成」——不走 page.evaluate 拼接口，
         让 Flow 自己的前端代码去发那个请求，reCAPTCHA 看到的是一次真操作。"""
         page = self._ensure_page()
         res = self._ui_attempt(page, lambda: self._ui_fill_and_generate(
-            page, image, prompt, duration, last_image=last_image, aspect=aspect, silent=silent))
+            page, image, prompt, duration, last_image=last_image, aspect=aspect,
+            silent=silent, flow_mode=flow_mode))
         self._ui_step("看回包")
         if res.get("status") == 200 and not res.get("err"):
             payload = res.get("payload")

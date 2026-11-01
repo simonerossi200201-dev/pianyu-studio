@@ -418,6 +418,99 @@ mod win32 {
     }
 }
 
+#[cfg(target_os = "macos")]
+mod macos_sys {
+    #[repr(C)]
+    #[derive(Default)]
+    pub struct VmStatistics64 {
+        pub free_count: u32,
+        pub active_count: u32,
+        pub inactive_count: u32,
+        pub wire_count: u32,
+        pub zero_fill_count: u64,
+        pub reactivations: u64,
+        pub pageins: u64,
+        pub pageouts: u64,
+        pub faults: u64,
+        pub cow_faults: u64,
+        pub lookups: u64,
+        pub hits: u64,
+        pub purges: u64,
+        pub purgeable_count: u32,
+        pub speculative_count: u32,
+        pub decompressions: u64,
+        pub compressions: u64,
+        pub swapins: u64,
+        pub swapouts: u64,
+        pub compressor_page_count: u32,
+        pub throttled_count: u32,
+        pub external_page_count: u32,
+        pub internal_page_count: u32,
+        pub total_uncompressed_pages_in_compressor: u64,
+    }
+
+    pub const HOST_VM_INFO64: i32 = 4;
+    pub const HOST_VM_INFO64_COUNT: u32 =
+        (std::mem::size_of::<VmStatistics64>() / std::mem::size_of::<i32>()) as u32;
+
+    #[link(name = "System")]
+    extern "C" {
+        pub fn sysctlbyname(
+            name: *const u8,
+            oldp: *mut std::ffi::c_void,
+            oldlenp: *mut usize,
+            newp: *const std::ffi::c_void,
+            newlen: usize,
+        ) -> i32;
+        pub fn mach_host_self() -> u32;
+        pub fn host_page_size(host: u32, out_page_size: *mut usize) -> i32;
+        pub fn host_statistics64(
+            host_priv: u32,
+            flavor: i32,
+            host_info_out: *mut VmStatistics64,
+            host_info_outCnt: *mut u32,
+        ) -> i32;
+        pub fn malloc_zone_pressure_relief(zone: *mut std::ffi::c_void, goal: usize) -> usize;
+    }
+
+    pub unsafe fn total_phys_mb() -> u64 {
+        let mut memsize: u64 = 0;
+        let mut len: usize = std::mem::size_of::<u64>();
+        let rc = sysctlbyname(
+            b"hw.memsize\0".as_ptr(),
+            &mut memsize as *mut u64 as *mut std::ffi::c_void,
+            &mut len,
+            std::ptr::null(),
+            0,
+        );
+        if rc == 0 && memsize > 0 {
+            memsize / (1024 * 1024)
+        } else {
+            0
+        }
+    }
+
+    pub unsafe fn avail_phys_mb() -> u64 {
+        let host = mach_host_self();
+        let mut page_size: usize = 16384;
+        let _ = host_page_size(host, &mut page_size);
+        let mut vm_stat = VmStatistics64::default();
+        let mut count: u32 = HOST_VM_INFO64_COUNT;
+        if host_statistics64(host, HOST_VM_INFO64, &mut vm_stat, &mut count) == 0 {
+            let reclaimable_pages = (vm_stat.free_count as u64)
+                + (vm_stat.inactive_count as u64)
+                + (vm_stat.speculative_count as u64)
+                + (vm_stat.purgeable_count as u64);
+            let avail_bytes = reclaimable_pages.saturating_mul(page_size as u64);
+            if avail_bytes > 0 {
+                return avail_bytes / (1024 * 1024);
+            }
+        }
+        let tot = total_phys_mb();
+        (tot * 6) / 10
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn cutora_rust_avail_phys_mb() -> u64 {
     #[cfg(target_os = "windows")]
@@ -436,6 +529,10 @@ pub extern "C" fn cutora_rust_avail_phys_mb() -> u64 {
         if win32::GlobalMemoryStatusEx(&mut st) != 0 {
             return st.ull_avail_phys / (1024 * 1024);
         }
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        return macos_sys::avail_phys_mb();
     }
     0
 }
@@ -459,6 +556,10 @@ pub extern "C" fn cutora_rust_total_phys_mb() -> u64 {
             return st.ull_total_phys / (1024 * 1024);
         }
     }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        return macos_sys::total_phys_mb();
+    }
     0
 }
 
@@ -469,12 +570,16 @@ pub extern "C" fn cutora_rust_trim_working_set() -> u64 {
     if before > 0 && before < 4096 {
         let _ = cutora_rust_arena_clear();
     }
-    // 2. Ask Windows kernel to immediately flush unused working set pages back to available RAM
+    // 2. Ask OS kernel to immediately flush unused working set pages back to available RAM
     #[cfg(target_os = "windows")]
     unsafe {
         let hproc = win32::GetCurrentProcess();
         let _ = win32::K32EmptyWorkingSet(hproc);
         let _ = win32::SetProcessWorkingSetSizeEx(hproc, usize::MAX, usize::MAX, 0);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        let _ = macos_sys::malloc_zone_pressure_relief(std::ptr::null_mut(), 0);
     }
     cutora_rust_avail_phys_mb()
 }

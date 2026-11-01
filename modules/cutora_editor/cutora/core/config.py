@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import shutil
 import os
+import platform
+import sys
 
 from cutora.core.flags import is_render_child
 
@@ -52,6 +54,8 @@ def detect_gpu_config(verbose=True):
         import importlib.util as _ilu
         if _ilu.find_spec("torch") is None:
             return ("cpu", "float32", "PyTorch 不可用 (未安装)")
+        if _sys.platform == "darwin" and platform.machine() == "arm64":
+            return ("cpu", "int8", "Apple Silicon MPS 异构加速（CTranslate2 CPU int8 + PyTorch MPS）")
         if _TORCH_CUDA_PROBE is not None and _TORCH_CUDA_PROBE[0] is False:
             return ("cpu", "float32", _TORCH_CUDA_PROBE[1] or "GPU 服务进程报告 CUDA 不可用")
         cc = _nvidia_compute_cap()
@@ -64,6 +68,9 @@ def detect_gpu_config(verbose=True):
         import torch
     except Exception as e:
         return ("cpu", "float32", f"PyTorch 不可用 ({e})")
+
+    if _sys.platform == "darwin" and hasattr(getattr(torch, "backends", None), "mps") and torch.backends.mps.is_available():
+        return ("cpu", "int8", "Apple Silicon MPS 异构加速（CTranslate2 CPU int8 + PyTorch MPS）")
 
     if not torch.cuda.is_available():
         return ("cpu", "float32", "未检测到 NVIDIA 显卡驱动")
@@ -78,12 +85,42 @@ def detect_gpu_config(verbose=True):
 _TORCH_CUDA_PROBE = None          # (ok, reason) —— GPU 服务进程用 torch 真测过之后回填
 
 
+def detect_torch_device(base_device: str | None = None) -> str:
+    """Return the PyTorch accelerator device ('cuda', 'mps', or 'cpu').
+
+    On Apple Silicon macOS:
+      - CTranslate2 (`faster-whisper`) does not support MPS and runs on `DEVICE = "cpu"` with `int8` (Apple Accelerate / AMX).
+      - PyTorch models (`whisperx` forced alignment wav2vec2, AI matte, FX) run on `TORCH_DEVICE = "mps"` / `ALIGN_DEVICE = "mps"`.
+    """
+    if _IS_RENDER_CHILD or os.environ.get("CUDA_VISIBLE_DEVICES") == "":
+        return "cpu"
+    dev = base_device if base_device is not None else DEVICE
+    if dev == "cuda":
+        return "cuda"
+    if sys.platform == "darwin":
+        if "torch" in sys.modules:
+            try:
+                import torch
+                if hasattr(getattr(torch, "backends", None), "mps") and torch.backends.mps.is_available():
+                    return "mps"
+            except Exception:
+                pass
+        else:
+            import importlib.util as _ilu
+            if platform.machine() == "arm64" and _ilu.find_spec("torch") is not None:
+                return "mps"
+    return dev
+
+
 def note_torch_cuda(ok: bool, reason: str = "") -> None:
     """GPU 服务进程（真 import 了 torch 的那个）报告 CUDA 可不可用；不可用就把全局设备改回 cpu。"""
-    global _TORCH_CUDA_PROBE, DEVICE, COMPUTE_TYPE, _GPU_REASON
+    global _TORCH_CUDA_PROBE, DEVICE, COMPUTE_TYPE, _GPU_REASON, ASR_DEVICE, TORCH_DEVICE, ALIGN_DEVICE
     _TORCH_CUDA_PROBE = (bool(ok), reason)
     if not ok and DEVICE != "cpu":
         DEVICE, COMPUTE_TYPE, _GPU_REASON = ("cpu", "float32", reason or "GPU 服务进程报告 CUDA 不可用")
+        ASR_DEVICE = DEVICE
+        TORCH_DEVICE = detect_torch_device(DEVICE)
+        ALIGN_DEVICE = TORCH_DEVICE
         _get_logger("cutora.core.config").warning("[Config] torch 报告 CUDA 不可用 → device=cpu（%s）", reason)
 
 
@@ -131,16 +168,21 @@ def _classify_cc(major, minor):
         return ("cpu", "float32", f"GPU 硬件检测失败 ({e})")
 
 DEVICE, COMPUTE_TYPE, _GPU_REASON = detect_gpu_config()
+ASR_DEVICE = DEVICE
+TORCH_DEVICE = detect_torch_device(DEVICE)
+ALIGN_DEVICE = TORCH_DEVICE
 from cutora.core.log import get_logger as _get_logger
 _get_logger("cutora.core.config").info(
-    "[Config] %s → device=%s, compute_type=%s",
-    _GPU_REASON, DEVICE, COMPUTE_TYPE,
+    "[Config] %s → device=%s, torch_device=%s, compute_type=%s",
+    _GPU_REASON, DEVICE, TORCH_DEVICE, COMPUTE_TYPE,
 )
 
 
 def gpu_status_text() -> str:
     """Status-bar GPU line. Device / compute_type come only from detect_gpu_config."""
     if DEVICE != "cuda":
+        if TORCH_DEVICE == "mps":
+            return "GPU: Apple MPS · %s" % COMPUTE_TYPE
         return "CPU · %s" % COMPUTE_TYPE
     name = "CUDA"
     try:

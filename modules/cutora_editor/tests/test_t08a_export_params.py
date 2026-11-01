@@ -36,6 +36,7 @@ ACCOUNTED = {
     },
     "export.settings": {},
     "export.status": {},
+    "export.cancel": {},
     "export.profile.list": {},
     "export.profile.save": {
         "id": "path", "name": "path", "container": "argv",

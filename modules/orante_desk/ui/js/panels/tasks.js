@@ -8,11 +8,16 @@
 // 规格 44：工具条分组统一规格；粘贴/导入合成「导入…」对话框（列对应可改，追加不是覆盖）。
 // 规格 45：粘贴同时读 text/html，图片来源列用超链接网址而不是显示名。
 window.Panel_tasks = (() => {
-  const COLUMNS = ['name', 'copy', 'image_source', 'type', 'account', 'duration_pref', 'gen_mode'];
+  const COLUMNS = ['name', 'copy', 'image_source', 'type', 'account', 'duration_pref', 'gen_mode', 'flow_mode'];
   const PASTEABLE = COLUMNS.slice();
   const TYPE_ALIASES = {
     '长文案': 'long', long: 'long', '长': 'long', l: 'long',
     '短文案': 'short', short: 'short', '短': 'short', normal: 'short', s: 'short',
+  };
+  const FLOW_MODE_ALIASES = {
+    auto: 'auto', '继承': 'auto', '继承账号': 'auto', '默认': 'auto',
+    frames: 'frames', '首尾帧': 'frames', '首尾帧模式': 'frames', fotogrammi: 'frames',
+    ingredients: 'ingredients', '素材': 'ingredients', '素材模式': 'ingredients', riferimenti: 'ingredients',
   };
   const KEYMAP = {
     '任务名': 'name', '名称': 'name', name: 'name',
@@ -20,9 +25,10 @@ window.Panel_tasks = (() => {
     '图片': 'image_source', '图片链接': 'image_source', '图片来源': 'image_source',
     '链接': 'image_source', image: 'image_source',
     '类型': 'type', '任务类型': 'type', type: 'type',
-    '账号': 'account', account: 'account',
+    '账号': 'account', account: 'account', '账号组': 'account',
     '时长': 'duration_pref', duration: 'duration_pref',
     '生成方式': 'gen_mode', '方式': 'gen_mode', gen_mode: 'gen_mode',
+    'flow模式': 'flow_mode', 'Flow模式': 'flow_mode', flow_mode: 'flow_mode', '生成模式': 'flow_mode',
   };
   // 规格 84：时长档位跟引擎走（与 orante.engines.caps.DURATIONS 对齐）
   // 本地模型（studio）：不说话的任务 4–15 秒随便定（这里列常用几档）；有文案的自动按 6/10/15 秒（学 Grok，段数少），手选 4/6/8/10/15
@@ -31,7 +37,7 @@ window.Panel_tasks = (() => {
   const DUR_OK = new Set(['4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15']);
   const NO_COPY_DEFAULT = { flow: '8', grok: '10', studio: '8' };
   const ENGINE_COLOR = { flow: 'var(--flow)', grok: 'var(--grok)', studio: 'var(--studio)' };
-  function accColor(a) { return ENGINE_COLOR[(a && a.engine) || 'flow'] || 'var(--flow)'; }
+  function accColor(a) { return (a && a.color) || ENGINE_COLOR[(a && a.engine) || 'flow'] || 'var(--flow)'; }
   const IMP_FIELDS = [
     { v: 'name', k: 'tasks.col.name' },
     { v: 'copy', k: 'tasks.col.copy' },
@@ -40,11 +46,12 @@ window.Panel_tasks = (() => {
     { v: 'account', k: 'tasks.col.account' },
     { v: 'duration_pref', k: 'tasks.col.duration' },
     { v: 'gen_mode', k: 'tasks.col.gen_mode' },
+    { v: 'flow_mode', k: 'tasks.col.flow_mode' },
   ];
   const UNDO_MAX = 50;
   const SAVE_MS = 1500;
   const DRAFT_MS = 800;
-  const LIST_FIELDS = { type: 1, account: 1, duration_pref: 1, gen_mode: 1 };
+  const LIST_FIELDS = { type: 1, account: 1, duration_pref: 1, gen_mode: 1, flow_mode: 1 };
   // 规格 45：这些列粘贴时优先用超链接网址，其余列只用显示文字。
   const LINK_PREFER_FIELDS = new Set(['image_source']);
 
@@ -130,14 +137,52 @@ window.Panel_tasks = (() => {
     return (grid || []).filter(r => (r || []).some(c => String(c == null ? '' : c).trim()));
   }
 
+  function normFlowMode(v) {
+    const k = String(v == null ? '' : v).trim();
+    if (!k) return 'auto';
+    return FLOW_MODE_ALIASES[k.toLowerCase()] || FLOW_MODE_ALIASES[k] || 'auto';
+  }
+
   // 本地模型在表里也认这些写法（跟 orante.accounts.STUDIO_ALIASES 对齐）
   const STUDIO_ALIASES = new Set(['studio', '本地模型', 'studio zero', '本地模型 · studio zero', '本地模型·studio zero']);
+  function groupBy(idOrName) {
+    if (!idOrName) return null;
+    const raw = String(idOrName).trim();
+    const stripped = raw.replace(/^(group:|🏷️\s*账号组\s*[:：]\s*|账号组\s*[:：]\s*)/i, '').trim();
+    const groups = store.multiAccountGroups || [];
+    return groups.find(g => g && (g.id === raw || g.id === stripped || g.name === raw || g.name === stripped)) || null;
+  }
   function accountBy(idOrName) {
     if (!idOrName) return null;
-    const hit = store.accounts.find(a => a.id === idOrName || a.name === idOrName);
+    const hit = (store.accounts || []).find(a => a.id === idOrName || a.name === idOrName);
     if (hit) return hit;
+    const g = groupBy(idOrName);
+    if (g) {
+      return {
+        id: 'group:' + g.id,
+        name: 'group:' + g.id,
+        displayName: '🏷️ 账号组: ' + g.name,
+        engine: 'flow',
+        is_group: true,
+        group: g,
+        flow_mode: g.flow_mode || 'frames',
+        model: g.model || '',
+        color: g.color || 'var(--flow)',
+      };
+    }
+    const ma = (store.multiAccounts || []).find(x => x && (x.id === idOrName || x.email === idOrName));
+    if (ma) {
+      return {
+        id: ma.id,
+        name: ma.email || ma.id,
+        engine: 'flow',
+        is_multi: true,
+        flow_mode: ma.flow_mode || 'frames',
+        model: ma.model || '',
+      };
+    }
     if (STUDIO_ALIASES.has(String(idOrName).trim().toLowerCase())) {
-      return store.accounts.find(a => a.engine === 'studio') || null;
+      return (store.accounts || []).find(a => a.engine === 'studio') || null;
     }
     return null;
   }
@@ -174,7 +219,7 @@ window.Panel_tasks = (() => {
   }
 
   function taskToRow(t, keepUid) {
-    const a = accountBy(t.account_id);
+    const a = accountBy(t.account_id || t.account);
     return {
       _uid: keepUid || t.id || uid(),
       id: t.id || '',
@@ -185,6 +230,7 @@ window.Panel_tasks = (() => {
       account: a ? a.name : (t.account || t.account_id || ''),
       duration_pref: normDur(t.duration_pref),
       gen_mode: genModeCell(t.gen_mode),
+      flow_mode: normFlowMode(t.flow_mode),
       status: t.status || 'draft',
       engine: t.engine || (a && a.engine) || '',
       dir: t.dir || '',
@@ -202,7 +248,7 @@ window.Panel_tasks = (() => {
   function blankRow() {
     return {
       _uid: uid(), id: '', name: '', copy: '', image_source: '',
-      type: '', account: '', duration_pref: '', gen_mode: 'follow', status: 'draft', engine: '', dir: '', meta: {},
+      type: '', account: '', duration_pref: '', gen_mode: 'follow', flow_mode: 'auto', status: 'draft', engine: '', dir: '', meta: {},
       priority: 0, _sel: false, _error: '', _warn: '', _restored: false, _link_from: null,
     };
   }
@@ -256,6 +302,7 @@ window.Panel_tasks = (() => {
       d.type = normType(d.type);
       d.duration_pref = normDur(d.duration_pref);
       d.gen_mode = genModeCell(d.gen_mode);
+      d.flow_mode = normFlowMode(d.flow_mode);
       d.status = 'draft';
       return d;
     });
@@ -276,6 +323,7 @@ window.Panel_tasks = (() => {
       account: d.account || '',
       duration_pref: d.duration_pref || '',
       gen_mode: d.gen_mode || 'follow',
+      flow_mode: normFlowMode(d.flow_mode),
       updated: d.updated || undefined,
       force: !!d._force,
     };
@@ -448,10 +496,45 @@ window.Panel_tasks = (() => {
     return html;
   }
 
+  function inheritedFlowMode(d) {
+    const a = accountBy(d && (d.account || d.account_id));
+    if (a && (a.flow_mode === 'ingredients' || a.flow_mode === 'frames')) return a.flow_mode;
+    return 'frames';
+  }
+
+  function fmtFlowMode(cell) {
+    const d = cell.getRow().getData();
+    const v = normFlowMode(cell.getValue());
+    const eng = engineOf(d) || 'flow';
+    if (eng !== 'flow') {
+      cell.getElement().classList.add('cell-muted');
+      return '<span class="muted">—</span>';
+    }
+    cell.getElement().classList.remove('cell-muted');
+    if (v === 'frames') {
+      return '<span class="tag" style="border-color:var(--flow);color:var(--flow)">🎞️ 首尾帧</span>';
+    }
+    if (v === 'ingredients') {
+      return '<span class="tag" style="border-color:var(--warn);color:var(--warn)">🧩 素材模式</span>';
+    }
+    const inh = inheritedFlowMode(d);
+    const badge = inh === 'ingredients' ? '🧩素材' : '🎞️首尾帧';
+    return `<span class="muted">继承 (${esc(badge)})</span>`;
+  }
+
   function accountValues() {
-    const flow = [], grok = [], studio = [];
-    for (const a of store.accounts) {
-      const item = { label: a.name, value: a.name };
+    const groups = [], flow = [], grok = [], studio = [];
+    for (const g of (store.multiAccountGroups || [])) {
+      if (!g || !g.id) continue;
+      const modeTag = g.flow_mode === 'ingredients' ? '🧩素材' : '🎞️首尾帧';
+      groups.push({
+        label: `🏷️ 账号组: ${g.name} (${g.account_count || 0}号·${modeTag})`,
+        value: 'group:' + g.id,
+      });
+    }
+    for (const a of (store.accounts || [])) {
+      const modeTag = a.engine === 'flow' ? (a.flow_mode === 'ingredients' ? ' · 🧩素材' : ' · 🎞️首尾帧') : '';
+      const item = { label: a.name + modeTag, value: a.name };
       if (a.engine === 'studio') {
         // 本地模型没启用就不列（选了也跑不了）；到「账号」里本地模型那一栏点启用
         if (a.enabled) studio.push(item);
@@ -459,6 +542,7 @@ window.Panel_tasks = (() => {
       else flow.push(item);
     }
     const out = [];
+    if (groups.length) out.push({ label: '0 多账号 · 账号组（自动轮换）', options: groups });
     if (flow.length) out.push({ label: t('tasks.group.flow'), options: flow });
     if (grok.length) out.push({ label: t('tasks.group.grok'), options: grok });
     if (studio.length) out.push({ label: t('tasks.group.studio'), options: studio });
@@ -469,7 +553,11 @@ window.Panel_tasks = (() => {
     if (value === undefined || value === null || value === '') return esc(label);
     const a = accountBy(value);
     const color = accColor(a);
-    const sub = (a && a.engine === 'studio') ? `<small class="acc-sub">${esc(t('acc.studio.q.' + (a.quality || a.model || 'balanced')))}</small>` : '';
+    const sub = (a && a.engine === 'studio')
+      ? `<small class="acc-sub">${esc(t('acc.studio.q.' + (a.quality || a.model || 'balanced')))}</small>`
+      : (a && a.is_group)
+        ? `<small class="acc-sub">${esc(a.flow_mode === 'ingredients' ? '🧩素材' : '🎞️首尾帧')}</small>`
+        : '';
     return `<span class="acc-dot" style="background:${color}"></span>${esc(label)}${sub}`;
   }
 
@@ -1406,6 +1494,7 @@ window.Panel_tasks = (() => {
               let val = picked.val;
               if (f === 'type') val = normType(val);
               if (f === 'duration_pref') val = normDur(val);
+              if (f === 'flow_mode') val = normFlowMode(val);
               patch[f] = val;
               if (LINK_PREFER_FIELDS.has(f)) {
                 linkFromChanged = true;
@@ -1662,6 +1751,7 @@ window.Panel_tasks = (() => {
         const wImg = widthFromRatio('image_source', null);
         const wType = widthFromRatio('type', 108);
         const wAcc = widthFromRatio('account', null);
+        const wFlowMode = widthFromRatio('flow_mode', 124);
         const wGen = widthFromRatio('gen_mode', 118);
         const wPrio = widthFromRatio('priority', 64);
         const wDur = widthFromRatio('duration_pref', 88);
@@ -1700,7 +1790,7 @@ window.Panel_tasks = (() => {
           Object.assign(
             { title: t('tasks.col.account'), field: 'account', minWidth: 110, widthGrow: 1,
               headerSort: false, editor: 'list',
-              editorParams: { valuesLookup: accountValues, itemFormatter: accItemFormatter, clearable: true, placeholderEmpty: '先到右上角「账号」里添加' },
+              editorParams: { valuesLookup: accountValues, itemFormatter: accItemFormatter, clearable: true, placeholderEmpty: '先到右上角「账号」或「0 多账号」添加' },
               formatter: cell => {
                 const v = cell.getValue() || '';
                 const d = cell.getRow().getData();
@@ -1708,6 +1798,11 @@ window.Panel_tasks = (() => {
                 if (!v) return '';
                 const a = accountBy(v);
                 const color = accColor(a);
+                if (a && a.is_group) {
+                  const mTag = a.flow_mode === 'ingredients' ? '🧩素材' : '🎞️首尾帧';
+                  cell.getElement().title = `账号组自动轮换 (${a.group.account_count || 0}号 · 默认${mTag})`;
+                  return `<span class="acc-dot" style="background:${color}"></span><span style="color:${color};font-weight:600">🏷️ ${esc(a.group.name)}</span>`;
+                }
                 if (a && a.engine === 'studio') {
                   cell.getElement().title = a.enabled
                     ? t('acc.studio.cell_tip', { q: t('acc.studio.q.' + (a.quality || a.model || 'balanced')) })
@@ -1717,6 +1812,15 @@ window.Panel_tasks = (() => {
               } },
             wAcc ? { width: wAcc } : {}
           ),
+          { title: t('tasks.col.flow_mode'), field: 'flow_mode', width: wFlowMode, minWidth: 112,
+            headerSort: false,
+            editor: 'list',
+            editorParams: { values: [
+              { label: '继承账号默认模式', value: 'auto' },
+              { label: '🎞️ 首尾帧模式 (Frames)', value: 'frames' },
+              { label: '🧩 素材模式 (Ingredients)', value: 'ingredients' },
+            ] },
+            formatter: fmtFlowMode },
           { title: t('tasks.col.gen_mode'), field: 'gen_mode', width: wGen, minWidth: 108,
             headerSort: false,
             editor: 'list',
@@ -1753,7 +1857,7 @@ window.Panel_tasks = (() => {
         const keys = {
           name: 'tasks.col.name', copy: 'tasks.col.copy', image_source: 'tasks.col.image',
           type: 'tasks.col.type', account: 'tasks.col.account', duration_pref: 'tasks.col.duration',
-          gen_mode: 'tasks.col.gen_mode',
+          gen_mode: 'tasks.col.gen_mode', flow_mode: 'tasks.col.flow_mode',
           status: 'tasks.col.status', id: 'tasks.col.id', _sel: 'tasks.col.sel',
         };
         return keys[f] ? t(keys[f]) : f;

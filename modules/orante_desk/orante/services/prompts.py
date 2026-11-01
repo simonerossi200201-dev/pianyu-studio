@@ -868,9 +868,86 @@ def apply_minimal(on: bool) -> dict:
 
 
 
-def build_final_prompt(m: Manifest, seg: dict, desc_override=None) -> str:
-    """成品提示词：身份锁 + 运镜卡 + 结语 + 台词。{停顿强调} 用问题句子库填。"""
+def _resolve_extra_prompts(extra_list: list | None) -> str:
+    if not extra_list or not isinstance(extra_list, list):
+        return ""
+    from . import prompt_presets
+    parts: list[str] = []
+    for item in extra_list:
+        s = str(item or "").strip()
+        if not s:
+            continue
+        if s.startswith("PR_"):
+            pr = prompt_presets.get_preset(s)
+            if pr and pr.get("template"):
+                parts.append(str(pr["template"]).strip())
+                continue
+        parts.append(s)
+    return "\n".join(parts)
+
+
+def build_final_prompt(m: Manifest, seg: dict, desc_override=None, task: dict | None = None) -> str:
+    """成品提示词：
+    优先级：
+      1. 镜头级：seg['custom_prompt'] 或 seg['preset_id']
+      2. 任务级：task['meta']['custom_prompt'] / task['preset_id'] / m.prompts_snapshot['preset_id']
+      3. 图片级：原有的身份锁 (img['desc']) + 运镜卡 + 结语 + 台词
+    若命中第 1 或第 2 级预设/自定义模板，使用最大连续换行间隙算法自动将本段台词文案插入模板对应空行处，
+    并拼接任何附加提示词列 (seg['extra_prompts'])。
+    """
+    from . import prompt_presets
     seg = _as_map(seg)
+    seg_text = seg.get("text") or ""
+    extra_tail = _resolve_extra_prompts(seg.get("extra_prompts"))
+
+    # 1. 镜头级自定义提示词或预设
+    seg_custom = str(seg.get("custom_prompt") or "").strip()
+    if seg_custom:
+        if seg_text and seg_text.strip() and seg_text.strip() not in seg_custom:
+            out = prompt_presets.insert_speech_at_max_newlines(seg_custom, seg_text)
+        else:
+            out = seg_custom
+        if extra_tail:
+            out = f"{out.rstrip()}\n{extra_tail}"
+        return _fill_pause(out, seg_text)
+
+    seg_preset_id = str(seg.get("preset_id") or "").strip()
+    if seg_preset_id:
+        pr = prompt_presets.get_preset(seg_preset_id)
+        if pr and pr.get("template"):
+            out = prompt_presets.insert_speech_at_max_newlines(pr["template"], seg_text)
+            if extra_tail:
+                out = f"{out.rstrip()}\n{extra_tail}"
+            return _fill_pause(out, seg_text)
+
+    # 2. 任务级自定义提示词或预设
+    snap = getattr(m, "prompts_snapshot", None) if m is not None else None
+    snap = snap if isinstance(snap, dict) else {}
+    t_meta = ((task or {}).get("meta") if isinstance(task, dict) else None) or {}
+    if not isinstance(t_meta, dict):
+        t_meta = {}
+    task_custom = str(t_meta.get("custom_prompt") or snap.get("custom_prompt") or "").strip()
+    if task_custom:
+        out = prompt_presets.insert_speech_at_max_newlines(task_custom, seg_text)
+        if extra_tail:
+            out = f"{out.rstrip()}\n{extra_tail}"
+        return _fill_pause(out, seg_text)
+
+    task_preset_id = str(
+        (task or {}).get("preset_id")
+        or t_meta.get("preset_id")
+        or snap.get("preset_id")
+        or ""
+    ).strip()
+    if task_preset_id:
+        pr = prompt_presets.get_preset(task_preset_id)
+        if pr and pr.get("template"):
+            out = prompt_presets.insert_speech_at_max_newlines(pr["template"], seg_text)
+            if extra_tail:
+                out = f"{out.rstrip()}\n{extra_tail}"
+            return _fill_pause(out, seg_text)
+
+    # 3. 图片级（原有身份锁 + 运镜卡 + 结语 + 台词）
     img = m.image(seg.get("image") or "") if hasattr(m, "image") else None
     if isinstance(img, dict):
         pass
@@ -885,7 +962,7 @@ def build_final_prompt(m: Manifest, seg: dict, desc_override=None) -> str:
     if not str(desc).strip():
         raise OranteError(
             f"图片 {img.get('p')} 还没有描述语",
-            "先跑「写描述语」。")
+            "先跑「写描述语」，或为该段选择一条提示词预设。")
 
     parsed_eye, parsed_scene, _ = flow_shots.parse_tag(desc)
     eye = img.get("eye") or parsed_eye or "闭眼"
@@ -929,6 +1006,8 @@ def build_final_prompt(m: Manifest, seg: dict, desc_override=None) -> str:
         desc, card, eye, scene, seg_text, shots,
         seg_idx=seg_idx, n_segs=n_segs, voice_lock=voice,
         switches=get_switches(), no_copy=no_copy)
+    if extra_tail:
+        prompt = f"{prompt.rstrip()}\n{extra_tail}"
     return _fill_pause(prompt, seg_text)
 
 

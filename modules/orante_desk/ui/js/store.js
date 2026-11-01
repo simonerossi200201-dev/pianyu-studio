@@ -2,6 +2,13 @@
 window.store = Vue.reactive({
   version: '', accounts: [], studio: null, tasks: [], settings: {}, defaults: {}, jobs: [], i18n: {}, root: '',
   flow_models: [],
+  multiAccounts: [],
+  multiAccountGroups: [],
+  multiCacheStats: {},
+  promptPresets: [],
+  promptCategories: [],
+  quotaExhaustedAlert: null, // {group_id, group_name, message, completed_segments, remaining_segments}
+  theme: (typeof localStorage !== 'undefined' && localStorage.getItem('orante.theme')) || 'dark',
   legacy_available: false,
   creditHalt: null,    // {job_id, b0, b, message, recent}
   flowThrottle: null,  // {account_id, account_name, until, network, alts, task_id}
@@ -26,6 +33,23 @@ window.store = Vue.reactive({
   seenRev: null,       // 上次本窗口认过的 settings._rev
   cfgNotice: null,     // {rev, hint} 别的窗口改了配置，不要自动刷
 });
+
+window.applyTheme = (theme) => {
+  const th = theme === 'light' ? 'light' : 'dark';
+  store.theme = th;
+  try {
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.setAttribute('data-theme', th);
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('orante.theme', th);
+    }
+  } catch (e) { /* ignore storage errors */ }
+};
+window.toggleTheme = () => {
+  window.applyTheme(store.theme === 'light' ? 'dark' : 'light');
+};
+window.applyTheme(store.theme);
 
 // 就地改 counts，不整页重刷。生成面板折叠行方块靠这份。
 window.applyTaskCounts = (tid, counts) => {
@@ -80,8 +104,11 @@ window.__flushAll = () => {
   return true;
 };
 window.t = (k, vars) => {
-  let s = store.i18n && store.i18n[k];
+  const defZh = (window.ORANTE_I18N_DEFAULTS && window.ORANTE_I18N_DEFAULTS.zh) || {};
+  // 节点 0..5 重排重命名与新增字段优先使用内置新词条
+  let s = (String(k).indexOf('node.') === 0 && defZh[k] !== undefined) ? defZh[k] : (store.i18n && store.i18n[k]);
   if (s === undefined && store.i18nZh) s = store.i18nZh[k];
+  if (s === undefined && defZh[k] !== undefined) s = defZh[k];
   if (s === undefined) {
     // 设置项中文名/说明缺翻译时回落到中文；都没有也不许把键名当标签
     if (String(k).indexOf('set.key.') === 0 || String(k).indexOf('set.hint.') === 0) return '';
@@ -90,11 +117,12 @@ window.t = (k, vars) => {
   if (vars) for (const [a, b] of Object.entries(vars)) s = s.replaceAll('{' + a + '}', b);
   return s;
 };
-window.ui = Vue.reactive({ node: 'tasks', drawer: null, toasts: [], panelTid: '', pendingTid: '', showSetup: false });
+window.ui = Vue.reactive({ node: 'tasks', drawer: null, toasts: [], panelTid: '', selectedTaskId: '', pendingTid: '', showSetup: false });
 
-// 当前任务落盘：panelTid 一变就写 config，刷新 / 重启从 settings 读回。
+// 当前任务落盘：panelTid / selectedTaskId 一变就写 config，刷新 / 重启从 settings 读回。
 window.persistPanelTid = (id) => {
   const v = String(id || '');
+  if (ui.selectedTaskId !== v) ui.selectedTaskId = v;
   if (!store.settings) store.settings = {};
   if (store.settings['ui.current_task'] === v) return;
   store.settings['ui.current_task'] = v;
@@ -104,12 +132,19 @@ window.persistPanelTid = (id) => {
 };
 window.setPanelTid = (id) => {
   const v = String(id || '');
-  if (ui.panelTid === v) return;
+  if (ui.panelTid === v && ui.selectedTaskId === v) return;
   ui.panelTid = v;
+  ui.selectedTaskId = v;
   persistPanelTid(v);
 };
 if (Vue.watch) {
-  Vue.watch(() => ui.panelTid, (v) => persistPanelTid(v));
+  Vue.watch(() => ui.panelTid, (v) => {
+    if (ui.selectedTaskId !== v) ui.selectedTaskId = v || '';
+    persistPanelTid(v);
+  });
+  Vue.watch(() => ui.selectedTaskId, (v) => {
+    if (v && ui.panelTid !== v) ui.panelTid = v;
+  });
 }
 // 复制一段文字（日志等）。剪贴板 API 不可用时退回隐藏 textarea + execCommand。
 window.copyText = (text, label) => {
@@ -200,7 +235,9 @@ window.refreshState = async (opts) => {
   applyWindowTitle();
   // 重启 / 刷新：当前任务从 config 读回，各面板挂载时再接。
   const saved = String((s.settings && s.settings['ui.current_task']) || '');
-  if (saved) ui.panelTid = saved;
+  if (saved) { ui.panelTid = saved; ui.selectedTaskId = saved; }
+  window.refreshMultiAccounts({ silent: true }).catch(() => {});
+  window.refreshPromptPresets({ silent: true }).catch(() => {});
   try {
     const q = await API.get('/api/queue/describe', { silent: true });
     store.descQueue = {
@@ -279,6 +316,31 @@ window.refreshAccounts = async () => {
   store.accounts = r.accounts;
   if (r.studio) store.studio = r.studio;
   if (r.flow_models) store.flow_models = r.flow_models;
+};
+window.refreshMultiAccounts = async (opts) => {
+  try {
+    const r = await API.get('/api/multi-accounts', opts || { silent: true });
+    if (r && r.ok !== false) {
+      store.multiAccounts = Array.isArray(r.accounts) ? r.accounts : [];
+      store.multiAccountGroups = Array.isArray(r.groups) ? r.groups : [];
+      store.multiCacheStats = r.cache_stats || {};
+    }
+    return r;
+  } catch (e) {
+    return null;
+  }
+};
+window.refreshPromptPresets = async (opts) => {
+  try {
+    const r = await API.get('/api/prompt-presets', opts || { silent: true });
+    if (r && r.ok !== false) {
+      store.promptPresets = Array.isArray(r.presets) ? r.presets : [];
+      store.promptCategories = Array.isArray(r.categories) ? r.categories : [];
+    }
+    return r;
+  } catch (e) {
+    return null;
+  }
 };
 
 window._es = null;
@@ -376,7 +438,21 @@ window.connectEvents = (force) => {
     applyTaskCounts(d.task_id, d.counts);
   });
   es.addEventListener('tasks.changed', () => refreshTasks());
-  es.addEventListener('accounts.changed', () => refreshAccounts());
+  es.addEventListener('accounts.changed', () => { refreshAccounts(); refreshMultiAccounts({ silent: true }); });
+  es.addEventListener('multi_accounts.changed', () => refreshMultiAccounts({ silent: true }));
+  es.addEventListener('presets.changed', () => refreshPromptPresets({ silent: true }));
+  es.addEventListener('group.quota_exhausted', e => {
+    try {
+      const d = JSON.parse(e.data) || {};
+      store.quotaExhaustedAlert = {
+        group_id: d.group_id || '',
+        group_name: d.group_name || d.group_id || '当前账号组',
+        message: d.message || `⚠️ 账号组【${d.group_name || d.group_id || ''}】内所有账号额度已用尽！已生成片段已完整保留，未完成片段已安全暂停，请充值或更换账号组后继续。`,
+        completed_segments: Number(d.completed_segments || 0),
+        remaining_segments: Number(d.remaining_segments || 0),
+      };
+    } catch (err) { /* ignore parse err */ }
+  });
   es.addEventListener('toast', e => { const d = JSON.parse(e.data); toast(d.text, d.hint, d.level || d.kind); });
   es.addEventListener('image.replaced', e => {
     const d = JSON.parse(e.data) || {};

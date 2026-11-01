@@ -126,6 +126,7 @@ def list_all(probe: bool = True) -> list[dict]:
         else:
             a["alive"] = _ALIVE.get(a["id"], False) if a.get("port") else False
         a["login_state"] = a["extra"].get("login_state") or ""
+        a["flow_mode"] = a["extra"].get("flow_mode") or "frames"
     return out
 
 
@@ -134,9 +135,17 @@ def get(acc_id: str) -> dict:
         return studio_account()
     a = db.one("SELECT * FROM accounts WHERE id=?", (acc_id,))
     if not a:
-        raise OranteError(f"没有这个账号：{acc_id}", "到「账号」抽屉里先添加。")
+        try:
+            from . import multi_accounts
+            ma = multi_accounts.resolve_as_orante_account(acc_id)
+            if ma:
+                return ma
+        except Exception:
+            pass
+        raise OranteError(f"没有这个账号：{acc_id}", "到「账号」抽屉或「0 多账号」里先添加。")
     a["extra"] = db.unj(a.get("extra"), {}) or {}
     a["login_state"] = a["extra"].get("login_state") or ""
+    a["flow_mode"] = a["extra"].get("flow_mode") or "frames"
     return a
 
 
@@ -179,7 +188,8 @@ def _check_flow_model(engine: str, model: str) -> None:
     )
 
 
-def create(name: str, engine: str, project_url: str = "", model: str = "", **extra) -> dict:
+def create(name: str, engine: str, project_url: str = "", model: str = "",
+           flow_mode: str = "frames", **extra) -> dict:
     name = (name or "").strip()
     if not name:
         raise OranteError("账号得有个名字", "比如 我的flow1、工作室-1。")
@@ -192,6 +202,9 @@ def create(name: str, engine: str, project_url: str = "", model: str = "", **ext
     aid = db.next_id("account", "A", 3)
     model = model or (config.get("engine.flow.model") if engine == "flow" else "")
     _check_flow_model(engine, model)
+    from .engines.flow_api import normalize_flow_mode
+    extra = dict(extra or {})
+    extra["flow_mode"] = normalize_flow_mode(flow_mode, default="frames")
     mc = config.get("engine.flow.max_concurrent") if engine == "flow" else config.get("engine.grok.max_concurrent")
     db.run("INSERT INTO accounts(id,name,engine,port,profile,project_url,model,aspect,max_concurrent,enabled,extra,created)"
            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -223,8 +236,17 @@ def update(acc_id: str, **fields) -> dict:
                 n = 2
             config.set("engine.studio.max_inflight", n)
         return studio_account()          # extra（限流 / 探路记录等）本地模型没有，静默忽略
+    if str(acc_id or "").startswith("M"):
+        from . import multi_accounts
+        multi_accounts.update_account(acc_id, **fields)
+        return get(acc_id)
     allowed = {"name", "project_url", "model", "max_concurrent", "enabled", "extra", "profile", "port"}  # 规格 84：aspect 不再可改
     a = get(acc_id)
+    if "flow_mode" in fields:
+        from .engines.flow_api import normalize_flow_mode
+        ex = dict(fields.get("extra") if isinstance(fields.get("extra"), dict) else (a.get("extra") or {}))
+        ex["flow_mode"] = normalize_flow_mode(fields.get("flow_mode"), default="frames")
+        fields["extra"] = ex
     if "model" in fields:
         _check_flow_model(a.get("engine") or "", fields.get("model") or "")
     sets, args = [], []

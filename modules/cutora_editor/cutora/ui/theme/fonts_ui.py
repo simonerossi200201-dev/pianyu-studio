@@ -64,11 +64,18 @@ def register_ui_fonts() -> list[str]:
 
 
 def ui_qfont(pixel_size: int = FONT_SIZE_BODY, bold: bool = False):
-    """Application UI font: Inter, then Noto Sans SC, then system YaHei."""
+    """Application UI font: Inter, then Noto Sans SC, then PingFang SC / YaHei."""
     from PySide6.QtGui import QFont
 
     font = QFont()
-    font.setFamilies([FONT_UI, FONT_UI_CJK, "Microsoft YaHei UI", "Microsoft YaHei"])
+    font.setFamilies([
+        FONT_UI,
+        FONT_UI_CJK,
+        "PingFang SC",
+        ".AppleSystemUIFont",
+        "Microsoft YaHei UI",
+        "Microsoft YaHei",
+    ])
     font.setPixelSize(int(pixel_size))
     font.setBold(bool(bold))
     return font
@@ -79,6 +86,6 @@ def mono_qfont(pixel_size: int = FONT_SIZE_BODY):
     from PySide6.QtGui import QFont
 
     font = QFont()
-    font.setFamilies([FONT_MONO, "Consolas", "Cascadia Mono"])
+    font.setFamilies([FONT_MONO, "SF Mono", "Menlo", "Consolas", "Cascadia Mono"])
     font.setPixelSize(int(pixel_size))
     return font

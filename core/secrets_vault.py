@@ -63,7 +63,10 @@ def is_url_allowed(url: str) -> bool:
 
 
 def store_secret(key_name: str, secret_value: str) -> bool:
-    """将密钥存入 Windows 凭据管理器（优先使用 keyring，回退 ctypes WinCred）。"""
+    """将密钥存入系统凭据管理器（优先使用 keyring，macOS 回退 Keychain security CLI，Windows 回退 ctypes WinCred）。"""
+    import os
+    import sys
+
     if not secret_value:
         return False
     try:
@@ -71,11 +74,19 @@ def store_secret(key_name: str, secret_value: str) -> bool:
         keyring.set_password(SERVICE_NAME, key_name, secret_value)
         return True
     except Exception:
+        pass
+    if sys.platform == "darwin":
+        return _macos_keychain_write(key_name, secret_value)
+    if os.name == "nt":
         return _wincred_write(f"{SERVICE_NAME}:{key_name}", secret_value)
+    return False
 
 
 def get_secret(key_name: str) -> str | None:
-    """从 Windows 凭据管理器读取密钥。"""
+    """从系统凭据管理器读取密钥（支持 keyring、macOS Keychain 与 Windows WinCred）。"""
+    import os
+    import sys
+
     try:
         import keyring  # type: ignore
         val = keyring.get_password(SERVICE_NAME, key_name)
@@ -83,7 +94,64 @@ def get_secret(key_name: str) -> str | None:
             return val
     except Exception:
         pass
-    return _wincred_read(f"{SERVICE_NAME}:{key_name}")
+    if sys.platform == "darwin":
+        return _macos_keychain_read(key_name)
+    if os.name == "nt":
+        return _wincred_read(f"{SERVICE_NAME}:{key_name}")
+    return None
+
+
+def _macos_keychain_write(key_name: str, secret: str) -> bool:
+    """使用 macOS 原生 `/usr/bin/security add-generic-password` 存入登录钥匙串。"""
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            [
+                "security",
+                "add-generic-password",
+                "-U",
+                "-s",
+                SERVICE_NAME,
+                "-a",
+                key_name,
+                "-w",
+                secret,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+def _macos_keychain_read(key_name: str) -> str | None:
+    """使用 macOS 原生 `/usr/bin/security find-generic-password` 从钥匙串读取密钥。"""
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            [
+                "security",
+                "find-generic-password",
+                "-s",
+                SERVICE_NAME,
+                "-a",
+                key_name,
+                "-w",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+        if proc.returncode == 0:
+            val = (proc.stdout or "").rstrip("\r\n")
+            return val if val else None
+    except Exception:
+        pass
+    return None
 
 
 def strip_secret_fields(obj: Any) -> Any:

@@ -1447,7 +1447,7 @@ def scanlines(a, b, t, w, h, *, intensity=1.0, easing="ease_in_out", direction="
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 20 Top-Tier Pro NLE Transitions (DaVinci Resolve / Premiere / CapCut Pro)
+# 20 Top-Tier Pro NLE Transitions (Studio Broadcast / Cinema Grade)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def whip_pan_left(a, b, t, w, h, *, intensity=1.0, easing="ease_in_out", **_):

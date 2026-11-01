@@ -3,9 +3,9 @@
 设计哲学（结合特斯拉车型分级 + 乐高模块化插件包 DLC 架构）：
 1. 【开发机零影响】：在你自己的电脑 (`D:\\0_LTX`) 上，所有 126 GB 模型与功能完整保留、一体维护，没有任何删减。
 2. 【内部分发 25GB 标准核心版 (`--edition base-25gb`)】：
-   专门面向低配笔记本（i7 + 32GB 内存 + 无独显 + 小硬盘）同事分发。
+   专门面向低配笔记本（i7 + 32GB 内存 + 无独显 + 小硬盘 / Apple Silicon Mac）同事分发。
    自动打包：
-   - 完整四翼程序（CUTORA 剪辑台、Orante 2.0 制片台、右键表格工具、Robota 巡检代理、7870 本地网关）
+   - 完整核心程序（CUTORA 剪辑台、Orante 2.0 制片台、右键表格工具、7870 本地网关）
    - 便携 Python 环境 (`runtime/python` + `runtime/venv`) 与 `runtime/bin` (FFmpeg/rclone/mimalloc)
    - 四大日常高频核心模型（自动字幕 Faster-Whisper + Wav2Vec2、智能拼接、SAM 2.1 + RMBG-2.0 视频/图像抠像、
      Demucs/Resemble 立体声与降噪、DPT-Hybrid 人像提亮修复），总大小约 21~25 GB！
@@ -79,6 +79,7 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "modules/table_tool/install.py",
     "modules/table_tool/uninstall.py",
     "modules/cutora_editor/cutora",
+    "modules/cutora_editor/rust_core/Cargo.toml",
     "modules/cutora_editor/rust_core/src",
     "modules/cutora_editor/resources",
     "modules/cutora_editor/vendor",
@@ -97,6 +98,8 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "启动本地算力网关.bat",
     "打开表格工具.bat",
     "安装与体检.bat",
+    "启动片语工作室.command",
+    "安装与体检.command",
     "收集卡死诊断信息.bat",
     "收集卡死诊断信息.ps1",
     "README.md",
@@ -128,13 +131,17 @@ def is_path_allowed(rel_path: str) -> bool:
 
 
 def count_reparse_points() -> list[str]:
-    """确保 D:\\0_LTX 内没有任何文件夹快捷方式 (Directory Junction / ReparsePoint)。"""
+    """确保 D:\\0_LTX 分发路径内没有任何文件夹快捷方式 (Directory Junction / ReparsePoint)。"""
     hits: list[str] = []
     for root, dirs, _files in os.walk(LTX_ROOT):
         for d in list(dirs):
             p = Path(root) / d
+            rel = str(p.relative_to(LTX_ROOT))
+            if not is_path_allowed(rel):
+                dirs.remove(d)
+                continue
             try:
-                if os.lstat(p).st_file_attributes & 0x400:
+                if getattr(os.lstat(p), "st_file_attributes", 0) & 0x400:
                     hits.append(str(p))
             except Exception:
                 pass
@@ -200,13 +207,12 @@ def build_pack_plan() -> dict[str, Any]:
 
 CLOUD_DRIVE_PACK_FILENAMES = {
     "pack-app-orante": "02_【可选软件模块_15MB】Orante2.0制片台_pack-app-orante.ltxpack",
-    "pack-app-robota": "03_【可选软件模块_7MB】Robota协同操作代理_pack-app-robota.ltxpack",
-    "pack-engine-comfyui": "04_【可选推理引擎_4.5GB】ComfyUI本地引擎与CUDA环境_pack-engine-comfyui.ltxpack",
-    "pack-ltx25-video": "05_【可选视频生成模型_39.2GB】LTX-2.5_22B_本地视频生成大模型_pack-ltx25-video.ltxpack",
-    "pack-ltx25-vfx-loras": "06_【可选视频特效模型_7.6GB】LTX-2.5_IC-LoRA_7合1视频精修特效_pack-ltx25-vfx-loras.ltxpack",
-    "pack-flux2-image": "07_【可选生图改图模型_7.9GB】FLUX.2_klein_4B_极速生图与改图_pack-flux2-image.ltxpack",
-    "pack-audio-tts-bgm": "08_【可选语音配乐模型_25.6GB】AI语音克隆与配乐生成_pack-audio-tts-bgm.ltxpack",
-    "pack-pro-vision-multilang": "09_【可选超分追踪多语种_24.7GB】4x超分_TAPNext追踪_多国语对齐_pack-pro-vision-multilang.ltxpack",
+    "pack-engine-comfyui": "03_【可选推理引擎_4.5GB】ComfyUI本地引擎与CUDA环境_pack-engine-comfyui.ltxpack",
+    "pack-ltx25-video": "04_【可选视频生成模型_39.2GB】LTX-2.5_22B_本地视频生成大模型_pack-ltx25-video.ltxpack",
+    "pack-ltx25-vfx-loras": "05_【可选视频特效模型_7.6GB】LTX-2.5_IC-LoRA_7合1视频精修特效_pack-ltx25-vfx-loras.ltxpack",
+    "pack-flux2-image": "06_【可选生图改图模型_7.9GB】FLUX.2_klein_4B_极速生图与改图_pack-flux2-image.ltxpack",
+    "pack-audio-tts-bgm": "07_【可选语音配乐模型_25.6GB】AI语音克隆与配乐生成_pack-audio-tts-bgm.ltxpack",
+    "pack-pro-vision-multilang": "08_【可选超分追踪多语种_24.7GB】4x超分_TAPNext追踪_多国语对齐_pack-pro-vision-multilang.ltxpack",
 }
 
 
@@ -230,7 +236,6 @@ def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
     print(f"[打包开始] 正在生成扩展包: {fname} ...", flush=True)
     with zipfile.ZipFile(out_path, "w", compression=comp_mode, allowZip64=True) as zf:
         if pack_id == "pack-engine-comfyui" and not (LTX_ROOT / "runtime" / "comfyui" / "main.py").is_file():
-            # 自动从开发机 D:\0_LLM\ComfyUI 抽取纯净引擎底座 (不含 models/output/input/temp) 封装进 runtime/comfyui/
             ext_comfy = Path(r"D:\0_LLM\ComfyUI")
             if not ext_comfy.is_dir():
                 raise FileNotFoundError("未找到 D:\\0_LLM\\ComfyUI 或 D:\\0_LTX\\runtime\\comfyui")
@@ -251,7 +256,6 @@ def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
                     if not is_path_allowed(arc_rel):
                         continue
                     if arc_rel == "runtime/comfyui/venv/pyvenv.cfg":
-                        # 自动重写 pyvenv.cfg 使其指向内置的 python312
                         cfg_txt = (
                             "home = ..\\python312\n"
                             "implementation = CPython\n"
@@ -268,7 +272,6 @@ def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
                     files_added += 1
                     total_bytes += p.stat().st_size
 
-            # 同时内置便携式 Python 3.12.7 基底，确保 ComfyUI 虚拟环境在任何电脑上开箱即用
             uv_py312 = Path(r"C:\Users\Timco\AppData\Roaming\uv\python\cpython-3.12.7-windows-x86_64-none")
             if uv_py312.is_dir():
                 for dirpath, dirnames, filenames in os.walk(uv_py312):
@@ -333,22 +336,22 @@ def build_single_ltxpack(pack_id: str) -> dict[str, Any]:
     }
 
 
-def verify_and_build_zip(edition: str = "code-only") -> dict[str, Any]:
+def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win-x64") -> dict[str, Any]:
     DIST_DIR.mkdir(parents=True, exist_ok=True)
     date_tag = time.strftime("%Y.%m.%d")
+    plat_suffix = "_macOS_ARM64" if target_platform == "macos-arm64" else ""
     tag_map = {
-        "cutora-only": f"片语工作室_极简CUTORA专享代码包_{date_tag}.zip",
-        "code-only": "02_【代码主程序包_日常更新只下此包】片语工作室_v3.0_全功能代码包.zip",
-        "standard": "02_【代码主程序包_日常更新只下此包】片语工作室_v3.0_全功能代码包.zip",
-        "models-once": "01_【模型与环境底座包_只需下载一次】片语工作室_v3.0_AI模型与运行环境包.zip",
-        "full-portable": f"片语工作室_完整便携解释器版_{date_tag}.zip",
-        "base-25gb": f"01_【必下底座_17.5GB】片语工作室_标准核心版_含CUTORA_表格工具_运行环境_25G核心字幕抠像立体声模型_{date_tag}.zip",
+        "cutora-only": f"片语工作室_极简CUTORA专享代码包{plat_suffix}_{date_tag}.zip",
+        "code-only": f"02_【代码主程序包_日常更新只下此包】片语工作室_v3.0_全功能代码包{plat_suffix}.zip",
+        "standard": f"02_【代码主程序包_日常更新只下此包】片语工作室_v3.0_全功能代码包{plat_suffix}.zip",
+        "models-once": f"01_【模型与环境底座包_只需下载一次】片语工作室_v3.0_AI模型与运行环境包{plat_suffix}.zip",
+        "full-portable": f"片语工作室_完整便携解释器版{plat_suffix}_{date_tag}.zip",
+        "base-25gb": f"01_【必下底座_17.5GB】片语工作室_标准核心版_含CUTORA_表格工具_运行环境_25G核心字幕抠像立体声模型{plat_suffix}_{date_tag}.zip",
     }
-    zip_name = tag_map.get(edition, f"片语工作室_{edition}_{date_tag}.zip")
+    zip_name = tag_map.get(edition, f"片语工作室_{edition}{plat_suffix}_{date_tag}.zip")
     zip_path = DIST_DIR / zip_name
 
     if edition == "models-once":
-        # 模型与环境底座包：只含 runtime 环境与核心 AI 模型，用户只需下载一次，后续升级代码永不重下！
         include_roots = [
             "runtime/python",
             "runtime/venv",
@@ -378,12 +381,10 @@ def verify_and_build_zip(edition: str = "code-only") -> dict[str, Any]:
 
     STORED_EXTS = {
         ".safetensors", ".pth", ".bin", ".onnx", ".pt", ".ckpt", ".npz",
-        ".dll", ".pyd", ".exe", ".lib", ".so", ".png", ".jpg", ".ico", ".ttf", ".otf", ".whl",
+        ".dll", ".pyd", ".exe", ".lib", ".so", ".dylib", ".png", ".jpg", ".ico", ".ttf", ".otf", ".whl",
     }
 
     print(f"[打包开始] 正在生成主程序包: {zip_name} ...", flush=True)
-    # 代码包 / 模型包两者都以同一个顶层文件夹「片语工作室/」打包：解压到同一个位置即自动合并成一个完整工作室；
-    # 即使分别解压到两个不同文件夹，《安装与体检.bat》也会自动找到模型包并把 runtime 合并进来。
     arc_prefix = "片语工作室/" if edition in ("code-only", "standard", "models-once") else ""
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as zf:
         if edition == "models-once":
@@ -391,12 +392,27 @@ def verify_and_build_zip(edition: str = "code-only") -> dict[str, Any]:
                 arc_prefix + "README_模型与环境底座包.txt",
                 "这是《片语工作室》的模型与运行环境底座包，只需下载一次。\n"
                 "请把它和《02_代码主程序包》解压到同一个位置（两个包内都是「片语工作室」文件夹，会自动合并）。\n"
-                "然后双击「片语工作室\\安装与体检.bat」即可。以后升级只需重新下载代码包并解压覆盖。\n",
+                "然后双击「片语工作室\\安装与体检.bat」（macOS 双击「安装与体检.command」）即可。以后升级只需重新下载代码包并解压覆盖。\n",
+            )
+        if target_platform == "macos-arm64":
+            zf.writestr(
+                arc_prefix + "README_macOS_AppleSilicon_安装与启动说明.txt",
+                "====================================================================\n"
+                "  《片语工作室》(Pianyu Studio v3.0) — macOS Apple Silicon (M1~M4) 版\n"
+                "====================================================================\n\n"
+                "1. 解压后进入「片语工作室」文件夹，双击运行『安装与体检.command』：\n"
+                "   - 自动配置 ARM64 原生 Python 环境与 Metal / VideoToolbox / Accelerate 硬件加速\n"
+                "   - 自动在桌面生成《片语工作室.app》与《右键表格工具.app》\n"
+                "   - 自动注册 macOS 访达 (Finder) 右键『快速操作 -> 用表格工具打开』\n\n"
+                "2. 日常启动：\n"
+                "   - 双击桌面《片语工作室.app》或目录内『启动片语工作室.command』即可启动\n"
+                "   - 支持 Orante 2.0（含 0 多账号池、首尾帧/素材双模式、预设库、播放器模式）、\n"
+                "     CUTORA 剪辑台（VideoToolbox 硬编解码 + Metal MPS + 统一内存零拷贝）与右键表格工具。\n",
             )
         zf.writestr(
             arc_prefix + "packs/README_如何安装扩展包.txt",
-            "将从网盘按需下载的 .ltxpack 扩展包（如 02_Orante、03_Robota、04_ComfyUI、05_LTX2.5视频模型等）直接放入本目录 (packs/)，\n"
-            "然后双击根目录的《安装与体检.bat》或打开《片语工作室》点击右上角【📦 模块与模型扩展中心】，即可一键无缝拼装！\n",
+            "将从网盘按需下载的 .ltxpack 扩展包（如 02_Orante、03_ComfyUI、04_LTX2.5视频模型等）直接放入本目录 (packs/)，\n"
+            "然后双击根目录的《安装与体检.bat》（macOS 双击《安装与体检.command》）或打开《片语工作室》点击右上角【📦 模块与模型扩展中心】，即可一键无缝拼装！\n",
         )
         for item in include_roots:
             target = LTX_ROOT / item
@@ -420,7 +436,7 @@ def verify_and_build_zip(edition: str = "code-only") -> dict[str, Any]:
                         sfx = p.suffix.lower()
                         if sfx in (".pyc", ".pyo", ".mp4", ".mov", ".zip", ".ltxpack", ".ltxpart"):
                             continue
-                        if not is_runtime_tree and sfx in (".py", ".toml", ".json", ".md", ".bat") and "secrets_vault.py" not in rel:
+                        if not is_runtime_tree and sfx in (".py", ".toml", ".json", ".md", ".bat", ".command") and "secrets_vault.py" not in rel:
                             try:
                                 txt = p.read_text(encoding="utf-8", errors="ignore")
                                 for pat in FORBIDDEN_CONTENT_PATTERNS:
@@ -441,6 +457,7 @@ def verify_and_build_zip(edition: str = "code-only") -> dict[str, Any]:
     return {
         "ok": len(security_violations) == 0 and len(junctions) == 0,
         "edition": edition,
+        "platform": target_platform,
         "zip_path": str(zip_path),
         "zip_size_gb": sz_gb,
         "zip_size_mb": round(zip_path.stat().st_size / (1024 * 1024), 2),
@@ -474,28 +491,26 @@ def write_cloud_drive_readme() -> Path:
    👉 01_【必下底座_17.5GB】片语工作室_标准核心版_含CUTORA_表格工具_运行环境_25G核心字幕抠像立体声模型_*.zip
    · 内含：片语工作室统一主界面、CUTORA 智能剪辑台、右键表格工具、便携 Python 环境、FFmpeg 硬件加速套件，
      以及日常必备的四大核心 AI 模型（Whisper 自动字幕、智能拼接、SAM2.1/RMBG2 视频图像抠像、Demucs/Resemble 立体声与降噪、人像提亮修复）。
-   · 硬件要求：普通办公本 / i7 + 32GB 内存（无独立显卡也可流畅运行，导出速度 >= 400 fps）。
+   · 硬件要求：普通办公本 / i7 + 32GB 内存（无独立显卡也可流畅运行，导出速度 >= 400 fps）或 Apple Silicon Mac。
 
 2. 【按需选下：独立软件模块包（体积很小，想用哪个软件就多下哪个）】：
    👉 02_【可选软件模块_15MB】Orante2.0制片台_pack-app-orante.ltxpack
       （需要用 Orante 2.0 批量排片、调用云端 Grok/Flow 生片、审片的同事下载）
-   👉 03_【可选软件模块_7MB】Robota协同操作代理_pack-app-robota.ltxpack
-      （需要用 Robota 自动建夹、网盘拉取、自动重命名与缺片闭环巡检的同事下载）
 
 3. 【按需选下：高阶音频与超分追踪模型包（中等配置电脑 / 有进阶剪辑需求的同事下载）】：
-   👉 08_【可选语音配乐模型_25.6GB】AI语音克隆与配乐生成_pack-audio-tts-bgm.ltxpack
+   👉 07_【可选语音配乐模型_25.6GB】AI语音克隆与配乐生成_pack-audio-tts-bgm.ltxpack
       （需要零样本 AI 情绪配音克隆 Chatterbox/XTTS、AI 生成背景音乐 Stable Audio/MusicGen 时下载）
-   👉 09_【可选超分追踪多语种_24.7GB】4x超分_TAPNext追踪_多国语对齐_pack-pro-vision-multilang.ltxpack
+   👉 08_【可选超分追踪多语种_24.7GB】4x超分_TAPNext追踪_多国语对齐_pack-pro-vision-multilang.ltxpack
       （需要 4x 画质超分放大、TAPNext++ 运动跟踪、德/西/法/葡多国语字幕对齐时下载）
 
-4. 【按需选下：本地重型 AI 视频/生图大模型包（仅限配备 RTX 12GB~16GB+ 独立显卡的主力工作站下载）】：
-   👉 04_【可选推理引擎_4.5GB】ComfyUI本地引擎与CUDA环境_pack-engine-comfyui.ltxpack  (本地生视频/生图必装底座)
-   👉 05_【可选视频生成模型_39.2GB】LTX-2.5_22B_本地视频生成大模型_pack-ltx25-video.ltxpack
-   👉 06_【可选视频特效模型_7.6GB】LTX-2.5_IC-LoRA_7合1视频精修特效_pack-ltx25-vfx-loras.ltxpack
-   👉 07_【可选生图改图模型_7.9GB】FLUX.2_klein_4B_极速生图与改图_pack-flux2-image.ltxpack
+4. 【按需选下：本地重型 AI 视频/生图大模型包（仅限配备 RTX 12GB~16GB+ 独立显卡或 36GB+ Apple Silicon 的主力工作站下载）】：
+   👉 03_【可选推理引擎_4.5GB】ComfyUI本地引擎与CUDA环境_pack-engine-comfyui.ltxpack  (本地生视频/生图必装底座)
+   👉 04_【可选视频生成模型_39.2GB】LTX-2.5_22B_本地视频生成大模型_pack-ltx25-video.ltxpack
+   👉 05_【可选视频特效模型_7.6GB】LTX-2.5_IC-LoRA_7合1视频精修特效_pack-ltx25-vfx-loras.ltxpack
+   👉 06_【可选生图改图模型_7.9GB】FLUX.2_klein_4B_极速生图与改图_pack-flux2-image.ltxpack
 
-5. 【仅限老用户日常更新代码（563MB）】：
-   👉 10_【日常代码热更新包_563MB】片语工作室_四翼全代码热更新包_*.zip
+5. 【仅限老用户日常更新代码】：
+   👉 02_【代码主程序包_日常更新只下此包】片语工作室_v3.0_全功能代码包.zip
       （已装好底座和模型的同事，后续软件升级只需下载此小包解压覆盖即可，原有百G模型100%保留！）
 
 --------------------------------------------------------------------------------
@@ -503,17 +518,17 @@ def write_cloud_drive_readme() -> Path:
 --------------------------------------------------------------------------------
 
 第一步：解压【01_必下底座】
-   将 `01_【必下底座...】.zip` 解压到电脑空间充足的磁盘根目录（如 `D:\\PianyuStudio\\` 或 `D:\\0_LTX\\`）。
+   将 `01_【必下底座...】.zip` 解压到电脑空间充足的磁盘根目录（如 `D:\\PianyuStudio\\` 或 `~/PianyuStudio/`）。
 
 第二步：放入您挑选的 `.ltxpack` 扩展包（如果有下载的话）
    把您从网盘挑着下载的 `.ltxpack` 文件（不用手动改后缀解压！），直接复制粘贴到解压目录里面的 **`packs`** 文件夹下。
 
 第三步：双击一键安装与启动
-   1. 双击运行解压目录里的 **`安装与体检.bat`**：
+   1. Windows 双击运行解压目录里的 **`安装与体检.bat`**（macOS 双击 **`安装与体检.command`**）：
       它会自动配置好 Python 环境、自动把 `packs` 文件夹里的所有扩展包无缝组装进工作室、并在桌面生成《片语工作室》快捷方式！
    2. 以后每天使用，直接双击桌面的 **《片语工作室》** 图标即可！
-   3. 如果以后后悔了、想追加新功能，随时从网盘补下对应的 `.ltxpack` 文件，打开《片语工作室》点击右上角
-      【📦 模块与模型扩展中心】->【📂 从本地导入 .ltxpack 扩展包...】，选中文件即可一键热挂载！
+   3. 如果以后想追加新功能，随时从网盘补下对应的 `.ltxpack` 文件，打开《片语工作室》点击
+      【🧩 扩展包】->【📂 选择 .ltxpack 文件一键安装…】，选中文件即可一键热挂载！
 ================================================================================
 """
     readme_path.write_text(content, encoding="utf-8")
@@ -529,6 +544,12 @@ def main() -> None:
         help="打包版本档位",
     )
     parser.add_argument("--pack-id", default="", help="当 --edition pack 时指定扩展包 ID (如 pack-ltx25-video)")
+    parser.add_argument(
+        "--platform",
+        default="win-x64",
+        choices=["win-x64", "macos-arm64"],
+        help="目标分发平台 (win-x64 或 macos-arm64)",
+    )
     parser.add_argument("--verify-only", action="store_true", help="仅执行安全与合规校验")
     args = parser.parse_args()
 
@@ -546,15 +567,15 @@ def main() -> None:
     if args.edition == "cloud-drive-all":
         write_cloud_drive_readme()
         results = []
-        results.append(verify_and_build_zip("base-25gb"))
+        results.append(verify_and_build_zip("base-25gb", target_platform=args.platform))
         manifest = load_manifest()
         for p in manifest.get("packs", []):
             results.append(build_single_ltxpack(p["id"]))
-        results.append(verify_and_build_zip("standard"))
+        results.append(verify_and_build_zip("standard", target_platform=args.platform))
         print(json.dumps({"ok": True, "cloud_drive_suite": results}, ensure_ascii=False, indent=2))
         return
 
-    res = verify_and_build_zip(edition=args.edition)
+    res = verify_and_build_zip(edition=args.edition, target_platform=args.platform)
     print(json.dumps(res, ensure_ascii=False, indent=2))
     if not res["ok"]:
         raise SystemExit(1)
@@ -562,4 +583,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

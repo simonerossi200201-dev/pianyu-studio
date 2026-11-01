@@ -797,8 +797,9 @@ class ParallelExportManager(QObject):
             self._running[wid] = info
             if self._hb is not None:
                 self._hb.pids = [i["proc"].pid for i in self._running.values()]
+        hw_tag = "GPU/VideoToolbox" if sys.platform == "darwin" else "GPU/NVENC"
         print(f"[Parallel] worker {wid} 已启动 (pid={proc.pid})，负责 {len(p['indices'])} 个视频"
-              f"，编码：{'GPU/NVENC' if p['use_gpu'] else 'CPU/libx264'}")
+              f"，编码：{hw_tag if p['use_gpu'] else 'CPU/libx264'}")
 
     # 兼容旧调用点（自测脚本等）
     def _spawn(self, wid, indices):
@@ -843,6 +844,11 @@ class ParallelExportManager(QObject):
                 try:
                     if _GUARD is not None:
                         avail = float(_GUARD.system_memory_gb()[1] or 0.0)
+                    elif sys.platform == "darwin":
+                        r_tot = _no_window_run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=2)
+                        r_vm = _no_window_run(["vm_stat"], capture_output=True, text=True, timeout=2)
+                        if r_tot.returncode == 0 and (r_tot.stdout or "").strip().isdigit():
+                            avail = (int(r_tot.stdout.strip()) / (1024.0 ** 3)) * 0.6
                 except Exception:
                     avail = 99.0
                 with self._lock:

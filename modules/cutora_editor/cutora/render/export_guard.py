@@ -283,7 +283,42 @@ def system_memory_gb():
                 g = 1024.0 ** 3
                 return (st.ullTotalPhys / g, st.ullAvailPhys / g)
             return (0.0, 0.0)
-        # 非 Windows：读 /proc/meminfo
+        if sys.platform == "darwin":
+            total = avail = 0.0
+            r_tot = _no_window_run(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r_tot.returncode == 0 and (r_tot.stdout or "").strip().isdigit():
+                total = int(r_tot.stdout.strip()) / (1024.0 ** 3)
+            r_vm = _no_window_run(
+                ["vm_stat"],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r_vm.returncode == 0 and r_vm.stdout:
+                page_size = 16384
+                lines = r_vm.stdout.splitlines()
+                if lines and "page size of" in lines[0]:
+                    for tok in lines[0].split():
+                        if tok.isdigit():
+                            page_size = int(tok)
+                            break
+                reclaimable_pages = 0
+                for line in lines[1:]:
+                    if ":" not in line:
+                        continue
+                    k, v = line.split(":", 1)
+                    k_low = k.strip().lower()
+                    if any(tag in k_low for tag in ("pages free", "pages inactive", "pages speculative", "pages purgeable")):
+                        num_str = v.strip().rstrip(".")
+                        if num_str.isdigit():
+                            reclaimable_pages += int(num_str)
+                if reclaimable_pages > 0:
+                    avail = (reclaimable_pages * page_size) / (1024.0 ** 3)
+            if avail <= 0.0 and total > 0.0:
+                avail = total * 0.6
+            return (total, avail)
+        # Linux：读 /proc/meminfo
         total = avail = 0
         with open("/proc/meminfo", "r") as f:
             for line in f:
@@ -404,9 +439,34 @@ def boost_main_process(on=True):
     except Exception:
         return False
 
+_CAFFEINATE_PROC = None
+
+
 def keep_system_awake(on=True):
     """导出期间阻止系统休眠（屏幕仍可以关）。批量导出动辄十几分钟，
     中途睡过去会让用户以为「电脑死机了」。"""
+    global _CAFFEINATE_PROC
+    if sys.platform == "darwin":
+        try:
+            if on:
+                if _CAFFEINATE_PROC is None or _CAFFEINATE_PROC.poll() is not None:
+                    _CAFFEINATE_PROC = _no_window_popen(
+                        ["caffeinate", "-di", "-w", str(os.getpid())],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL,
+                    )
+                return True
+            if _CAFFEINATE_PROC is not None:
+                try:
+                    if _CAFFEINATE_PROC.poll() is None:
+                        _CAFFEINATE_PROC.terminate()
+                except Exception:
+                    pass
+                _CAFFEINATE_PROC = None
+            return True
+        except Exception:
+            return False
     if not IS_WINDOWS:
         return False
     try:
@@ -873,6 +933,22 @@ def process_rss_gb(pid: int) -> float:
                 return float(pmc.PeakWorkingSetSize) / (1024.0 ** 3)
             finally:
                 k32.CloseHandle(handle)
+        if sys.platform == "darwin":
+            if int(pid) == os.getpid():
+                try:
+                    import resource
+                    ru = resource.getrusage(resource.RUSAGE_SELF)
+                    if ru.ru_maxrss > 0:
+                        return float(ru.ru_maxrss) / (1024.0 ** 3)
+                except Exception:
+                    pass
+            r_ps = _no_window_run(
+                ["ps", "-o", "rss=", "-p", str(int(pid))],
+                capture_output=True, text=True, timeout=2,
+            )
+            if r_ps.returncode == 0 and (r_ps.stdout or "").strip().isdigit():
+                return float(int(r_ps.stdout.strip())) / (1024.0 ** 2)
+            return 0.0
         st = os.stat("/proc/%d/statm" % int(pid))
         pages = int(open("/proc/%d/statm" % int(pid), encoding="utf-8").read().split()[1])
         return pages * float(os.sysconf("SC_PAGE_SIZE")) / (1024.0 ** 3)
@@ -951,11 +1027,8 @@ _FRIENDLY_PROC_NAMES = {
     "dingtalk.exe": "钉钉",
     "feishu.exe": "飞书",
     "lark.exe": "飞书",
-    "jianyingpro.exe": "剪映专业版",
-    "capcut.exe": "CapCut",
-    "premiere.exe": "Premiere Pro",
-    "afterfx.exe": "After Effects",
-    "resolve.exe": "达芬奇调色",
+    "afterfx.exe": "影视特效软件",
+    "resolve.exe": "调色剪辑软件",
     "photoshop.exe": "Photoshop",
     "wps.exe": "WPS 办公软件",
     "winword.exe": "Word 文档",
@@ -1740,32 +1813,37 @@ def plan_parallel_export(job_count, requested_workers, want_gpu, cpu_count=None,
     # workers 个渲染线程和 2 个给主界面的核扣掉，剩下的才分给 FFmpeg。
     enc_threads = max(2, min(8, (cpu - 2 - workers) // max(1, workers)))
 
-    # ── 显存 / NVENC ───────────────────────────────────────────────────
+    # ── 显存 / NVENC / VideoToolbox ─────────────────────────────────────
     gpu_workers = 0
     if want_gpu:
-        vram = gpu_memory_gb()
-        if vram is None:
-            # 读不到显存信息（nvidia-smi 不在 PATH 等）。这时不去改变用户的
-            # 选择——保持 GPU 可用，只把并发 NVENC 会话数压到安全值。
-            gpu_workers = min(workers, nvenc_max_sessions())
+        if sys.platform == "darwin":
+            gpu_workers = workers
             notes.append(
-                f"读取不到显存信息，保守起见只允许 {gpu_workers} 个进程使用 GPU 编码")
+                f"macOS Apple Silicon 统一内存 + VideoToolbox 硬件媒体引擎，允许全部 {gpu_workers} 个进程使用硬件编码")
         else:
-            total_v, used_v, free_v = vram
-            budget_v = max(0.0, free_v - VRAM_HEADROOM_GB)
-            vram_cap = int(budget_v // VRAM_PER_NVENC_GB)
-            nv_cap = nvenc_max_sessions()
-            gpu_workers = max(0, min(workers, nv_cap, vram_cap))
-            if gpu_workers == 0:
+            vram = gpu_memory_gb()
+            if vram is None:
+                # 读不到显存信息（nvidia-smi 不在 PATH 等）。这时不去改变用户的
+                # 选择——保持 GPU 可用，只把并发 NVENC 会话数压到安全值。
+                gpu_workers = min(workers, nvenc_max_sessions())
                 notes.append(
-                    f"显存空闲仅 {free_v:.1f} GB（共 {total_v:.1f} GB），"
-                    f"本次导出全部改用 CPU 编码，以免显存耗尽导致桌面白屏")
-            elif gpu_workers < workers:
-                why = (f"NVENC 并发上限（{nvenc_sessions_source()}）" if nv_cap <= vram_cap
-                       else f"显存空闲 {free_v:.1f} GB")
-                notes.append(
-                    f"{why}，只允许 {gpu_workers} 个进程使用 NVENC，"
-                    f"其余 {workers - gpu_workers} 个用 CPU 编码")
+                    f"读取不到显存信息，保守起见只允许 {gpu_workers} 个进程使用 GPU 编码")
+            else:
+                total_v, used_v, free_v = vram
+                budget_v = max(0.0, free_v - VRAM_HEADROOM_GB)
+                vram_cap = int(budget_v // VRAM_PER_NVENC_GB)
+                nv_cap = nvenc_max_sessions()
+                gpu_workers = max(0, min(workers, nv_cap, vram_cap))
+                if gpu_workers == 0:
+                    notes.append(
+                        f"显存空闲仅 {free_v:.1f} GB（共 {total_v:.1f} GB），"
+                        f"本次导出全部改用 CPU 编码，以免显存耗尽导致桌面白屏")
+                elif gpu_workers < workers:
+                    why = (f"NVENC 并发上限（{nvenc_sessions_source()}）" if nv_cap <= vram_cap
+                           else f"显存空闲 {free_v:.1f} GB")
+                    notes.append(
+                        f"{why}，只允许 {gpu_workers} 个进程使用 NVENC，"
+                        f"其余 {workers - gpu_workers} 个用 CPU 编码")
 
     tier = "低" if workers <= 1 else ("高" if workers >= 5 else "中")
     n_workers = max(1, workers)
@@ -2327,6 +2405,8 @@ def guard_window_class():
             try:
                 if IS_WINDOWS:
                     os.startfile(dirs[0])
+                elif sys.platform == "darwin":
+                    _no_window_popen(["open", dirs[0]])
                 else:
                     _no_window_popen(["xdg-open", dirs[0]])
             except Exception:

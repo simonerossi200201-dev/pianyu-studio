@@ -24,7 +24,12 @@ window.API = (() => {
     get: (u, opts) => call('GET', u, undefined, opts),
     post: (u, d, opts) => call('POST', u, d || {}, opts),
     patch: (u, d, opts) => call('PATCH', u, d || {}, opts),
-    del: (u, opts) => call('DELETE', u, undefined, opts),
+    del: (u, d, opts) => {
+      if (d && opts === undefined && (d.silent !== undefined && Object.keys(d).length === 1)) {
+        return call('DELETE', u, undefined, d);
+      }
+      return call('DELETE', u, d, opts);
+    },
     job: (kind, task_id, args) => call('POST', '/api/jobs', Object.assign({ kind, task_id }, args || {})),
   };
 })();

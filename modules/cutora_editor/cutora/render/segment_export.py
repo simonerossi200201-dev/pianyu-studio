@@ -249,7 +249,7 @@ class SegmentExportWorker(QThread):
         if use_gpu:
             kind = str((prof or {}).get("vcodec") or "h264")
             _enc, _reason = (pick_hevc if kind == "hevc" else pick_h264)(True)
-            if not str(_enc).endswith("_nvenc"):
+            if not str(_enc).endswith(("_nvenc", "_videotoolbox")):
                 use_gpu = False
         self.use_gpu = use_gpu
         if encode_args(prof, use_gpu)[0] is None:

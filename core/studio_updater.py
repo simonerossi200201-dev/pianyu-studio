@@ -92,5 +92,25 @@ def run_hot_update(studio_root: Path | None = None) -> int:
     return 0
 
 
+def resolve_git_binary(studio_root: Path | None = None) -> str:
+    """跨平台解析 git 可执行文件路径（Windows: git.exe, macOS/POSIX: git）。"""
+    root = (studio_root or Path(__file__).resolve().parent.parent).resolve()
+    git_name = "git.exe" if os.name == "nt" else "git"
+    cand = root / "runtime" / "bin" / git_name
+    if cand.is_file():
+        return str(cand)
+    found = shutil.which("git")
+    return found or git_name
+
+
+def check_and_apply_hot_update(studio_root: Path | None = None) -> dict[str, object]:
+    """供总控台按钮直接调用的无阻塞热更新封装。"""
+    try:
+        rc = run_hot_update(studio_root=studio_root)
+        return {"ok": rc == 0, "message": "已同步最新云端代码与预设，重启软件即可生效"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 if __name__ == "__main__":
     raise SystemExit(run_hot_update())

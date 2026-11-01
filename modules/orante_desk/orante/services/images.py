@@ -32,10 +32,18 @@ try:
 except ImportError:
     PILImage = None
 
-try:
-    import msvcrt
-except ImportError:
+if paths.IS_WIN:
+    try:
+        import msvcrt
+    except ImportError:
+        msvcrt = None
+    fcntl = None
+else:
     msvcrt = None
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 MIN_SIDE = 300
@@ -242,7 +250,7 @@ def _looks_image_name(name: str) -> bool:
 # ---- 已使用记录 --------------------------------------------------------------
 
 class _FileLock:
-    """跨进程锁 used_images.json。Windows 走 msvcrt，别处用独占创建。"""
+    """跨进程锁 used_images.json。Windows 走 msvcrt.locking，macOS/Linux 走 fcntl.flock。"""
 
     def __init__(self, path: Path, timeout=20):
         self.path = Path(path)
@@ -253,7 +261,7 @@ class _FileLock:
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         deadline = time.time() + self.timeout
-        if msvcrt is not None:
+        if paths.IS_WIN and msvcrt is not None:
             self.fp = open(self.path, "a+b")
             if self.fp.tell() == 0:
                 self.fp.write(b"\0")
@@ -262,6 +270,16 @@ class _FileLock:
                 try:
                     self.fp.seek(0)
                     msvcrt.locking(self.fp.fileno(), msvcrt.LK_NBLCK, 1)
+                    return self
+                except OSError:
+                    if time.time() > deadline:
+                        raise OranteError("已使用记录正被占用", "稍后再试")
+                    time.sleep(0.05)
+        elif fcntl is not None:
+            self.fp = open(self.path, "a+b")
+            while True:
+                try:
+                    fcntl.flock(self.fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                     return self
                 except OSError:
                     if time.time() > deadline:
@@ -282,8 +300,10 @@ class _FileLock:
         if self.fp is not None:
             try:
                 self.fp.seek(0)
-                if msvcrt is not None:
+                if paths.IS_WIN and msvcrt is not None:
                     msvcrt.locking(self.fp.fileno(), msvcrt.LK_UNLCK, 1)
+                elif fcntl is not None:
+                    fcntl.flock(self.fp.fileno(), fcntl.LOCK_UN)
             finally:
                 self.fp.close()
                 self.fp = None

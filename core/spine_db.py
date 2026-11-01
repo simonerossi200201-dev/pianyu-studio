@@ -1,11 +1,11 @@
 """跨窗口实时信号总线与共享数据库底座 (SpineDB & EventBus)。
 
-这是「片语工作室 (D:\\0_LTX)」将四大软件（表格工具、Orante、CUTORA、Robota）与本地 AI 算力网关
+这是「片语工作室 (D:\\0_LTX)」将三大桌面软件（表格工具、Orante、CUTORA）与本地 AI 算力网关
 紧密咬合成一个整体的核心神经中枢：
 
 1. 信号一 (`table.sync_to_cutora`)：Orante 任务表与文案直接同步给 CUTORA 智能拼接，零粘贴。
 2. 信号二 (`stitch.gap_detected`)：CUTORA 智能拼接发现缺片时，立即回写 `<task_dir>/clips/_stitched/缺失文案清单.txt`
-   并通过总线通知 Orante (`gapfill.py`) 标红对应分镜，同时唤醒 Robota L0 零 Token 状态机自动安排补生。
+   并通过总线通知 Orante (`gapfill.py`) 标红对应分镜，并支持自动安排补生。
 3. 信号三 (`engine.image_blocked`)：Flow / Grok 垫图被卡审核时，自动转发至 Studio Gateway (`127.0.0.1:7870`)
    使用本地 **LTX-2.5 22B** 补生（不包含 MiniMax H3）。
 4. 信号四 (`render.completed`)：CUTORA 导出成片完成后，自动将 Orante 任务标为 `finished`，
@@ -14,7 +14,10 @@
 
 from __future__ import annotations
 
+import datetime
 import json
+import os
+import re
 import sqlite3
 import threading
 import time
@@ -27,6 +30,167 @@ from . import DATA_DIR, load_studio_config
 from .table_sync import discover_orante_batch_tasks, write_order_lock_for_cutora
 
 SPINE_DB_PATH = DATA_DIR / "studio_spine.db"
+LIFECYCLE_STATE_PATH = DATA_DIR / "memory" / "project_lifecycle_state.json"
+
+
+def _resolve_workspace_root() -> Path:
+    cfg = load_studio_config()
+    paths_cfg = cfg.get("paths", {})
+    ws_str = str(paths_cfg.get("workspace_root") or cfg.get("workspace_root") or "")
+    if ws_str:
+        p = Path(ws_str).expanduser()
+        if p.exists() or os.name == "nt":
+            return p
+    if os.name == "nt":
+        for cand in (Path(r"D:\1_PROJECT"), Path(r"C:\1_PROJECT")):
+            if cand.exists():
+                return cand
+        return Path(r"D:\1_PROJECT")
+    return Path.home() / "1_PROJECT"
+
+
+def _scan_batch_folder_summary(batch_dir: Path) -> dict[str, int]:
+    """扫描单个批次目录 (如 2026-04-12/A) 的主视频、分镜片段、CUTORA 工程、成片及上传状态统计。"""
+    vid_exts = {".mp4", ".mov", ".mkv", ".webm"}
+    main_videos_count = 0
+    clips_count = 0
+    cutora_tasks_count = 0
+    exported_mp4_count = 0
+    uploaded_ok_count = 0
+
+    if not batch_dir.is_dir():
+        return {
+            "main_videos_count": 0,
+            "clips_count": 0,
+            "cutora_tasks_count": 0,
+            "exported_mp4_count": 0,
+            "uploaded_ok_count": 0,
+        }
+
+    try:
+        for item in batch_dir.iterdir():
+            if item.is_file() and item.suffix.lower() in vid_exts:
+                main_videos_count += 1
+            elif item.is_dir() and not item.name.startswith((".", "_")):
+                if item.name == "字幕成品":
+                    for sub in item.iterdir():
+                        if sub.is_file() and sub.suffix.lower() == ".mp4":
+                            exported_mp4_count += 1
+                    rnm = item / ".renamer_project.json"
+                    if rnm.is_file():
+                        try:
+                            rdata = json.loads(rnm.read_text(encoding="utf-8"))
+                            uploads = rdata.get("uploads") or {}
+                            for uinfo in uploads.values():
+                                if isinstance(uinfo, dict) and uinfo.get("status") == "ok":
+                                    uploaded_ok_count += 1
+                        except Exception:
+                            pass
+                    continue
+
+                clips_dir = item / "clips"
+                if clips_dir.is_dir():
+                    for cf in clips_dir.iterdir():
+                        if cf.is_file() and cf.suffix.lower() in vid_exts:
+                            clips_count += 1
+                for sub in item.iterdir():
+                    if sub.is_file() and sub.suffix.lower() == ".cutora":
+                        cutora_tasks_count += 1
+                    elif sub.is_dir() and sub.name == "字幕成品":
+                        for mp4 in sub.iterdir():
+                            if mp4.is_file() and mp4.suffix.lower() == ".mp4":
+                                exported_mp4_count += 1
+                        rnm = sub / ".renamer_project.json"
+                        if rnm.is_file():
+                            try:
+                                rdata = json.loads(rnm.read_text(encoding="utf-8"))
+                                uploads = rdata.get("uploads") or {}
+                                for uinfo in uploads.values():
+                                    if isinstance(uinfo, dict) and uinfo.get("status") == "ok":
+                                        uploaded_ok_count += 1
+                            except Exception:
+                                pass
+    except Exception:
+        pass
+
+    return {
+        "main_videos_count": main_videos_count,
+        "clips_count": clips_count,
+        "cutora_tasks_count": cutora_tasks_count,
+        "exported_mp4_count": exported_mp4_count,
+        "uploaded_ok_count": uploaded_ok_count,
+    }
+
+
+def scan_active_workspace_metrics() -> dict[str, Any]:
+    """自包含实时工作区扫描器（零外部代理依赖）：
+    读取 data/memory/project_lifecycle_state.json 与工作区目录，统计当前活跃日期与批次状态。
+    """
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
+    ws_root = _resolve_workspace_root()
+    state: dict[str, Any] = {}
+    if LIFECYCLE_STATE_PATH.is_file():
+        try:
+            state = json.loads(LIFECYCLE_STATE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            state = {}
+
+    active_day = str(state.get("active_day") or "")
+    active_batch = str(state.get("active_batch") or "A")
+    prev_completed_day = str(state.get("last_completed_day") or "")
+    prev_sum = state.get("last_completed_summary") or {}
+
+    date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    if ws_root.is_dir() and (not active_day or not (ws_root / active_day).is_dir()):
+        try:
+            day_dirs = sorted(
+                [d.name for d in ws_root.iterdir() if d.is_dir() and date_re.match(d.name)],
+                reverse=True,
+            )
+            if day_dirs:
+                active_day = day_dirs[0]
+        except Exception:
+            pass
+    if not active_day:
+        active_day = today_str
+
+    day_dir = ws_root / active_day
+    batch_dir = day_dir / active_batch
+    if day_dir.is_dir() and not batch_dir.is_dir():
+        try:
+            batches = sorted([d.name for d in day_dir.iterdir() if d.is_dir() and len(d.name) <= 4])
+            if batches:
+                active_batch = batches[-1]
+                batch_dir = day_dir / active_batch
+        except Exception:
+            pass
+
+    counts = _scan_batch_folder_summary(batch_dir if batch_dir.is_dir() else day_dir)
+    if counts["uploaded_ok_count"] > 0:
+        stage_label = "已上传交付"
+    elif counts["exported_mp4_count"] > 0:
+        stage_label = "成片待上传"
+    elif counts["cutora_tasks_count"] > 0:
+        stage_label = "剪辑合成中"
+    elif counts["clips_count"] > 0:
+        stage_label = "分镜已生成"
+    elif counts["main_videos_count"] > 0:
+        stage_label = "素材已就绪"
+    else:
+        stage_label = "待启动"
+
+    return {
+        "active_day": active_day,
+        "active_batch": active_batch,
+        "stage_label": stage_label,
+        "main_videos_count": counts["main_videos_count"],
+        "clips_count": counts["clips_count"],
+        "cutora_tasks_count": counts["cutora_tasks_count"],
+        "exported_count": counts["exported_mp4_count"],
+        "uploaded_ok_count": counts["uploaded_ok_count"],
+        "prev_completed_day": prev_completed_day,
+        "prev_uploaded_ok": int(prev_sum.get("uploaded_ok_count", 0)) if isinstance(prev_sum, dict) else 0,
+    }
 
 
 class SpineDB:
@@ -86,15 +250,7 @@ class SpineDB:
                     updated_at REAL NOT NULL
                 );
 
-                CREATE TABLE IF NOT EXISTS robota_recipes (
-                    recipe_id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    description TEXT NOT NULL DEFAULT '',
-                    steps_json TEXT NOT NULL DEFAULT '[]',
-                    zero_token_l0 INTEGER NOT NULL DEFAULT 1,
-                    run_count INTEGER NOT NULL DEFAULT 0,
-                    updated_at REAL NOT NULL
-                );
+                DROP TABLE IF EXISTS robota_recipes;
                 DELETE FROM gap_reports WHERE task_id = 'T9999';
                 DELETE FROM delivery_queue WHERE task_id = 'T9999';
                 DELETE FROM spine_events WHERE task_id = 'T9999';
@@ -125,41 +281,8 @@ class SpineDB:
         return self.emit(topic=topic, source=source, payload=payload, target=target, task_id=task_id)
 
     def _scan_active_workspace_metrics(self) -> dict[str, Any]:
-        """实时扫描 D:\\1_PROJECT 下当前活跃日期与批次的真实素材、片段、工程、导出及 .renamer_project.json 上传闭环状态。"""
-        try:
-            from .robota_guide import DailyWorkflowConductor
-            conductor = DailyWorkflowConductor()
-            stats = conductor.get_live_workspace_stats()
-            lc = stats.get("lifecycle") or {}
-            prev_sum = stats.get("prev_completed_summary") or {}
-            return {
-                "active_day": stats.get("day_str", ""),
-                "active_batch": stats.get("active_batch", "A"),
-                "stage_label": stats.get("stage_label", "待启动"),
-                "main_videos_count": int(stats.get("vid_count", 0)),
-                "clips_count": int(lc.get("clips_count", 0)),
-                "cutora_tasks_count": int(lc.get("cutora_tasks_count", 0)),
-                "exported_count": int(lc.get("exported_mp4_count", 0)),
-                "uploaded_ok_count": int(lc.get("uploaded_ok_count", 0)),
-                "prev_completed_day": str(stats.get("prev_completed_day") or ""),
-                "prev_uploaded_ok": int(prev_sum.get("uploaded_ok_count", 0)),
-            }
-        except Exception:
-            import datetime
-            ws_root = Path(load_studio_config().get("workspace_root", r"D:\1_PROJECT"))
-            today_str = datetime.date.today().strftime("%Y-%m-%d")
-            return {
-                "active_day": today_str,
-                "active_batch": "A",
-                "stage_label": "待启动",
-                "main_videos_count": 0,
-                "clips_count": 0,
-                "cutora_tasks_count": 0,
-                "exported_count": 0,
-                "uploaded_ok_count": 0,
-                "prev_completed_day": "",
-                "prev_uploaded_ok": 0,
-            }
+        """实时扫描工作区下当前活跃日期与批次的真实素材、片段、工程、导出及 .renamer_project.json 上传闭环状态。"""
+        return scan_active_workspace_metrics()
 
     def get_dashboard_summary(self) -> dict[str, Any]:
         now = time.time()
@@ -269,7 +392,7 @@ class SpineDB:
             "scripts_by_group": scripts_map,
         }
 
-    # --- 闭环信号 2：CUTORA 智能拼接检出缺片 -> 实时回流 Orante + 触发 Robota 0-Token 自动补生 ---
+    # --- 闭环信号 2：CUTORA 智能拼接检出缺片 -> 实时回流 Orante 自动补生 ---
     def report_stitch_gaps_to_orante(
         self,
         task_id: str,
@@ -281,11 +404,13 @@ class SpineDB:
         """当 CUTORA 智能拼接检测到缺词/缺片时调用：
         1. 确保 `<task_dir>/clips/_stitched/缺失文案清单.txt` 按 Orante `gapfill.py` 规范写出；
         2. 写入 `studio_spine.db` 的 `gap_reports` 表；
-        3. 若开启了 `realtime_gapfill_feedback` / `robota_zero_token_replenish`，自动通知 Orante 标红并触发补生！
+        3. 若开启了 `realtime_gapfill_feedback` / `auto_gapfill_replenish`，自动通知 Orante 标红并触发补生！
         """
         cfg_sig = load_studio_config().get("signals", {})
         if auto_regenerate is None:
-            auto_regenerate = bool(cfg_sig.get("robota_zero_token_replenish", True))
+            auto_regenerate = bool(
+                cfg_sig.get("auto_gapfill_replenish", cfg_sig.get("robota_zero_token_replenish", True))
+            )
 
         stitched_dir = task_dir / "clips" / "_stitched"
         stitched_dir.mkdir(parents=True, exist_ok=True)

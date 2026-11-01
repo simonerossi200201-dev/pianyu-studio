@@ -12,6 +12,7 @@ import os
 import time
 from pathlib import Path
 
+from . import paths
 from .errors import OranteError
 
 MANIFEST_LOCK_SEC = 10.0
@@ -47,7 +48,7 @@ class FileLock:
 
     def _lock(self) -> None:
         self._fh.seek(0)
-        if os.name == "nt":
+        if paths.IS_WIN:
             import msvcrt
             msvcrt.locking(self._fh.fileno(), msvcrt.LK_NBLCK, 1)
         else:
@@ -59,7 +60,7 @@ class FileLock:
             return
         try:
             self._fh.seek(0)
-            if os.name == "nt":
+            if paths.IS_WIN:
                 import msvcrt
                 msvcrt.locking(self._fh.fileno(), msvcrt.LK_UNLCK, 1)
             else:

@@ -3,13 +3,12 @@
 
 设计规范：
 1. 9:16 竖屏黄金比例 (540 × 960)，遵循 CUTORA Roma-Gold 古典黑金视觉体系。
-2. 完整内嵌五大核心软件与模块的专属高清徽章图标：
+2. 完整内嵌四大核心软件与模块的专属高清徽章图标：
    - 片语工作室主徽章 (`resources/brand/app.png`)
    - Orante 2.0 制片台 (`resources/brand/orante_me.png`)
    - 片语 Studio · CUTORA (`resources/brand/cutora_me.png`)
    - 右键表格工具 (`resources/brand/table_tool_me.png`)
    - 本地算力网关 · 7870 (`resources/brand/ltx_gateway_me.png`)
-   - Robota 自动巡检代理 (`resources/brand/robota_me.png`)
 3. 全圆角渐变金边卡片、平滑悬停/按压交互动画 (`QVariantAnimation` + `OutCubic`)、内置字体渲染。
 """
 
@@ -27,10 +26,16 @@ LTX_ROOT = Path(__file__).resolve().parent
 if str(LTX_ROOT) not in sys.path:
     sys.path.insert(0, str(LTX_ROOT))
 
+from core import resolve_python_exe
 from core.portable import rewrite_pyvenv_cfg
 from core.shortcut import ensure_shortcuts
 from core.hardware_guard import get_hardware_guard
-from core.spine_db import get_spine_db
+from core.spine_db import get_spine_db, _resolve_workspace_root
+from core.table_sync import (
+    is_cutora_running as _table_sync_is_cutora_running,
+    launch_cutora_room,
+    prepare_cutora_stitch_handoff,
+)
 from core.delivery_worker import get_delivery_worker
 
 # 启动即自动修正便携 Python 路径并确保桌面快捷方式指向当前目录
@@ -59,14 +64,7 @@ WIN_H = 960
 
 
 def _python_exe(gui: bool = False) -> str:
-    name = "pythonw.exe" if gui else "python.exe"
-    cand = LTX_ROOT / "runtime" / "venv" / "Scripts" / name
-    if cand.is_file():
-        return str(cand)
-    cand2 = LTX_ROOT / "runtime" / "python" / name
-    if cand2.is_file():
-        return str(cand2)
-    return sys.executable
+    return resolve_python_exe(gui=gui, root=LTX_ROOT)
 
 
 import time
@@ -80,18 +78,8 @@ _MODULE_START_TS: dict[str, float] = {}
 
 
 def is_cutora_running() -> bool:
-    """检查系统内是否已有正在运行的 CUTORA 实例（基于 Windows 命名互斥体）。"""
-    if os.name != "nt":
-        return False
-    try:
-        kernel32 = ctypes.windll.kernel32
-        h = kernel32.OpenMutexW(0x00100000, False, "Local\\CUTORA_SingleInstance_Mutex_v1")
-        if h:
-            kernel32.CloseHandle(h)
-            return True
-    except Exception:
-        pass
-    return False
+    """检查系统内是否已有正在运行的 CUTORA 实例（支持 Windows 命名互斥体与 macOS cutora.lock）。"""
+    return _table_sync_is_cutora_running()
 
 
 def is_cutora_active() -> bool:
@@ -148,7 +136,9 @@ def launch_orante(start_node: str = "") -> bool:
     orante_dir = LTX_ROOT / "modules" / "orante_desk"
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
-    env["PATH"] = f"{LTX_ROOT / 'runtime' / 'bin'};{LTX_ROOT / 'runtime' / 'ffmpeg'};{env.get('PATH', '')}"
+    env["PATH"] = os.pathsep.join(
+        [str(LTX_ROOT / "runtime" / "bin"), str(LTX_ROOT / "runtime" / "ffmpeg"), env.get("PATH", "")]
+    )
     if start_node:
         env["ORANTE_START_NODE"] = start_node
     proc = subprocess.Popen([_python_exe(gui=True), "-m", "orante"], cwd=str(orante_dir), env=env)
@@ -169,11 +159,9 @@ def launch_cutora(room: str = "") -> bool:
     _MODULE_CLICK_ACCEPTED.add("cutora")
     _CUTORA_START_TS = time.monotonic()
     try:
-        from core.robota_guide import DailyWorkflowConductor
-        cond = DailyWorkflowConductor()
-        cond.launch_cutora_room(room)
-        if getattr(cond, "_last_cutora_proc", None) is not None:
-            _CUTORA_PROC = cond._last_cutora_proc
+        if room == "stitch":
+            prepare_cutora_stitch_handoff(auto_start=True, auto_ai=True, source="launcher")
+        launch_cutora_room(room=room or "preview")
     except Exception:
         if is_cutora_running():
             return False
@@ -181,7 +169,9 @@ def launch_cutora(room: str = "") -> bool:
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         env["CUTORA_RUNTIME"] = str(LTX_ROOT / "runtime")
-        env["PATH"] = f"{LTX_ROOT / 'runtime' / 'bin'};{LTX_ROOT / 'runtime' / 'ffmpeg'};{env.get('PATH', '')}"
+        env["PATH"] = os.pathsep.join(
+            [str(LTX_ROOT / "runtime" / "bin"), str(LTX_ROOT / "runtime" / "ffmpeg"), env.get("PATH", "")]
+        )
         args = [_python_exe(gui=True), "-m", "cutora"]
         if room:
             env["CUTORA_START_ROOM"] = room
@@ -196,16 +186,16 @@ def launch_table_tool(target_dir: str | None = None) -> bool:
         return False
     _MODULE_CLICK_ACCEPTED.add("table")
     _MODULE_START_TS["table"] = time.monotonic()
-    try:
-        from core.robota_guide import DailyWorkflowConductor
-        DailyWorkflowConductor().launch_table_tool_in_dir(Path(target_dir) if target_dir else None)
-    except Exception:
-        script = LTX_ROOT / "modules" / "table_tool" / "app" / "表格工具.py"
-        cmd = [_python_exe(gui=True), str(script)]
-        if target_dir:
-            cmd.append(target_dir)
-        proc = subprocess.Popen(cmd, cwd=str(script.parent))
-        _MODULE_PROCS["table"] = proc
+    script = LTX_ROOT / "modules" / "table_tool" / "app" / "表格工具.py"
+    cmd = [_python_exe(gui=True), str(script)]
+    if target_dir:
+        cmd.append(target_dir)
+    else:
+        ws_root = _resolve_workspace_root()
+        if ws_root.is_dir():
+            cmd.append(str(ws_root))
+    proc = subprocess.Popen(cmd, cwd=str(script.parent))
+    _MODULE_PROCS["table"] = proc
     get_spine_db().emit_event("launcher.table_tool_started", "launcher", "table_tool", {})
     return True
 
@@ -217,7 +207,13 @@ def launch_studio_gateway() -> bool:
     _MODULE_CLICK_ACCEPTED.add("gateway")
     _MODULE_START_TS["gateway"] = time.monotonic()
     bat = LTX_ROOT / "启动本地算力网关.bat"
-    proc = subprocess.Popen(["cmd.exe", "/c", "start", "", str(bat)], cwd=str(LTX_ROOT))
+    if os.name == "nt" and bat.is_file():
+        proc = subprocess.Popen(["cmd.exe", "/c", "start", "", str(bat)], cwd=str(LTX_ROOT))
+    else:
+        proc = subprocess.Popen(
+            [_python_exe(gui=False), "-m", "modules.studio_gateway.server"],
+            cwd=str(LTX_ROOT),
+        )
     _MODULE_PROCS["gateway"] = proc
     get_spine_db().emit_event("launcher.gateway_started", "launcher", "gateway", {"port": 7870})
     return True
@@ -711,9 +707,9 @@ def run_gui(screenshot_path: str | None = None) -> None:
         shortcut_requested = Signal()
         refresh_requested = Signal()
 
-        def __init__(self, robota_icon: Path, parent: QWidget | None = None) -> None:
+        def __init__(self, badge_icon: Path, parent: QWidget | None = None) -> None:
             super().__init__(parent)
-            self._robota_pm = load_smooth_pixmap(robota_icon, 38)
+            self._badge_pm = load_smooth_pixmap(badge_icon, 38)
             self._summary = {"tasks_total": 0, "gaps_pending": 0, "uploads_pending": 0, "unacked_events": 0}
             self._latest_signal = "Rust 高性能内存引擎在线 · 智能拼接/自动字幕/制片全流程就绪"
             self._pulse_phase = 0.0
@@ -773,8 +769,8 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p.drawPath(path)
 
             # 1. 顶部：工作室徽章 + 标题 + 在线呼吸灯
-            if not self._robota_pm.isNull():
-                p.drawPixmap(int(rect.left() + 14), int(rect.top() + 11), self._robota_pm)
+            if not self._badge_pm.isNull():
+                p.drawPixmap(int(rect.left() + 14), int(rect.top() + 11), self._badge_pm)
 
             p.setFont(make_font(13, QFont.Weight.Bold))
             p.setPen(QColor(FG0))
@@ -1051,7 +1047,6 @@ def run_gui(screenshot_path: str | None = None) -> None:
             root.addSpacing(12)
 
             # 4. 底部工作室状态与内存卫士总控卡
-            self._robota_win = None
             self._footer_card = SpineFooterCard(brand_dir / "app.png", parent=self)
             self._footer_card.guide_requested.connect(self._on_purge_system_memory)
             self._footer_card.patrol_requested.connect(self._on_run_patrol)
@@ -1271,9 +1266,18 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
         def _on_run_patrol(self) -> None:
             bat = LTX_ROOT / "代码热更新_双击同步最新功能.bat"
-            if bat.is_file():
+            if os.name == "nt" and bat.is_file():
                 subprocess.Popen(["cmd.exe", "/c", "start", "", str(bat)], cwd=str(LTX_ROOT))
                 self._toast.show_toast("已启动云端代码热更新窗口 · 更新后重启即可生效")
+            elif sys.platform == "darwin":
+                from core.studio_updater import check_and_apply_hot_update
+                res = check_and_apply_hot_update()
+                if res.get("ok"):
+                    self._toast.show_toast(f"热更新检查完成：{res.get('message', '已是最新版本')}")
+                else:
+                    up_res = get_delivery_worker().sync_pending_uploads_to_drive()
+                    self.refresh_status(silent=True)
+                    self._toast.show_toast(f"状态已同步 · 上传队列处理 {up_res.get('uploaded', 0)} 个文件")
             else:
                 up_res = get_delivery_worker().sync_pending_uploads_to_drive()
                 self.refresh_status(silent=True)

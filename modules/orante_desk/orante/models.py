@@ -80,6 +80,11 @@ class Segment:
     takes: list = field(default_factory=list)
     error: str | None = None
     bridge: dict = field(default_factory=dict)  # 仅 role=bridge 时有内容
+    flow_mode: str = "auto"      # auto / frames / ingredients
+    preset_id: str = ""          # 镜头级提示词预设 ID
+    custom_prompt: str = ""      # 镜头级自定义完整提示词（可编辑）
+    extra_prompts: list = field(default_factory=list)  # 附加提示词列（结语/音效等）
+    checked: bool = False        # 跨任务镜头总表中的勾选状态
 
 
 @dataclass

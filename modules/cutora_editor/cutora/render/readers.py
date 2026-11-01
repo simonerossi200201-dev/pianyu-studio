@@ -3,6 +3,7 @@
 # Original lines: 6699-6721, 6724-6768, 6771-6996, 6999-7140, 7143-7172, 7175-7229, 7232-7330, 9019-9063, 9065-9082, 9084-9103, 9105-9114, 9116-9164, 9166-9180, 9182-9192, 9194-9209, 9211-9225
 
 import os
+import sys
 import re
 import struct
 import json
@@ -543,6 +544,8 @@ class _FFmpegFrameReader:
         cmd = [FFMPEG_PATH, "-loglevel", "error"]
         if self._threads > 0:
             cmd += ["-threads", str(self._threads)]      # Q180：解码线程数（见 _open_video_capture）
+        if sys.platform == "darwin" and not self._has_alpha and not self._sequence:
+            cmd += ["-hwaccel", "videotoolbox"]
         # Native vp9/vp8 drop the alpha plane; libvpx keeps yuva / alpha_mode=1.
         if self._has_alpha and self._codec_name in {"vp9", "vp8", "libvpx", "libvpx-vp9"}:
             cmd += ["-c:v", "libvpx-vp9" if "vp9" in self._codec_name else "libvpx"]

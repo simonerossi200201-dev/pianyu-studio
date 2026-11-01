@@ -584,7 +584,6 @@ def cmd_studio_overview(ctx: Context, params: dict) -> dict:
             "cutora_editor": os.path.isdir(paths.REPO_ROOT),
             "orante_studio": os.path.isdir(os.path.join(modules_dir, "orante_studio")),
             "table_tool": os.path.isdir(os.path.join(modules_dir, "table_tool")),
-            "robota": os.path.isdir(os.path.join(studio_root, "robota")),
         },
     }
 

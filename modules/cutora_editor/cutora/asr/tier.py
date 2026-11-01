@@ -10,7 +10,9 @@ silent fallback.
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from dataclasses import dataclass, field
@@ -58,6 +60,9 @@ class HardwareProbe:
     ram_free_gb: float = 0.0
     cpu_count: int = 1
     models_on_disk: FrozenSet[str] = field(default_factory=frozenset)
+    apple_silicon: bool = False
+    apple_chip: str = ""
+    apple_tier: str = ""
 
 
 @dataclass(frozen=True)
@@ -123,6 +128,14 @@ def tier_fits(tier: dict[str, Any], probe: HardwareProbe) -> bool:
     asr_id = str(tier["asr_id"])
     if asr_id != "asr-small" and not _model_present(asr_id, probe):
         return False
+    if getattr(probe, "apple_silicon", False):
+        need = float(tier["vram_gb"]) * (1.0 + HEADROOM)
+        unified_free = max(float(probe.vram_free_gb or 0.0), float(probe.ram_free_gb or 0.0))
+        if tier["id"] == "T":
+            return float(probe.ram_total_gb or 0.0) >= 28.0 and unified_free >= need
+        if tier["id"] == "S":
+            return float(probe.ram_total_gb or 0.0) >= 14.0 and unified_free >= need
+        return True
     if tier["device"] == "cuda":
         if int(probe.cuda_count or 0) < 1:
             return False
@@ -276,10 +289,107 @@ def probe_hardware(impl: Callable[[], HardwareProbe] | None = None) -> HardwareP
     return _default_probe()
 
 
+def detect_gpu() -> dict[str, Any]:
+    """Cross-platform GPU & Apple Silicon Unified Memory detector for ASR tiering.
+
+    On macOS Apple Silicon (`sys.platform == "darwin"` and `platform.machine() == "arm64"`):
+      - Queries `sysctl -n machdep.cpu.brand_string` and `sysctl -n hw.memsize`.
+      - Classifies >=32GB Unified Memory as Tier S/A (`asr-large-v3-turbo` capable),
+        16-24GB as Tier A, and 8GB as Tier B.
+    """
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        chip = "Apple Silicon"
+        mem_total_gb = 0.0
+        mem_avail_gb = 0.0
+        try:
+            r_brand = subprocess.run(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r_brand.returncode == 0 and (r_brand.stdout or "").strip():
+                chip = r_brand.stdout.strip()
+        except Exception:
+            pass
+        try:
+            r_mem = subprocess.run(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r_mem.returncode == 0 and (r_mem.stdout or "").strip().isdigit():
+                mem_total_gb = int(r_mem.stdout.strip()) / (1024.0 ** 3)
+        except Exception:
+            pass
+        try:
+            from cutora.render.export_guard import system_memory_gb
+            t_gb, a_gb = system_memory_gb()
+            if t_gb > 0:
+                mem_total_gb = t_gb
+            if a_gb > 0:
+                mem_avail_gb = a_gb
+        except Exception:
+            pass
+        if mem_avail_gb <= 0 and mem_total_gb > 0:
+            mem_avail_gb = mem_total_gb * 0.65
+        if mem_total_gb >= 32.0:
+            apple_tier = "S"
+            rec_asr = "asr-large-v3-turbo"
+        elif mem_total_gb >= 16.0:
+            apple_tier = "A"
+            rec_asr = "asr-small"
+        else:
+            apple_tier = "B"
+            rec_asr = "asr-small"
+        return {
+            "vendor": "apple",
+            "apple_silicon": True,
+            "name": chip,
+            "unified_memory_gb": round(mem_total_gb, 2),
+            "vram_total_gb": round(mem_total_gb * 0.75, 2),
+            "vram_free_gb": round(mem_avail_gb, 2),
+            "apple_tier": apple_tier,
+            "recommended_asr_id": rec_asr,
+        }
+    # Windows / Linux NVIDIA detection
+    try:
+        from cutora.render.export_guard import gpu_memory_gb
+        info = gpu_memory_gb()
+        if info:
+            return {
+                "vendor": "nvidia",
+                "apple_silicon": False,
+                "name": "NVIDIA CUDA GPU",
+                "vram_total_gb": round(float(info[0]), 2),
+                "vram_free_gb": round(float(info[2]), 2),
+                "apple_tier": "",
+                "recommended_asr_id": "asr-large-v3-turbo" if float(info[0]) >= 6.0 else "asr-small",
+            }
+    except Exception:
+        pass
+    return {
+        "vendor": "cpu",
+        "apple_silicon": False,
+        "name": "CPU",
+        "vram_total_gb": 0.0,
+        "vram_free_gb": 0.0,
+        "apple_tier": "",
+        "recommended_asr_id": "asr-small",
+    }
+
+
 def _default_probe() -> HardwareProbe:
     cuda_count = 0
     vram_total = 0.0
     vram_free = 0.0
+    apple_silicon = False
+    apple_chip = ""
+    apple_tier = ""
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        ginfo = detect_gpu()
+        apple_silicon = bool(ginfo.get("apple_silicon"))
+        apple_chip = str(ginfo.get("name") or "Apple Silicon")
+        apple_tier = str(ginfo.get("apple_tier") or "A")
+        vram_total = float(ginfo.get("vram_total_gb") or 0.0)
+        vram_free = float(ginfo.get("vram_free_gb") or 0.0)
     try:
         import ctranslate2
         cuda_count = int(ctranslate2.get_cuda_device_count() or 0)
@@ -294,7 +404,7 @@ def _default_probe() -> HardwareProbe:
             vram_total = float(total_b) / (1024 ** 3)
     except Exception:
         pass
-    if vram_total <= 0:
+    if vram_total <= 0 and not apple_silicon:
         try:
             from cutora.render.export_guard import gpu_memory_gb
             info = gpu_memory_gb()
@@ -312,6 +422,12 @@ def _default_probe() -> HardwareProbe:
         ram_free = float(vm.available) / (1024 ** 3)
     except Exception:
         pass
+    if ram_total <= 0:
+        try:
+            from cutora.render.export_guard import system_memory_gb
+            ram_total, ram_free = system_memory_gb()
+        except Exception:
+            pass
     cpu_count = int(os.cpu_count() or 1)
     return HardwareProbe(
         cuda_count=cuda_count,
@@ -321,6 +437,9 @@ def _default_probe() -> HardwareProbe:
         ram_free_gb=ram_free,
         cpu_count=cpu_count,
         models_on_disk=_disk_model_ids(),
+        apple_silicon=apple_silicon,
+        apple_chip=apple_chip,
+        apple_tier=apple_tier,
     )
 
 
@@ -476,8 +595,12 @@ def resolve_runtime_tier(
             break
     if picked is None:
         picked = dict(ASR_TIERS[-1])
+    if getattr(probe, "apple_silicon", False) and int(probe.cuda_count or 0) == 0:
+        picked = dict(picked)
+        picked["device"] = "cpu"
+        picked["compute"] = "int8"
     # Table E is "small CPU", but a GPU machine should still run small on CUDA.
-    if int(probe.cuda_count or 0) >= 1 and picked["asr_id"] == "asr-small":
+    elif int(probe.cuda_count or 0) >= 1 and picked["asr_id"] == "asr-small":
         picked = dict(picked)
         picked["device"] = "cuda"
     msg = None
@@ -534,7 +657,7 @@ def run_in_subprocess(
 
 
 def kill_process_tree(pid: int) -> None:
-    """Terminate a process and its children. Windows: taskkill /F /T."""
+    """Terminate a process and its children. Windows: taskkill /F /T; POSIX: pkill -P + kill."""
     if not pid:
         return
     try:
@@ -545,6 +668,11 @@ def kill_process_tree(pid: int) -> None:
                 capture_output=True, timeout=8,
             )
         else:
+            try:
+                import subprocess as sp
+                sp.run(["pkill", "-KILL", "-P", str(int(pid))], capture_output=True, timeout=4)
+            except Exception:
+                pass
             os.kill(int(pid), 9)
     except Exception:
         pass

@@ -275,10 +275,12 @@ def snapshot_prompts(job, m: Manifest, segs: list, *, save=None, rev0=None) -> i
     return n
 
 
-def _final_prompt(m: Manifest, seg: dict, *, rev0: int | None = None) -> str:
+def _final_prompt(m: Manifest, seg: dict, *, rev0: int | None = None, task: dict | None = None) -> str:
     if ((pipeline.is_anchor_mode(m) or pipeline.is_chain_mode(m))
-            and not seg.get("prompt_locked")):
-        # 接片 / 接龙每次现拼；手写锁定的走下面那条
+            and not seg.get("prompt_locked")
+            and not seg.get("custom_prompt")
+            and not seg.get("preset_id")):
+        # 接片 / 接龙每次现拼；手写锁定或指定了预设的走下面那条
         return pipeline.final_prompt(m, seg)
     if not seg.get("prompt_locked"):
         snap = seg.get("prompt_snap")
@@ -290,14 +292,14 @@ def _final_prompt(m: Manifest, seg: dict, *, rev0: int | None = None) -> str:
         # 比的是"开跑那一刻的世代"，不是当下的——这一轮跑到一半别人换了套装，
         # 已经开跑的这轮不受影响（规格 91 的快照就是干这个的）。
         want = prompt_rev() if rev0 is None else int(rev0)
-        if seg.get("prompt_final") and _seg_rev(seg) != want:
+        if seg.get("prompt_final") and _seg_rev(seg) != want and not seg.get("custom_prompt") and not seg.get("preset_id"):
             seg["prompt_final"] = ""
             seg.pop("prompt_snap", None)
-    if seg.get("prompt_final"):
+    if seg.get("prompt_final") and not seg.get("custom_prompt") and not seg.get("preset_id"):
         return seg["prompt_final"]
     try:
         from . import prompts
-        return prompts.build_final_prompt(m, seg)
+        return prompts.build_final_prompt(m, seg, task=task)
     except ImportError:
         raise OranteError("提示词服务还没就位（services/prompts.py）", "见 specs/04")
 
@@ -1635,7 +1637,7 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
                     if im.get("file") != old_file:
                         job.log(f"  · 图 {p} 的文件名已改：{old_file} → {im['file']}")
                         save()
-                prompt = _final_prompt(m, seg, rev0=prompt_rev0)
+                prompt = _final_prompt(m, seg, rev0=prompt_rev0, task=t)
                 seg["prompt_final"] = prompt
                 seg["prompt_snap"] = _prompt_snap_key(m, seg)
                 seg["prompt_rev"] = prompt_rev0
@@ -1682,6 +1684,11 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
                             "seg_total": len(m.segments or []),
                         }
                     try:
+                        # 解析镜头级 > 任务级 > 账号级 flow_mode
+                        if isinstance(seg, dict) and (seg.get("flow_mode") in (None, "", "auto")):
+                            t_fm = (t.get("flow_mode") or "").strip().lower()
+                            if t_fm in ("frames", "ingredients"):
+                                seg["flow_mode"] = t_fm
                         if want_silent:
                             gid = eng.submit(seg, img, prompt, sub_dur,
                                              last_image=last_image, silent=True)

@@ -33,7 +33,10 @@
         <div @click.stop="openRescan(); refreshMenu=false">{{ t('top.refresh_rescan') }}</div>
       </div>
     </div>
-    <suite-bar></suite-bar>
+    <button class="tb theme-toggle-btn" type="button" @click="toggleTheme"
+            :title="store.theme==='light' ? '点击切换到 🌙 暗色黑金' : '点击切换到 ☀️ 亮色臻白'">
+      {{ store.theme === 'light' ? '☀️ 亮色臻白' : '🌙 暗色黑金' }}
+    </button>
     <button class="tb" @click="ui.drawer='accounts'"><span class="dot" :class="{on: readyAccounts>0}"></span>{{ t('top.accounts') }} <span class="muted mono">{{ store.accounts.length }}</span></button>
     <button class="tb" @click="ui.drawer='logs'"><span class="dot" :class="{on: activeJobs.length>0}"></span>{{ t('top.logs') }} <span class="muted mono" v-if="activeJobs.length">{{ activeJobs.length }}</span></button>
     <button class="tb" @click="ui.drawer='settings'">{{ t('top.settings') }}</button>
@@ -145,15 +148,33 @@
       </div>
     </div>
   </div>
+  <div class="rs-mask" v-if="store.quotaExhaustedAlert" @click.self="dismissQuotaAlert()">
+    <div class="rs-box quota-exhausted-modal">
+      <h3 style="color:var(--bad);display:flex;align-items:center;gap:8px;margin-top:0">
+        <span>🚨 账号组额度耗尽提醒</span>
+      </h3>
+      <p style="font-size:14px;line-height:1.6;margin:12px 0">
+        ⚠️ 账号组【<b>{{ store.quotaExhaustedAlert.group_name }}</b>】内所有账号额度已用尽！已生成片段已完整保留，未完成片段已安全暂停，请充值或更换账号组后继续。
+      </p>
+      <div class="muted mono" style="font-size:12px;margin-bottom:14px" v-if="store.quotaExhaustedAlert.completed_segments || store.quotaExhaustedAlert.remaining_segments">
+        已保留片段：{{ store.quotaExhaustedAlert.completed_segments || 0 }} 段 · 待继续片段：{{ store.quotaExhaustedAlert.remaining_segments || 0 }} 段
+      </div>
+      <div class="rs-acts" style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" type="button" @click="goPoolFromAlert()">前往 0 多账号 补充额度</button>
+        <button class="btn" type="button" @click="goTasksFromAlert()">前往 1 任务表 更换账号组</button>
+        <button class="btn primary" type="button" @click="dismissQuotaAlert()">我知道了</button>
+      </div>
+    </div>
+  </div>
 </div>
 
+<script src="/ui/js/i18n.js"></script>
 <script src="/ui/js/api.js"></script>
 <script src="/ui/js/store.js"></script>
 <script src="/ui/js/media.js"></script>
 <script src="/ui/js/colors.js"></script>
 <script src="/ui/js/parts/nodebar.js"></script>
 <script src="/ui/js/parts/accounts.js"></script>
-<script src="/ui/js/parts/suites.js"></script>
 <script src="/ui/js/parts/desc-cards.js"></script>
 <script src="/ui/js/parts/settings.js"></script>
 <script src="/ui/js/parts/langpack.js"></script>
@@ -171,6 +192,7 @@
 <script src="/ui/js/parts/gen-mode.js"></script>
 <script src="/ui/js/parts/image-source.js"></script>
 <script src="/ui/js/parts/regen-acc.js"></script>
+<script src="/ui/js/panels/accounts_pool.js"></script>
 <script src="/ui/js/panels/tasks.js"></script>
 <script src="/ui/js/panels/imgstudio.js"></script>
 <script src="/ui/js/panels/gemini.js"></script>

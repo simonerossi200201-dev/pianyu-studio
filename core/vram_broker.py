@@ -1,13 +1,15 @@
-"""16GB 单卡显存互斥仲裁器 (VRAMBroker)。
+"""16GB 单卡显存与 Apple Silicon 统一内存互斥仲裁器 (VRAMBroker)。
 
 当 LTX-2.5 (峰值 15.5 GB)、LTX IC-LoRA (峰值 15.6 GB) 或 FLUX.2 klein (峰值 15.6 GB) 启动前，
-自动卸载本机 Ollama 常驻模型、Robota 语音网关 Whisper/Kokoro 模型以及 ComfyUI 旧模型缓存，
-确保 16GB 显卡零冲突、零 OOM 崩溃。
+自动卸载本机 Ollama 常驻模型、ComfyUI 旧模型缓存，并在 Apple Silicon MPS 下执行 `torch.mps.empty_cache()`，
+确保 16GB 显卡与统一内存设备零冲突、零 OOM 崩溃。
 """
 
 from __future__ import annotations
 
+import gc
 import json
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -52,10 +54,36 @@ def unload_ollama_models(ollama_url: str = "http://127.0.0.1:11434") -> list[str
     return unloaded
 
 
-def unload_voice_gateway(voice_url: str = "http://127.0.0.1:9611") -> bool:
-    """通知 Robota 语音网关释放 Faster-Whisper 与 Kokoro 显存进程。"""
-    res = _http_req("POST", f"{voice_url}/v1/unload", {}, timeout=3.0)
-    return bool(res.get("ok") or "status" in res)
+def empty_accelerator_cache() -> bool:
+    """释放当前进程中的 PyTorch CUDA 或 Apple Silicon MPS 显存/统一内存缓存。"""
+    gc.collect()
+    torch_mod = sys.modules.get("torch")
+    if torch_mod is None and sys.platform == "darwin":
+        try:
+            import torch as torch_mod  # type: ignore
+        except Exception:
+            torch_mod = None
+    if torch_mod is None:
+        return False
+    freed = False
+    try:
+        if hasattr(torch_mod, "cuda") and torch_mod.cuda.is_available():
+            torch_mod.cuda.empty_cache()
+            freed = True
+    except Exception:
+        pass
+    try:
+        if (
+            hasattr(torch_mod, "backends")
+            and hasattr(torch_mod.backends, "mps")
+            and torch_mod.backends.mps.is_available()
+            and hasattr(torch_mod, "mps")
+        ):
+            torch_mod.mps.empty_cache()
+            freed = True
+    except Exception:
+        pass
+    return freed
 
 
 def free_comfy_vram(comfy_url: str = "http://127.0.0.1:8188", unload_models: bool = True) -> bool:
@@ -74,14 +102,14 @@ def prepare_vram_for_heavy_task(
     required_gb: float = 14.0,
     also_free_comfy: bool = False,
 ) -> dict[str, Any]:
-    """在执行重型 GPU 任务前一键清场显存。"""
+    """在执行重型 GPU 任务前一键清场显存/统一内存。"""
     before = query_nvidia_gpu()
     unloaded_ollama = unload_ollama_models()
-    voice_freed = unload_voice_gateway()
+    cache_freed = empty_accelerator_cache()
     comfy_freed = free_comfy_vram() if also_free_comfy else False
 
-    if unloaded_ollama or voice_freed or comfy_freed:
-        time.sleep(0.8)
+    if unloaded_ollama or cache_freed or comfy_freed:
+        time.sleep(0.5)
 
     after = query_nvidia_gpu()
     return {
@@ -91,7 +119,7 @@ def prepare_vram_for_heavy_task(
         "vram_free_after_gb": after.get("vram_free_gb", 0.0),
         "vram_total_gb": after.get("vram_total_gb", 0.0),
         "unloaded_ollama": unloaded_ollama,
-        "voice_freed": voice_freed,
+        "cache_freed": cache_freed,
         "comfy_freed": comfy_freed,
         "ready": (not after.get("has_gpu")) or (after.get("vram_total_gb", 0.0) >= required_gb),
     }

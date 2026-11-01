@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS tasks(
   id TEXT PRIMARY KEY, name TEXT, engine TEXT, account_id TEXT, type TEXT CHECK(type IN ('long','short')),
   copy TEXT, image_source TEXT, duration_pref TEXT, expand_account_id TEXT,
   status TEXT DEFAULT 'draft', dir TEXT, batch_id TEXT, row_order INTEGER DEFAULT 0,
-  created TEXT, updated TEXT, meta TEXT DEFAULT '{}', gen_mode TEXT);
+  created TEXT, updated TEXT, meta TEXT DEFAULT '{}', gen_mode TEXT,
+  flow_mode TEXT DEFAULT 'auto', preset_id TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS batches(
   id TEXT PRIMARY KEY, root TEXT, day TEXT, version TEXT, dir TEXT, created TEXT);
 CREATE TABLE IF NOT EXISTS jobs(
@@ -62,6 +63,46 @@ CREATE TABLE IF NOT EXISTS suites(
 CREATE TABLE IF NOT EXISTS suite_data(
   suite_id TEXT NOT NULL, grp TEXT NOT NULL, payload TEXT,
   PRIMARY KEY(suite_id, grp));
+CREATE TABLE IF NOT EXISTS multi_accounts(
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  password_enc TEXT DEFAULT '',
+  totp_secret_enc TEXT DEFAULT '',
+  backup_email TEXT DEFAULT '',
+  group_id TEXT DEFAULT '',
+  is_favorite INTEGER DEFAULT 0,
+  project_url TEXT DEFAULT '',
+  flow_mode TEXT DEFAULT 'frames',
+  model TEXT DEFAULT 'Veo 3.1 - Lite [Lower Priority]',
+  port INTEGER UNIQUE,
+  profile_dir TEXT DEFAULT '',
+  flow_credits INTEGER DEFAULT -1,
+  credits_updated_at TEXT DEFAULT '',
+  status TEXT DEFAULT 'idle',
+  note TEXT DEFAULT '',
+  meta TEXT DEFAULT '{}',
+  sort_order INTEGER DEFAULT 0,
+  created TEXT,
+  updated TEXT);
+CREATE TABLE IF NOT EXISTS multi_account_groups(
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  color TEXT DEFAULT '#0969da',
+  created_at INTEGER DEFAULT 0,
+  sort_order INTEGER DEFAULT 0,
+  meta TEXT DEFAULT '{}');
+CREATE TABLE IF NOT EXISTS prompt_presets(
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  category TEXT DEFAULT '默认分组',
+  role TEXT DEFAULT 'main',
+  template TEXT NOT NULL,
+  speech_gap_newlines INTEGER DEFAULT 0,
+  builtin INTEGER DEFAULT 0,
+  sort_order INTEGER DEFAULT 0,
+  meta TEXT DEFAULT '{}',
+  created TEXT,
+  updated TEXT);
 """
 
 # 老库里加字段用的：表名 → [(字段, 定义), ...]。加过就跳过，反复跑没关系。
@@ -76,6 +117,8 @@ ADD_COLUMNS = {
         ("archived", "INTEGER DEFAULT 0"),      # 1 = 从工程文件导回来的只读任务
         ("gen_mode", "TEXT"),                   # 空 = 跟随引擎；first_frame / anchor_bridge
         ("run_to_completion", "INTEGER DEFAULT 1"),  # 1 = 被拒也接力到全部出片
+        ("flow_mode", "TEXT DEFAULT 'auto'"),   # auto / frames / ingredients
+        ("preset_id", "TEXT DEFAULT ''"),       # 任务级提示词预设 ID
     ],
     "account_locks": [
         ("prio", "INTEGER"),
@@ -182,7 +225,6 @@ def _migrate(c) -> None:
     c.commit()
 
 
-
 def init() -> None:
     c = conn()
     c.executescript(SCHEMA)
@@ -196,6 +238,11 @@ def init() -> None:
     try:
         from .services import suites
         suites.ensure_builtin()
+    except Exception:
+        pass
+    try:
+        from .services import prompt_presets
+        prompt_presets.ensure_presets_seeded()
     except Exception:
         pass
 

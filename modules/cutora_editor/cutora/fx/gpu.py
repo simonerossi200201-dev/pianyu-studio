@@ -19,6 +19,8 @@
 from __future__ import annotations
 
 import os
+import platform
+import sys
 import threading
 import time
 
@@ -115,7 +117,9 @@ _NV_CACHE = {"v": None}
 
 
 def has_nvidia_gpu() -> bool:
-    """不碰 torch：nvidia-smi / nvcuda.dll 能报出一块卡就算有（真正能不能用 CUDA 由服务进程用 torch 验证）。"""
+    """不碰 torch：nvidia-smi / nvcuda.dll 能报出一块卡（或 macOS Apple Silicon MPS）就算有。"""
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        return True
     if not _NV_CACHE["v"]:
         try:
             from cutora.core.runtime import _nvidia_gpu_name, cuda_warmup_status
@@ -287,17 +291,34 @@ ENV_DEVICE = "CUTORA_GPU_FX_DEVICE"
 
 
 def cuda_device():
-    """能用就返回 "cuda"，否则 None。不建上下文（第一次真算时才建）。CUTORA_GPU_FX_DEVICE=cpu 是测试用的。"""
+    """能用就返回 "cuda"（或 macOS 上的 "mps"），否则 None。不建上下文（第一次真算时才建）。CUTORA_GPU_FX_DEVICE=cpu 是测试用的。"""
     forced = (os.environ.get(ENV_DEVICE) or "").strip()
     try:
         import torch
         if forced:
             return forced
-        if not torch.cuda.is_available():
-            return None
-        return "cuda"
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(getattr(torch, "backends", None), "mps") and torch.backends.mps.is_available():
+            return "mps"
+        return None
     except Exception:
         return None
+
+
+def empty_gpu_cache() -> None:
+    """Release cached GPU/MPS memory blocks back to the driver/OS."""
+    try:
+        if "torch" not in sys.modules:
+            return
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif hasattr(getattr(torch, "backends", None), "mps") and torch.backends.mps.is_available():
+            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                torch.mps.empty_cache()
+    except Exception:
+        pass
 
 
 # ───────────────────────────── 自检 ─────────────────────────────
@@ -933,7 +954,7 @@ class _ConnIO:
         torch = self.torch
         t = torch.from_numpy(view)
         if not self.cuda:
-            return t
+            return t.to(self.device) if str(self.device) != "cpu" else t
         if self.registered:
             return t.to(self.device, non_blocking=True)
         flat = view.reshape(-1).view(np.uint8)
@@ -959,7 +980,12 @@ class _ConnIO:
         torch = self.torch
         t = t.contiguous()
         if not self.cuda:
-            dst[...] = t.numpy()
+            dst[...] = (t.cpu() if getattr(t, "device", None) is not None and t.device.type != "cpu" else t).numpy()
+            if str(self.device) == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                try:
+                    torch.mps.empty_cache()
+                except Exception:
+                    pass
             return
         if self.registered:
             torch.from_numpy(dst).copy_(t, non_blocking=True)

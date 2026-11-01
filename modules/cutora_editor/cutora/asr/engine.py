@@ -3,9 +3,12 @@
 # Original lines: 106-106, 107-107, 109-110, 111-111, 113-115, 117-124, 126-166, 169-207, 210-234, 237-260, 263-280, 338-358
 
 import os
+import sys
 from cutora.ui.widgets.lazy import _LazyModule
 from cutora.core.config import (
     DEVICE,
+    ALIGN_DEVICE,
+    TORCH_DEVICE,
     COMPUTE_TYPE,
     LANGUAGE,
 )
@@ -79,7 +82,7 @@ def _load_mms_align_model(lang, key):
         # ja/zh would otherwise become one character per "word".
         model, metadata = whisperx.load_align_model(
             language_code="en",
-            device=DEVICE,
+            device=ALIGN_DEVICE,
             model_name=folder,
             model_dir=folder,
         )
@@ -137,7 +140,7 @@ def _load_hf_align_model(lang, key):
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     model, metadata = whisperx.load_align_model(
         language_code=lang,
-        device=DEVICE,
+        device=ALIGN_DEVICE,
         model_name=folder,
         model_dir=folder,
     )
@@ -148,14 +151,15 @@ def get_align_model(language=None):
     """加载指定语言的对齐模型 (默认 config.LANGUAGE)。带缓存, 可多语言共存。"""
     from cutora.core import config as _cfg
     lang = (language or getattr(_cfg, "LANGUAGE", "en") or "en").lower()
-    key = (lang, DEVICE)
+    align_dev = getattr(_cfg, "ALIGN_DEVICE", ALIGN_DEVICE) or ALIGN_DEVICE
+    key = (lang, align_dev)
     if key in _ALIGN_CACHE:
         return _ALIGN_CACHE[key]
 
     if lang not in ALIGN_MODEL_BY_LANG:
         return _load_catalog_or_mms(lang, key)
 
-    print(f"[WhisperX] 正在加载对齐模型 (语言={lang}, 本地模式)...")
+    print(f"[WhisperX] 正在加载对齐模型 (语言={lang}, 设备={align_dev}, 本地模式)...")
 
     # 1. 读取路径配置
     paths = get_model_paths()
@@ -175,7 +179,7 @@ def get_align_model(language=None):
         from cutora.core.blackbox import get_recorder
         _bb_op = get_recorder().begin_op(
             "asr.load_align_model",
-            {"lang": lang, "device": str(DEVICE), "dir": align_dir},
+            {"lang": lang, "device": str(align_dev), "dir": align_dir},
             sync=True,
             include_gpu=True,
         )
@@ -189,7 +193,7 @@ def get_align_model(language=None):
 
         model, metadata = whisperx.load_align_model(
             language_code=lang,
-            device=DEVICE,
+            device=align_dev,
             model_name=ALIGN_MODEL_BY_LANG.get(lang),  # None → whisperX 默认
             model_dir=align_dir  # 关键：直接传入本地文件夹路径
         )
@@ -378,7 +382,7 @@ def _align_transcript_native(segments, metadata, audio):
     return {"segments": out_segments, "word_segments": all_words}
 
 
-def align_transcript(segments, model, metadata, audio, device, **kwargs):
+def align_transcript(segments, model, metadata, audio, device=None, **kwargs):
     """``whisperx.align``, romanizing only on the MMS fallback.
 
     Returned segment text and word strings stay in the original script.
@@ -387,8 +391,9 @@ def align_transcript(segments, model, metadata, audio, device, **kwargs):
     """
     if (metadata or {}).get("cutora_native_align"):
         return _align_transcript_native(segments, metadata, audio)
+    eff_device = ALIGN_DEVICE if (sys.platform == "darwin" and ALIGN_DEVICE == "mps") else (device or ALIGN_DEVICE)
     if not (metadata or {}).get("cutora_mms"):
-        return whisperx.align(segments, model, metadata, audio, device, **kwargs)
+        return whisperx.align(segments, model, metadata, audio, eff_device, **kwargs)
     from cutora.asr.romanize import RomanizeError, romanize_tokens, speech_tokens
     lang = str((metadata or {}).get("cutora_source_lang") or "")
     rewritten = []
@@ -406,7 +411,7 @@ def align_transcript(segments, model, metadata, audio, device, **kwargs):
         copied["text"] = " ".join(roman) if roman else text
         rewritten.append(copied)
         per_segment.append(tokens)
-    aligned = whisperx.align(rewritten, model, metadata, audio, device, **kwargs)
+    aligned = whisperx.align(rewritten, model, metadata, audio, eff_device, **kwargs)
     flat = [token for group in per_segment for token in group]
     words = []
     for seg in aligned.get("segments") or []:
@@ -433,6 +438,93 @@ def align_transcript(segments, model, metadata, audio, device, **kwargs):
     for seg in aligned.get("segments") or []:
         aligned["word_segments"].extend(seg.get("words") or [])
     return aligned
+
+
+class _MLXWhisperFWCompat:
+    """faster-whisper compatible `.model` interface backed by Apple Silicon `mlx_whisper`."""
+
+    def __init__(self, mlx_mod, model_path: str):
+        self._mlx = mlx_mod
+        self.model_path = model_path
+
+    def transcribe(self, audio, **kwargs):
+        lang = kwargs.get("language")
+        word_ts = bool(kwargs.get("word_timestamps", False))
+        res = self._mlx.transcribe(
+            audio,
+            path_or_hf_repo=self.model_path,
+            language=lang if lang and lang != "auto" else None,
+            word_timestamps=word_ts,
+        )
+        segs_out = []
+        for s in (res.get("segments") or []):
+            words_objs = []
+            for w in (s.get("words") or []):
+                words_objs.append(type("MLXWord", (), {
+                    "word": str(w.get("word") or ""),
+                    "start": float(w.get("start") or 0.0),
+                    "end": float(w.get("end") or 0.0),
+                    "probability": w.get("probability"),
+                })())
+            segs_out.append(type("MLXSegment", (), {
+                "start": float(s.get("start") or 0.0),
+                "end": float(s.get("end") or 0.0),
+                "text": str(s.get("text") or ""),
+                "words": words_objs,
+            })())
+        info = type("MLXInfo", (), {
+            "language": str(res.get("language") or lang or "en"),
+            "language_probability": 0.99,
+        })()
+        return iter(segs_out), info
+
+
+class _MLXWhisperPipeline:
+    """WhisperX-compatible pipeline wrapper around Apple Silicon `mlx_whisper`."""
+
+    def __init__(self, mlx_mod, model_path: str, tier_id: str):
+        self._mlx = mlx_mod
+        self.model_path = model_path
+        self.model = _MLXWhisperFWCompat(mlx_mod, model_path)
+        self._cutora_compute = "mlx-fp16"
+        self._cutora_tier = tier_id
+
+    def transcribe(self, audio, batch_size=None, language=None, **kwargs):
+        res = self._mlx.transcribe(
+            audio,
+            path_or_hf_repo=self.model_path,
+            language=language if language and language != "auto" else None,
+            word_timestamps=bool(kwargs.get("word_timestamps", False)),
+        )
+        return {
+            "segments": list(res.get("segments") or []),
+            "language": str(res.get("language") or language or "en"),
+        }
+
+
+def _try_load_mlx_whisper(asr_path: str, tier_id: str, say_fn=None):
+    """On macOS Apple Silicon, optionally use `mlx_whisper` if installed and enabled/weights present."""
+    if sys.platform != "darwin":
+        return None
+    if os.environ.get("CUTORA_USE_MLX_WHISPER") == "0":
+        return None
+    try:
+        import importlib.util as _ilu
+        if _ilu.find_spec("mlx_whisper") is None:
+            return None
+        has_mlx_weights = any(
+            os.path.isfile(os.path.join(asr_path, fn))
+            for fn in ("weights.npz", "model.safetensors", "weights.safetensors")
+        )
+        mlx_repo = os.environ.get("CUTORA_MLX_MODEL") or (asr_path if has_mlx_weights else "")
+        if not mlx_repo:
+            return None
+        import mlx_whisper
+        if callable(say_fn):
+            say_fn("[MLX-Whisper] 启用 Apple Silicon MLX 原生语音识别加速: %s" % mlx_repo)
+        return _MLXWhisperPipeline(mlx_whisper, mlx_repo, tier_id)
+    except Exception:
+        return None
 
 
 def get_whisperx_model(asr_dir=None, log=None):
@@ -463,7 +555,7 @@ def get_whisperx_model(asr_dir=None, log=None):
         paths = get_model_paths()
         wanted = paths.get("asr_path")
     probe = probe_hardware()
-    if str(getattr(_cfg, "DEVICE", "") or "").lower() != "cuda":
+    if str(getattr(_cfg, "DEVICE", "") or "").lower() != "cuda" and not getattr(probe, "apple_silicon", False):
         from cutora.asr.tier import HardwareProbe
         probe = HardwareProbe(
             cuda_count=0,
@@ -526,14 +618,18 @@ def get_whisperx_model(asr_dir=None, log=None):
             os.environ["TRANSFORMERS_OFFLINE"] = "1"
             from cutora.asr.languages import whisper_language_arg
             from cutora.asr.decode_opts import asr_decode_options
-            model = whisperx.load_model(
-                asr_path,
-                device,
-                compute_type=compute,
-                language=whisper_language_arg(LANGUAGE),
-                vad_model=whisperx_vad_model(),
-                asr_options=asr_decode_options(),
-            )
+            mlx_pipe = _try_load_mlx_whisper(asr_path, cur["id"], say_fn=_say)
+            if mlx_pipe is not None:
+                model = mlx_pipe
+            else:
+                model = whisperx.load_model(
+                    asr_path,
+                    device,
+                    compute_type=compute,
+                    language=whisper_language_arg(LANGUAGE),
+                    vad_model=whisperx_vad_model(),
+                    asr_options=asr_decode_options(),
+                )
             try:
                 model._cutora_compute = compute
                 model._cutora_tier = cur["id"]
@@ -647,6 +743,13 @@ def trim_gpu_cache(tag=""):
     try:
         import gc
         gc.collect()
+        if _torch_loaded():
+            try:
+                if hasattr(getattr(torch, "backends", None), "mps") and torch.backends.mps.is_available():
+                    if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                        torch.mps.empty_cache()
+            except Exception:
+                pass
         if not _torch_loaded() or not torch.cuda.is_available():
             _trim_process_memory()
             return
@@ -718,10 +821,12 @@ def _sync_device_globals():
     模型缓存本身会检查 _WHISPERX_DEVICE == DEVICE，设备变了会自动重新加载，
     所以切换是安全的。
     """
-    global DEVICE, COMPUTE_TYPE, LANGUAGE
+    global DEVICE, ALIGN_DEVICE, TORCH_DEVICE, COMPUTE_TYPE, LANGUAGE
     try:
         from cutora.core import config as _cfg
         DEVICE = _cfg.DEVICE
+        ALIGN_DEVICE = getattr(_cfg, "ALIGN_DEVICE", DEVICE)
+        TORCH_DEVICE = getattr(_cfg, "TORCH_DEVICE", DEVICE)
         COMPUTE_TYPE = _cfg.COMPUTE_TYPE
         LANGUAGE = _cfg.LANGUAGE
     except Exception as e:

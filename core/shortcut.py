@@ -138,11 +138,92 @@ def write_lnk(item: dict) -> None:
         _vcall_release(ptr)
 
 
+def write_macos_app_bundle(
+    app_path: Path,
+    app_name: str,
+    bundle_id: str,
+    exec_cmd: str,
+    workdir: Path,
+) -> Path:
+    """在 macOS 上生成标准 .app 应用包 (Contents/Info.plist + Contents/MacOS/Launcher)。"""
+    import stat
+
+    contents_dir = app_path / "Contents"
+    macos_dir = contents_dir / "MacOS"
+    macos_dir.mkdir(parents=True, exist_ok=True)
+    plist_path = contents_dir / "Info.plist"
+    exec_path = macos_dir / "Launcher"
+
+    plist_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>{app_name}</string>
+    <key>CFBundleExecutable</key>
+    <string>Launcher</string>
+    <key>CFBundleIdentifier</key>
+    <string>{bundle_id}</string>
+    <key>CFBundleName</key>
+    <string>{app_name}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>3.0.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+</dict>
+</plist>
+"""
+    script_txt = f"""#!/bin/bash
+cd "{workdir}" || exit 1
+exec {exec_cmd} "$@"
+"""
+    plist_path.write_text(plist_xml, encoding="utf-8")
+    exec_path.write_text(script_txt, encoding="utf-8")
+    try:
+        os.chmod(exec_path, os.stat(exec_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    except Exception:
+        pass
+    return app_path
+
+
 def ensure_shortcuts(root: Path | None = None, *, force: bool = False, quiet: bool = False) -> list[Path]:
-    """创建桌面与开始菜单快捷方式。"""
+    """创建桌面与开始菜单快捷方式（Windows 生成 .lnk，macOS 生成 .app 应用包）。"""
+    from . import resolve_python_exe
+
     base = Path(root).resolve() if root else LTX_ROOT
     stamp = base / "data" / "desktop_shortcut.created"
     desk = desktop_dir()
+
+    if sys.platform == "darwin":
+        apps_dir = Path.home() / "Applications"
+        main_app = desk / f"{APP_NAME}.app"
+        if not force and stamp.is_file() and main_app.is_dir():
+            return [main_app]
+        py_exe = resolve_python_exe(gui=True, root=base)
+        created_mac: list[Path] = []
+        mac_targets = [
+            (desk / f"{APP_NAME}.app", APP_NAME, "com.cutora.ltxstudio", f'"{py_exe}" "{base / "studio_launcher.py"}"', base),
+            (apps_dir / f"{APP_NAME}.app", APP_NAME, "com.cutora.ltxstudio", f'"{py_exe}" "{base / "studio_launcher.py"}"', base),
+            (apps_dir / "片语剪辑台 CUTORA.app", "片语剪辑台 CUTORA", "com.cutora.editor", f'"{py_exe}" -m cutora', base / "modules" / "cutora_editor"),
+            (apps_dir / "Orante 2.0 制片台.app", "Orante 2.0 制片台", "com.cutora.orante", f'"{py_exe}" -m orante', base / "modules" / "orante_desk"),
+        ]
+        for app_p, name_s, bid, cmd_s, wdir in mac_targets:
+            try:
+                write_macos_app_bundle(app_p, name_s, bid, cmd_s, wdir)
+                created_mac.append(app_p)
+            except Exception as e:
+                if not quiet:
+                    print(f"[WARN] 创建 macOS .app 失败 ({app_p}): {e}")
+        if created_mac:
+            stamp.parent.mkdir(parents=True, exist_ok=True)
+            stamp.write_text("created\n", encoding="utf-8")
+        return created_mac
+
+    if os.name != "nt":
+        return []
+
     menu = start_menu_dir()
     main_lnk = desk / f"{APP_NAME}.lnk"
 

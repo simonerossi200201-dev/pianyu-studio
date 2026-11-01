@@ -20,12 +20,19 @@ def vcodec_quality_args(use_gpu, export_mode="compressed"):
     """Return ``(vcodec, preset, extra_args)`` for the H.264 rawvideo encode pass."""
     from cutora.render.encoder_probe import pick_h264
     vcodec, _reason = pick_h264(bool(use_gpu))
-    gpu = vcodec == "h264_nvenc"
-    if gpu:
+    if vcodec == "h264_nvenc":
         nv_preset = os.environ.get("CUTORA_NVENC_PRESET") or "p2"
         if export_mode == "original":
             return "h264_nvenc", nv_preset, ["-rc", "constqp", "-qp", "0"]
         return "h264_nvenc", nv_preset, ["-rc", "vbr", "-cq", "18", "-b:v", "0"]
+    if vcodec == "h264_videotoolbox":
+        vt_base = [
+            "-allow_sw", "1", "-realtime", "0", "-prio_speed", "true",
+            "-profile:v", "high", "-pix_fmt", "yuv420p",
+        ]
+        if export_mode == "original":
+            return "h264_videotoolbox", None, vt_base + ["-q:v", "85", "-b:v", "25M"]
+        return "h264_videotoolbox", None, vt_base + ["-q:v", "65", "-b:v", "12M"]
     if export_mode == "original":
         return "libx264", "ultrafast", ["-crf", "0"]
     return "libx264", "veryfast", ["-crf", "18"]

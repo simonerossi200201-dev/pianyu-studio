@@ -2646,6 +2646,15 @@ def reveal_in_explorer(path):
                     return False
                 os.startfile(os.path.normpath(parent))
             return True
+        if sys.platform == "darwin":
+            if os.path.isfile(path):
+                _no_window_popen(["open", "-R", path])
+            else:
+                target = path if os.path.isdir(path) else os.path.dirname(path)
+                if not os.path.isdir(target):
+                    return False
+                _no_window_popen(["open", target])
+            return True
         target = path if os.path.isdir(path) else os.path.dirname(path)
         _no_window_popen(["xdg-open", target])
         return True

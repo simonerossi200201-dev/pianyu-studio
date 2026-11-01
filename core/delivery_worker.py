@@ -61,8 +61,10 @@ def verify_remote_upload(rclone_exe: Path, folder_id: str, filename: str, local_
 
 def process_pending_deliveries() -> list[dict[str, Any]]:
     """扫描 `studio_spine.db` 的 `delivery_queue` 并执行持续后台上传。"""
+    from . import resolve_runtime_bin
+
     spine = SpineDB()
-    rclone_exe = BIN_DIR / "rclone.exe"
+    rclone_exe = resolve_runtime_bin("rclone")
     processed: list[dict[str, Any]] = []
 
     with spine._connect() as conn:
@@ -145,9 +147,12 @@ def process_pending_deliveries() -> list[dict[str, Any]]:
     return processed
 
 
+process_delivery_queue = process_pending_deliveries
+
+
 class DeliveryWorker:
     def sync_pending_uploads_to_drive(self) -> dict[str, Any]:
-        items = process_delivery_queue()
+        items = process_pending_deliveries()
         return {"uploaded": len(items), "items": items}
 
 

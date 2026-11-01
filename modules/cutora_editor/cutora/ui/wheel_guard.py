@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Industry-standard parameter & mouse-wheel interaction (Resolve / Premiere / Figma style).
+"""Industry-standard parameter & mouse-wheel interaction (Pro NLE / Figma style).
 
 Core guarantees:
 1. Scrolling the mouse wheel over ANY parameter widget (QSpinBox, QDoubleSpinBox,
@@ -9,7 +9,7 @@ Core guarantees:
    the inspector/panel scrolls smoothly from top to bottom.
 2. Intentional wheel fine-tuning is available via ``Alt + MouseWheel`` (or
    ``Alt + Shift + MouseWheel`` for 10x step).
-3. Scrubby number inputs (Premiere / DaVinci Resolve / Figma standard):
+3. Scrubby number inputs (Pro NLE / Figma standard):
    - Press & drag horizontally (``↔``) on any QSpinBox / QDoubleSpinBox (or its
      InspectorRow label) to smoothly scrub the value in real time
      (``Shift`` = 10x fast, ``Ctrl``/``Alt`` = 0.1x fine).
@@ -226,7 +226,7 @@ def _ensure_spin_overlay(spin: QAbstractSpinBox) -> Optional[_SpinScrubOverlay]:
 class WheelGuardAndScrubFilter(QObject):
     """Application-wide event filter enforcing:
     1) Unconditional scroll safety on parameter widgets (wheel scrolls the page, never mutates controls).
-    2) Resolve/Premiere/Figma-style horizontal scrubbing on QSpinBox/QDoubleSpinBox and InspectorRow labels.
+    2) Pro NLE / Figma-style horizontal scrubbing on QSpinBox/QDoubleSpinBox and InspectorRow labels.
     """
 
     DRAG_THRESHOLD_PX = 3

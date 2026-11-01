@@ -241,7 +241,10 @@ class StudioEngine(Engine):
         if not h.get("ok"):
             # 优先直接拉起本地算力网关进程（无窗口、2 秒就绪），再兜底启动脚本
             ltx_root = _LTX_ROOT
-            ltx_py = ltx_root / "runtime" / "venv" / "Scripts" / "python.exe"
+            win_py = ltx_root / "runtime" / "venv" / "Scripts" / "python.exe"
+            unix_py3 = ltx_root / "runtime" / "venv" / "bin" / "python3"
+            unix_py = ltx_root / "runtime" / "venv" / "bin" / "python"
+            ltx_py = win_py if win_py.is_file() else (unix_py3 if unix_py3.is_file() else unix_py)
             gw_script = ltx_root / "modules" / "studio_gateway" / "server.py"
             launched = False
             if ltx_py.is_file() and gw_script.is_file():

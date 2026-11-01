@@ -137,7 +137,9 @@ def inspect_clip(
             issues=issues,
         )
 
-    ffprobe_exe = BIN_DIR / "ffprobe.exe"
+    from . import resolve_runtime_bin
+
+    ffprobe_exe = resolve_runtime_bin("ffprobe")
     has_video = False
     has_audio = False
     duration = 0.0

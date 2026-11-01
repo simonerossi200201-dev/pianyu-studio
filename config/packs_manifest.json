@@ -4,7 +4,7 @@
   "base_edition": {
     "id": "base-core",
     "name": "片语工作室 · 标准核心版 (25GB 32GB+CPU 全兼容底座)",
-    "description": "统一软件总控台 (studio_launcher.py) 始终保持完整视觉与框架展示。默认内置轻量级右键表格工具、CUTORA 剪辑台、便携 Python 与 FFmpeg/rclone 运行时，以及四大日常高频核心 AI 模型：自动字幕 (Faster-Whisper + Wav2Vec2)、智能拼接、AI 视频抠像 (SAM 2.1 + RMBG-2.0)、空间立体声与人像提亮降噪。最低仅需 i7 笔记本 + 32GB 内存（无需独立显卡）即可流畅运行，导出帧率 ≥ 400 fps。所有独立软件模块（Orante、Robota、ComfyUI 引擎）与重型 AI 模型均支持可拆可装、一键无缝拼装。",
+    "description": "统一软件总控台 (studio_launcher.py) 始终保持完整视觉与框架展示。默认内置轻量级右键表格工具、CUTORA 剪辑台、便携 Python 与 FFmpeg/rclone 运行时，以及四大日常高频核心 AI 模型：自动字幕 (Faster-Whisper + Wav2Vec2)、智能拼接、AI 视频抠像 (SAM 2.1 + RMBG-2.0)、空间立体声与人像提亮降噪。最低仅需 i7 笔记本 + 32GB 内存（无需独立显卡）或 Apple Silicon Mac 即可流畅运行，导出帧率 ≥ 400 fps。所有独立软件模块（Orante、ComfyUI 引擎）与重型 AI 模型均支持可拆可装、一键无缝拼装。",
     "approx_size_gb": 18.2,
     "min_ram_gb": 16.0,
     "min_vram_gb": 0.0,

@@ -170,6 +170,9 @@ def _resolve_yunet_model() -> Optional[Path]:
 def _resolve_font_path(bold: bool = True) -> Optional[Path]:
     candidates = [
         LTX_ROOT / "modules" / "cutora_editor" / "resources" / "fonts" / "Noto_Sans_SC" / "NotoSansSCwght.ttf",
+        Path("/System/Library/Fonts/PingFang.ttc"),
+        Path("/System/Library/Fonts/STHeiti Medium.ttc"),
+        Path("/Library/Fonts/Arial Bold.ttf"),
         Path(r"C:\Windows\Fonts\msyhbd.ttc") if bold else Path(r"C:\Windows\Fonts\msyh.ttc"),
         Path(r"C:\Windows\Fonts\msyh.ttc"),
         Path(r"C:\Windows\Fonts\simhei.ttf"),
@@ -192,14 +195,20 @@ def _load_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFo
 
 
 def _resolve_comfy_py() -> Path:
+    from . import resolve_python_exe
+
     for cand in (
         LTX_ROOT / "runtime" / "comfyui" / "venv" / "Scripts" / "python.exe",
+        LTX_ROOT / "runtime" / "comfyui" / "venv" / "bin" / "python3",
+        LTX_ROOT / "runtime" / "comfyui" / "venv" / "bin" / "python",
         Path(r"D:\0_LLM\ComfyUI\venv\Scripts\python.exe"),
         LTX_ROOT / "runtime" / "venv" / "Scripts" / "python.exe",
+        LTX_ROOT / "runtime" / "venv" / "bin" / "python3",
+        LTX_ROOT / "runtime" / "venv" / "bin" / "python",
     ):
         if cand.is_file():
             return cand
-    return Path(sys.executable)
+    return Path(resolve_python_exe(gui=False, root=LTX_ROOT))
 
 
 def _resolve_flux2_runner() -> Path:

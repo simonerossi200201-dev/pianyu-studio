@@ -5,13 +5,24 @@ from __future__ import print_function
 import os
 import sys
 import shutil
-import winreg
+
+if os.name == "nt":
+    import winreg
+else:
+    winreg = None
 
 REG_KEY = "RightClickTableTool"
-DEST = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "RightClickTableTool")
+if sys.platform == "darwin":
+    DEST = os.path.expanduser("~/Library/Application Support/RightClickTableTool")
+elif os.name == "nt":
+    DEST = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "RightClickTableTool")
+else:
+    DEST = os.path.expanduser("~/.local/share/RightClickTableTool")
 
 
 def _del_key(root, path):
+    if winreg is None:
+        return False
     try:
         winreg.DeleteKey(root, path + r"\command")
     except OSError:
@@ -25,16 +36,25 @@ def _del_key(root, path):
 
 def main():
     print("======== 右键表格工具 卸载 ========")
-    hkcu = winreg.HKEY_CURRENT_USER
-    _del_key(hkcu, r"Software\Classes\Directory\Background\shell\%s" % REG_KEY)
-    _del_key(hkcu, r"Software\Classes\Directory\shell\%s" % REG_KEY)
-    _del_key(hkcu, r"Software\Classes\Directory\Background\shell\VisualRenamer")
-    _del_key(hkcu, r"Software\Classes\Directory\shell\VisualRenamer")
-    try:
-        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\VisualRenamer\command")
-        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\VisualRenamer")
-    except OSError:
-        pass
+    if sys.platform == "darwin":
+        for p in (
+            os.path.expanduser("~/Library/Services/用表格工具打开.workflow"),
+            os.path.expanduser("~/Applications/右键表格工具.app"),
+        ):
+            if os.path.exists(p):
+                shutil.rmtree(p, ignore_errors=True)
+                print("已移除", p)
+    elif os.name == "nt" and winreg is not None:
+        hkcu = winreg.HKEY_CURRENT_USER
+        _del_key(hkcu, r"Software\Classes\Directory\Background\shell\%s" % REG_KEY)
+        _del_key(hkcu, r"Software\Classes\Directory\shell\%s" % REG_KEY)
+        _del_key(hkcu, r"Software\Classes\Directory\Background\shell\VisualRenamer")
+        _del_key(hkcu, r"Software\Classes\Directory\shell\VisualRenamer")
+        try:
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\VisualRenamer\command")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\VisualRenamer")
+        except OSError:
+            pass
     if os.path.isdir(DEST):
         shutil.rmtree(DEST, ignore_errors=True)
         print("已删除", DEST)

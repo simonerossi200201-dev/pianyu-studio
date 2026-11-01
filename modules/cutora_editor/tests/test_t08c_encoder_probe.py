@@ -40,7 +40,7 @@ def test_probe_argv_is_one_second_not_tenth():
     assert PROBE_SECONDS >= 1.0
     assert "-c:v" in cmd and cmd[cmd.index("-c:v") + 1] == "h264_nvenc"
     vendors = {v for v, _n in SLOTS}
-    assert vendors == {"nvenc", "amf", "qsv"}
+    assert vendors == {"nvenc", "videotoolbox", "amf", "qsv"}
 
 
 def test_probe_failure_picks_x264_before_encode(probe_env, monkeypatch):
@@ -132,3 +132,37 @@ def test_cache_written_and_reused(probe_env, monkeypatch):
     assert second["ffmpeg_version"] == "ffmpeg-test"
     disk = load_cache()
     assert disk["encoders"]["h264_nvenc"]["ok"] is False
+
+
+def test_videotoolbox_h264_hevc_prores_selection_and_flags(probe_env, monkeypatch):
+    from cutora.render.encoder_probe import pick_prores
+    monkeypatch.setattr(
+        "cutora.render.encoder_probe.hw_ok",
+        lambda n: n in ("h264_videotoolbox", "hevc_videotoolbox", "prores_videotoolbox"),
+    )
+    monkeypatch.setattr("cutora.render.encoder_probe.ensure_probed", lambda: {})
+    assert pick_h264(True)[0] == "h264_videotoolbox"
+    assert pick_hevc(True)[0] == "hevc_videotoolbox"
+    assert pick_prores(True)[0] == "prores_videotoolbox"
+
+    vcodec, preset, extra = vcodec_quality_args(True, "compressed")
+    assert vcodec == "h264_videotoolbox"
+    assert preset is None
+    assert "-realtime" in extra and "0" in extra
+    assert "-prio_speed" in extra and "true" in extra
+
+    cmd = build_rawvideo_ffmpeg_cmd(
+        1920, 1080, 30, "vt.mp4", use_gpu=True, ffmpeg_path="ffmpeg"
+    )
+    assert "h264_videotoolbox" in cmd
+    assert "-preset" not in cmd
+
+    hevc_vc, hevc_p, hevc_extra, _ = encode_args(get_profile("hevc-high"), True)
+    assert hevc_vc == "hevc_videotoolbox"
+    assert hevc_p is None
+    assert "-tag:v" in hevc_extra and "hvc1" in hevc_extra
+
+    prores_vc, prores_p, prores_extra, prores_pix = encode_args(get_profile("archive-prores"), True)
+    assert prores_vc == "prores_videotoolbox"
+    assert prores_p is None
+    assert prores_pix == "yuv422p10le"

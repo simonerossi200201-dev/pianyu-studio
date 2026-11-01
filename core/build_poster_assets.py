@@ -12,7 +12,6 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 LTX_ROOT = Path(__file__).resolve().parent.parent
 BRAND_DIR = LTX_ROOT / "resources" / "brand"
 CUTORA_BRAND = LTX_ROOT / "modules" / "cutora_editor" / "resources" / "brand"
-ROBOTA_AVATAR = Path(r"D:\0_Robota\robota\console\static\avatar.png")
 
 WIN_FONTS = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
 
@@ -284,43 +283,6 @@ def build_gateway_icon() -> Path:
     return out
 
 
-def build_robota_icon() -> Path:
-    """将 Robota 官方头像抠除亮白底后，融合进深邃暖金星盘底座 (robota_me.png)。"""
-    ss = 1536
-    img = _create_medallion_base(ss, glow_rgb=(218, 176, 88))
-    if ROBOTA_AVATAR.is_file():
-        av = Image.open(ROBOTA_AVATAR).convert("RGBA")
-        inner_sz = int(ss * 0.824)
-        av = av.resize((inner_sz, inner_sz), Image.Resampling.LANCZOS)
-        arr = np.asarray(av).astype(np.float32)
-        # 识别外围纯白背景并羽化透明，保留人物主体
-        r, g, b, a = arr[..., 0], arr[..., 1], arr[..., 2], arr[..., 3]
-        yy, xx = np.mgrid[0:inner_sz, 0:inner_sz]
-        dc = np.sqrt(((xx - inner_sz / 2) / (inner_sz / 2)) ** 2 + ((yy - inner_sz / 2) / (inner_sz / 2)) ** 2)
-        whiteness = np.minimum(np.minimum(r, g), b)
-        # 仅在人物外圈高亮度无色彩处透明化
-        sat = np.maximum(np.maximum(r, g), b) - whiteness
-        bg_score = np.clip((whiteness - 236.0) / 16.0, 0, 1) * np.clip((18.0 - sat) / 18.0, 0, 1) * np.clip((dc - 0.35) / 0.25, 0, 1)
-        new_a = a * (1.0 - bg_score)
-        # 圆形内盘裁剪
-        circle_mask = np.clip((1.0 - dc) * 40.0, 0, 1)
-        arr[..., 3] = np.clip(new_a * circle_mask, 0, 255)
-        av_clean = Image.fromarray(arr.astype(np.uint8), "RGBA")
-        pos = ((ss - inner_sz) // 2, (ss - inner_sz) // 2 + 12)
-        img.alpha_composite(av_clean, pos)
-
-    # 叠加内圈金属金环压边
-    draw = ImageDraw.Draw(img)
-    r_inner = ss * 0.412
-    cx, cy = ss / 2.0, ss / 2.0
-    draw.ellipse([cx - r_inner, cy - r_inner, cx + r_inner, cy + r_inner], outline=(232, 198, 118, 255), width=16)
-
-    out_img = img.resize((512, 512), Image.Resampling.LANCZOS)
-    out = BRAND_DIR / "robota_me.png"
-    out_img.save(out, "PNG")
-    return out
-
-
 def build_orante_medallion() -> Path:
     """将 Orante 3D 橙子场记板图标 (orante_me.png) 嵌入统一规格的暖金星盘底座 (orante_medallion.png)。"""
     ss = 1536
@@ -357,7 +319,6 @@ if __name__ == "__main__":
     p1 = build_poster_bg_9x16()
     p2 = build_table_tool_icon()
     p3 = build_gateway_icon()
-    p4 = build_robota_icon()
-    p5 = build_orante_medallion()
-    print("Generated:", p1, p2, p3, p4, p5)
+    p4 = build_orante_medallion()
+    print("Generated:", p1, p2, p3, p4)
 

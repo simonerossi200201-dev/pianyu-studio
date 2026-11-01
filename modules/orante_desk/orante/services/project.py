@@ -278,6 +278,43 @@ def _write_orproj(path: Path, payload: dict) -> int:
     return path.stat().st_size
 
 
+def write_task_orproj(tid: str) -> Path | None:
+    """在单个任务目录内就地写出 `<task_dir>/project.orproj.json`（若任务属于某个批次，同时合并更新批次级 `.orproj.json`）。"""
+    row = db.one("SELECT * FROM tasks WHERE id=?", (str(tid or "").strip(),))
+    if not row:
+        return None
+    t = taskmod._decorate(row)
+    d_str = (t.get("dir") or "").strip()
+    if not d_str:
+        return None
+    d = Path(d_str)
+    if not d.is_dir():
+        return None
+    m = _load_manifest(t)
+    b = _batch_of(t)
+    jobs_list = [
+        _job_row(j)
+        for j in db.rows("SELECT id,task_id,kind,status FROM jobs WHERE task_id=?", (t["id"],))
+    ]
+    payload = {
+        "format": FORMAT,
+        "orante": __version__,
+        "exported": _now_iso(),
+        "batch": _batch_row(b) if b else {},
+        "tasks": [_task_row(t)],
+        "manifests": {t["id"]: _summary_of(t, m)},
+        "jobs": jobs_list,
+    }
+    task_orproj = d / "project.orproj.json"
+    _write_orproj(task_orproj, payload)
+    try:
+        if b and b.get("dir") and Path(b["dir"]).is_dir():
+            export(task_ids=[t["id"]])
+    except Exception:
+        pass
+    return task_orproj
+
+
 def export(task_ids=None, batch_ids=None, all_finished=False) -> dict:
     """按批次分组写 .orproj.json。返回 {files, warnings}。"""
     rows = _select_tasks(task_ids, batch_ids, all_finished)
@@ -509,7 +546,7 @@ def _insert_task(row: dict, summary: dict, missing_dir: bool, changed: list) -> 
 
 
 def do_import(paths: list[str]) -> dict:
-    """多选 .orproj.json。库里已有同 id → 跳过，不覆盖正在做的任务。"""
+    """多选 .orproj.json（或包含 project.orproj.json 的任务目录）。库里已有同 id → 跳过，不覆盖正在做的任务。"""
     if not paths:
         raise OranteError("没有指定工程文件", "选一个或多个 .orproj.json。")
     imported = 0
@@ -519,6 +556,14 @@ def do_import(paths: list[str]) -> dict:
     warnings: list[str] = []
     for raw in paths:
         p = Path(raw)
+        if p.is_dir():
+            cand = p / "project.orproj.json"
+            if cand.is_file():
+                p = cand
+            else:
+                found = sorted(p.glob("*.orproj.json"))
+                if found:
+                    p = found[0]
         if not p.is_file():
             warnings.append(f"找不到文件 {raw}")
             continue
@@ -675,12 +720,21 @@ def _parse_updated(s: str) -> datetime | None:
 ARCHIVE_DEDUP_SEC = 300.0  # 5 分钟内第二个窗口不再跑自动归档
 
 
-def auto_archive_on_startup() -> dict | None:
-    """启动时：finished 且 updated 超过 N 天 → 导出并从库里移出。默认关。
+def import_file(orproj_path: str | Path) -> dict:
+    """单文件或单任务目录导入别名。"""
+    return do_import([str(orproj_path)])
 
-    永远只动 finished；collected 还没验收完，不动。已经 archived=1 的是导回来看的，也不动。
-    多开：只有第一个窗口跑，settings.archive.last_run + 5 分钟窗口去重。
+
+def auto_archive_on_startup() -> dict | None:
+    """启动时：
+    1. 确保所有已标 `finished` 的任务目录内都落盘有 `project.orproj.json`；
+    2. 若开启 `archive.auto_on` 且 `finished` 超过 N 天 → 导出并从库里移出。
     """
+    for f_row in db.rows("SELECT id FROM tasks WHERE status='finished'"):
+        try:
+            write_task_orproj(f_row["id"])
+        except Exception:
+            pass
     from .. import config
     if not config.get("archive.auto_on"):
         return None

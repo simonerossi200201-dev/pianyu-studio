@@ -267,7 +267,7 @@ def build() -> list:
         ),
         spec(
             "studio.overview", "查询工作室全局状态",
-            "查询片语 Studio 全套工作台（CUTORA 视频剪辑、Orante 生产工坊、TableTool 表格中枢、Robota 智能体）的模块状态、数据库路径、GPU/NVENC 配置与多语种支持概况。只读。",
+            "查询片语 Studio 全套工作台（CUTORA 视频剪辑、Orante 生产工坊、TableTool 表格中枢）的模块状态、数据库路径、GPU/NVENC 配置与多语种支持概况。只读。",
             H + ":cmd_studio_overview",
             headless=True,
         ),

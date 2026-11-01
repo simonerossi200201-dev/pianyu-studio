@@ -208,8 +208,20 @@ def encode_args(profile: dict | None, use_gpu: bool):
         if enc == "hevc_nvenc":
             nv_preset = os.environ.get("CUTORA_NVENC_PRESET") or "p2"
             return "hevc_nvenc", nv_preset, ["-rc", "vbr", "-cq", "18", "-b:v", "0"], pix
+        if enc == "hevc_videotoolbox":
+            return "hevc_videotoolbox", None, [
+                "-allow_sw", "1", "-realtime", "0", "-prio_speed", "true",
+                "-tag:v", "hvc1", "-pix_fmt", "yuv420p", "-q:v", "68", "-b:v", "12M",
+            ], pix
         return "libx265", "medium", ["-crf", "20"], pix
     if kind == "prores":
+        from cutora.render.encoder_probe import pick_prores
+        enc, _reason = pick_prores(bool(use_gpu))
+        if enc == "prores_videotoolbox":
+            return "prores_videotoolbox", None, [
+                "-allow_sw", "1", "-realtime", "0", "-prio_speed", "true",
+                "-profile:v", "3",
+            ], pix or "yuv422p10le"
         return "prores_ks", None, ["-profile:v", "3"], pix or "yuv422p10le"
     # source-size: same geometry, high quality — CRF 15, not CRF 0.
     # CRF 0 + yuv420p is huge and still not lossless. Archive is ProRes.
@@ -219,6 +231,11 @@ def encode_args(profile: dict | None, use_gpu: bool):
         if enc == "h264_nvenc":
             nv_preset = os.environ.get("CUTORA_NVENC_PRESET") or "p2"
             return "h264_nvenc", nv_preset, ["-rc", "vbr", "-cq", "15", "-b:v", "0"], pix
+        if enc == "h264_videotoolbox":
+            return "h264_videotoolbox", None, [
+                "-allow_sw", "1", "-realtime", "0", "-prio_speed", "true",
+                "-profile:v", "high", "-pix_fmt", "yuv420p", "-q:v", "78", "-b:v", "20M",
+            ], pix
         return "libx264", "medium", ["-crf", "15"], pix
     from cutora.render.export_params import vcodec_quality_args
     vcodec, preset, extra = vcodec_quality_args(use_gpu, "compressed")

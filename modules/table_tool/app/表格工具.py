@@ -40,10 +40,17 @@ VIDEO_EXTS = {
 }
 RCLONE_REMOTE = "gdrive"
 CREATE_NO_WINDOW = 0x08000000
+_HERE_DIR = os.path.dirname(os.path.abspath(__file__))
+_LTX_ROOT_DIR = os.path.abspath(os.path.join(_HERE_DIR, "..", "..", ".."))
+_RCLONE_BIN_NAME = "rclone.exe" if os.name == "nt" else "rclone"
 RCLONE_CANDIDATES = [
-    os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "runtime", "bin", "rclone.exe")),
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "rclone.exe"),
-    os.path.join(os.environ.get("LOCALAPPDATA", ""), "RightClickTableTool", "rclone.exe"),
+    os.path.join(_LTX_ROOT_DIR, "runtime", "bin", _RCLONE_BIN_NAME),
+    os.path.join(_HERE_DIR, _RCLONE_BIN_NAME),
+    os.path.join(os.environ.get("LOCALAPPDATA", ""), "RightClickTableTool", _RCLONE_BIN_NAME)
+    if os.name == "nt"
+    else os.path.expanduser("~/Library/Application Support/RightClickTableTool/rclone"),
+    "/opt/homebrew/bin/rclone",
+    "/usr/local/bin/rclone",
 ]
 
 MAX_BODY = 32 * 1024 * 1024
@@ -300,8 +307,36 @@ _PENDING_LOCK = threading.Lock()
 
 
 def _find_locking_processes(file_path):
-    """通过 Windows Restart Manager (rstrtmgr.dll) 查询正在占用 file_path 的进程列表 [(pid, name), ...]。"""
-    if os.name != "nt" or not file_path or not os.path.exists(file_path):
+    """查询正在占用 file_path 的进程列表 [(pid, name), ...]（Windows: rstrtmgr.dll, macOS: lsof -F pc）。"""
+    if not file_path or not os.path.exists(file_path):
+        return []
+    if sys.platform == "darwin":
+        try:
+            r = subprocess.run(
+                ["lsof", "-F", "pc", "--", os.path.abspath(file_path)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=4,
+            )
+            out = []
+            cur_pid = 0
+            cur_cmd = ""
+            for line in (r.stdout or "").splitlines():
+                if line.startswith("p") and line[1:].isdigit():
+                    if cur_pid and cur_pid != os.getpid():
+                        out.append((cur_pid, cur_cmd))
+                    cur_pid = int(line[1:])
+                    cur_cmd = ""
+                elif line.startswith("c"):
+                    cur_cmd = line[1:].strip()
+            if cur_pid and cur_pid != os.getpid():
+                out.append((cur_pid, cur_cmd))
+            return out
+        except Exception:
+            return []
+    if os.name != "nt":
         return []
     try:
         import ctypes
@@ -652,7 +687,12 @@ def do_rename(directory, plan):
 
 
 def prefs_path():
-    base = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "RightClickTableTool")
+    if sys.platform == "darwin":
+        base = os.path.expanduser("~/Library/Application Support/RightClickTableTool")
+    elif os.name == "nt":
+        base = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "RightClickTableTool")
+    else:
+        base = os.path.expanduser("~/.config/RightClickTableTool")
     try:
         os.makedirs(base, exist_ok=True)
     except Exception:
@@ -850,7 +890,20 @@ def _ps(script, timeout=45):
 
 
 def clipboard_text():
-    """用 Win32 API 读剪贴板，不启动 PowerShell，因此不会闪控制台。"""
+    """读取系统剪贴板文本（Windows 用 Win32 API，macOS 用 pbpaste）。"""
+    if sys.platform == "darwin":
+        try:
+            r = subprocess.run(
+                ["pbpaste"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=4,
+            )
+            return r.stdout or ""
+        except Exception:
+            return ""
     if os.name != "nt":
         return ""
     try:
@@ -896,7 +949,7 @@ _explorer_lock = threading.Lock()
 
 
 def explorer_folders():
-    """读当前资源管理器打开的文件夹。结果缓存 2 秒，避免连打 PowerShell。"""
+    """读当前资源管理器 (Windows Explorer / macOS Finder) 打开的文件夹。结果缓存 2 秒。"""
     global _explorer_cache
     now = time.time()
     cached, ts = _explorer_cache
@@ -908,6 +961,42 @@ def explorer_folders():
         cached, ts = _explorer_cache
         if time.time() - ts < 2.0:
             return list(cached)
+        paths = []
+        if sys.platform == "darwin":
+            osa_script = (
+                'tell application "Finder"\n'
+                '  set outList to {}\n'
+                '  repeat with w in Finder windows\n'
+                '    try\n'
+                '      set end of outList to POSIX path of (target of w as alias)\n'
+                '    end try\n'
+                '  end repeat\n'
+                '  set AppleScript\'s text item delimiters to "\\n"\n'
+                '  return outList as text\n'
+                'end tell'
+            )
+            try:
+                r = subprocess.run(
+                    ["osascript", "-e", osa_script],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=5,
+                )
+                for line in (r.stdout or "").splitlines():
+                    p = line.strip().rstrip("/") or ("/" if line.strip() == "/" else "")
+                    if p and os.path.isdir(p) and p not in paths:
+                        paths.append(p)
+            except Exception:
+                pass
+            _explorer_cache = (paths, time.time())
+            return list(paths)
+
+        if os.name != "nt":
+            _explorer_cache = (paths, time.time())
+            return list(paths)
+
         script = r"""
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $shell = New-Object -ComObject Shell.Application
@@ -923,7 +1012,6 @@ foreach ($w in @($shell.Windows())) {
 }
 """
         out = _ps(script, timeout=8)
-        paths = []
         for line in (out or "").splitlines():
             p = line.strip()
             if p and os.path.isdir(p) and p not in paths:
@@ -935,10 +1023,37 @@ foreach ($w in @($shell.Windows())) {
 
 
 def win_pick(kind, initial="", title="", filename=""):
-    """kind: folder | open | save。用 WinForms 对话框，避免和 pywebview 抢 tk。"""
+    """kind: folder | open | save。Windows 用 WinForms 对话框，macOS 用 osascript 原生 Cocoa 对话框。"""
     initial = initial or os.getcwd()
     title = title or ""
     filename = filename or ""
+    if sys.platform == "darwin":
+        safe_title = title.replace("\\", "\\\\").replace('"', '\\"') or "请选择"
+        safe_init = initial.replace("\\", "\\\\").replace('"', '\\"')
+        safe_fn = filename.replace("\\", "\\\\").replace('"', '\\"') or "project.renamer.json"
+        if kind == "folder":
+            osa = f'POSIX path of (choose folder with prompt "{safe_title}" default location (POSIX file "{safe_init}"))'
+        elif kind == "open":
+            osa = f'POSIX path of (choose file with prompt "{safe_title}" default location (POSIX file "{safe_init}"))'
+        else:
+            osa = f'POSIX path of (choose file name with prompt "{safe_title}" default name "{safe_fn}" default location (POSIX file "{safe_init}"))'
+        try:
+            r = subprocess.run(
+                ["osascript", "-e", osa],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+            )
+            if r.returncode != 0:
+                return None
+            p = (r.stdout or "").strip()
+            if kind == "folder" and p != "/":
+                p = p.rstrip("/")
+            return p if p else None
+        except Exception:
+            return None
     payload = json.dumps({
         "kind": kind, "initial": initial, "title": title, "filename": filename,
     }, ensure_ascii=False)
@@ -996,7 +1111,13 @@ def find_rclone():
     for p in RCLONE_CANDIDATES:
         if p and os.path.isfile(p):
             return p
-    return shutil.which("rclone")
+    w = shutil.which("rclone")
+    if w:
+        return w
+    for mac_cand in ("/opt/homebrew/bin/rclone", "/usr/local/bin/rclone"):
+        if os.path.isfile(mac_cand):
+            return mac_cand
+    return None
 
 
 def drive_folder_id(url):
@@ -1974,6 +2095,8 @@ class App:
             try:
                 if os.name == "nt":
                     os.startfile(pth)  # noqa: PTH
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", pth])
                 else:
                     subprocess.Popen(["xdg-open", pth])
                 return {"ok": True}
@@ -2266,12 +2389,20 @@ class App:
                     return {"ok": False, "message": "文件名不合法"}
                 path_arg = os.path.join(self.dir, name) if name else self.dir
                 try:
-                    if name and os.path.isfile(path_arg):
-                        subprocess.Popen(["explorer", "/select,", os.path.normpath(path_arg)],
-                                         creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+                    if sys.platform == "darwin":
+                        if name and os.path.exists(path_arg):
+                            subprocess.Popen(["open", "-R", os.path.normpath(path_arg)])
+                        else:
+                            subprocess.Popen(["open", os.path.normpath(self.dir)])
+                    elif os.name == "nt":
+                        if name and os.path.isfile(path_arg):
+                            subprocess.Popen(["explorer", "/select,", os.path.normpath(path_arg)],
+                                             creationflags=CREATE_NO_WINDOW)
+                        else:
+                            subprocess.Popen(["explorer", os.path.normpath(self.dir)],
+                                             creationflags=CREATE_NO_WINDOW)
                     else:
-                        subprocess.Popen(["explorer", os.path.normpath(self.dir)],
-                                         creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+                        subprocess.Popen(["xdg-open", os.path.normpath(self.dir)])
                     return {"ok": True}
                 except Exception as e:
                     return {"ok": False, "message": str(e)}
@@ -2283,7 +2414,12 @@ class App:
                 if not os.path.exists(path_arg):
                     return {"ok": False, "message": "文件不存在"}
                 try:
-                    os.startfile(path_arg)  # noqa: PTH
+                    if os.name == "nt":
+                        os.startfile(path_arg)  # noqa: PTH
+                    elif sys.platform == "darwin":
+                        subprocess.Popen(["open", path_arg])
+                    else:
+                        subprocess.Popen(["xdg-open", path_arg])
                     return {"ok": True}
                 except Exception as e:
                     return {"ok": False, "message": str(e)}

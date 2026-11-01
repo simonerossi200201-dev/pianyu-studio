@@ -135,16 +135,22 @@ def save_font_metadata():
         return False
 
 def _iter_font_files():
-    if not os.path.isdir(FONT_DIR):
-        return []
     exts = {".ttf", ".otf", ".ttc"}
     skip_dir_names = {"_quarantine", "_extra", "fonts_pending", "Noto_Color_Emoji"}
     files = []
-    for root, dirs, filenames in os.walk(FONT_DIR):
-        dirs[:] = [d for d in dirs if d not in skip_dir_names]
-        for fn in filenames:
-            if fn.lower().endswith(tuple(exts)):
-                files.append(os.path.join(root, fn))
+    if os.path.isdir(FONT_DIR):
+        for root, dirs, filenames in os.walk(FONT_DIR):
+            dirs[:] = [d for d in dirs if d not in skip_dir_names]
+            for fn in filenames:
+                if fn.lower().endswith(tuple(exts)):
+                    files.append(os.path.join(root, fn))
+    if not files and os.sys.platform == "darwin":
+        for sys_dir in ("/System/Library/Fonts", "/Library/Fonts", os.path.expanduser("~/Library/Fonts")):
+            if os.path.isdir(sys_dir):
+                for root, _dirs, filenames in os.walk(sys_dir):
+                    for fn in filenames:
+                        if fn.lower().endswith(tuple(exts)):
+                            files.append(os.path.join(root, fn))
     return files
 
 def scan_fonts_from_dir():

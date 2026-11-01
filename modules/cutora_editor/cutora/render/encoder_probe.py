@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 
@@ -24,11 +25,14 @@ CACHE_NAME = "encoder_probe.json"
 PROBE_SECONDS = 1.0
 CACHE_VERSION = 1
 
-# Vendor slots. selected_vendor this round is only "nvenc" when it works.
+# Vendor slots. selected_vendor is "nvenc" or "videotoolbox" when hardware probe succeeds.
 SLOTS = (
     ("nvenc", "h264_nvenc"),
     ("nvenc", "hevc_nvenc"),
     ("nvenc", "av1_nvenc"),
+    ("videotoolbox", "h264_videotoolbox"),
+    ("videotoolbox", "hevc_videotoolbox"),
+    ("videotoolbox", "prores_videotoolbox"),
     ("amf", "h264_amf"),
     ("amf", "hevc_amf"),
     ("qsv", "h264_qsv"),
@@ -90,6 +94,7 @@ def save_cache(data: dict) -> None:
 
 def probe_argv(ffmpeg: str, encoder: str) -> list[str]:
     """-t 1, not 0.1. T08-0: 0.1 fails NVENC on this machine with EOF -22."""
+    pix_fmt = "yuv422p10le" if encoder == "prores_videotoolbox" else "yuv420p"
     cmd = [
         ffmpeg, "-hide_banner", "-y",
         "-f", "lavfi",
@@ -97,10 +102,12 @@ def probe_argv(ffmpeg: str, encoder: str) -> list[str]:
         "-t", str(int(PROBE_SECONDS)),
         "-an",
         "-c:v", encoder,
-        "-pix_fmt", "yuv420p",
+        "-pix_fmt", pix_fmt,
     ]
     if encoder.endswith("_nvenc"):
         cmd += ["-preset", "p4"]
+    elif encoder.endswith("_videotoolbox"):
+        cmd += ["-allow_sw", "1", "-realtime", "0"]
     cmd += ["-f", "null", "-"]
     return cmd
 
@@ -154,6 +161,15 @@ def probe(force: bool = False) -> dict:
             (encoders[name].get("error") or "")[:80],
         )
     nvenc_ok = bool(encoders.get("h264_nvenc", {}).get("ok"))
+    vt_ok = bool(encoders.get("h264_videotoolbox", {}).get("ok"))
+    if sys.platform == "darwin" and vt_ok:
+        selected_vendor = "videotoolbox"
+    elif nvenc_ok:
+        selected_vendor = "nvenc"
+    elif vt_ok:
+        selected_vendor = "videotoolbox"
+    else:
+        selected_vendor = None
     data = {
         "version": CACHE_VERSION,
         "ffmpeg": ffmpeg,
@@ -161,7 +177,7 @@ def probe(force: bool = False) -> dict:
         "probed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "duration_sec": PROBE_SECONDS,
         "encoders": encoders,
-        "selected_vendor": "nvenc" if nvenc_ok else None,
+        "selected_vendor": selected_vendor,
         "skip": False,
     }
     save_cache(data)
@@ -189,8 +205,17 @@ def pick_h264(want_gpu: bool) -> tuple[str, str]:
     if os.environ.get(SKIP_ENV):
         return "libx264", "探测已跳过，使用 libx264"
     data = ensure_probed()
+    if sys.platform == "darwin":
+        if hw_ok("h264_videotoolbox"):
+            return "h264_videotoolbox", "h264_videotoolbox 探测通过"
+        if hw_ok("h264_nvenc"):
+            return "h264_nvenc", "h264_nvenc 探测通过"
+        err = ((data.get("encoders") or {}).get("h264_videotoolbox") or {}).get("error") or "失败"
+        return "libx264", "硬件编码不可用，已回退 libx264（%s）" % err[:80]
     if hw_ok("h264_nvenc"):
         return "h264_nvenc", "h264_nvenc 探测通过"
+    if hw_ok("h264_videotoolbox"):
+        return "h264_videotoolbox", "h264_videotoolbox 探测通过"
     err = ((data.get("encoders") or {}).get("h264_nvenc") or {}).get("error") or "失败"
     return "libx264", "硬件编码不可用，已回退 libx264（%s）" % err[:80]
 
@@ -201,9 +226,28 @@ def pick_hevc(want_gpu: bool) -> tuple[str, str]:
     if os.environ.get(SKIP_ENV):
         return "libx265", "探测已跳过，使用 libx265"
     ensure_probed()
+    if sys.platform == "darwin":
+        if hw_ok("hevc_videotoolbox"):
+            return "hevc_videotoolbox", "hevc_videotoolbox 探测通过"
+        if hw_ok("hevc_nvenc"):
+            return "hevc_nvenc", "hevc_nvenc 探测通过"
+        return "libx265", "hevc_videotoolbox 不可用，已回退 libx265"
     if hw_ok("hevc_nvenc"):
         return "hevc_nvenc", "hevc_nvenc 探测通过"
+    if hw_ok("hevc_videotoolbox"):
+        return "hevc_videotoolbox", "hevc_videotoolbox 探测通过"
     return "libx265", "hevc_nvenc 不可用，已回退 libx265"
+
+
+def pick_prores(want_gpu: bool) -> tuple[str, str]:
+    if not want_gpu:
+        return "prores_ks", "GPU 关闭，使用 prores_ks"
+    if os.environ.get(SKIP_ENV):
+        return "prores_ks", "探测已跳过，使用 prores_ks"
+    ensure_probed()
+    if hw_ok("prores_videotoolbox"):
+        return "prores_videotoolbox", "prores_videotoolbox 探测通过"
+    return "prores_ks", "prores_videotoolbox 不可用，已回退 prores_ks"
 
 
 def status_text() -> str:
@@ -212,9 +256,15 @@ def status_text() -> str:
     data = load_cache() or _cache
     if not data:
         return "硬件编码探测：尚未运行（首次导出或启动时探测 1 秒片源）"
-    h264 = (data.get("encoders") or {}).get("h264_nvenc") or {}
-    if h264.get("ok"):
+    encoders = data.get("encoders") or {}
+    h264_vt = encoders.get("h264_videotoolbox") or {}
+    h264_nv = encoders.get("h264_nvenc") or {}
+    if sys.platform == "darwin" and h264_vt.get("ok"):
+        return "硬件编码：h264_videotoolbox 可用"
+    if h264_nv.get("ok"):
         return "硬件编码：h264_nvenc 可用"
+    if h264_vt.get("ok"):
+        return "硬件编码：h264_videotoolbox 可用"
     return "硬件编码不可用，导出将使用 libx264"
 
 

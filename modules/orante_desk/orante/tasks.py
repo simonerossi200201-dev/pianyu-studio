@@ -29,7 +29,13 @@ def _acc_by_name(name: str) -> dict | None:
     if accounts.is_studio_name(name):
         return accounts.studio_account()    # 规格 98：本地模型也能当任务账号（虚拟，不在库里）
     r = db.one("SELECT * FROM accounts WHERE name=? OR id=?", (name, name))
-    return r
+    if r:
+        return r
+    try:
+        from . import multi_accounts
+        return multi_accounts.resolve_as_orante_account(name)
+    except Exception:
+        return None
 
 
 def _decorate(t: dict) -> dict:
@@ -37,6 +43,8 @@ def _decorate(t: dict) -> dict:
     t["meta"] = db.unj(t.get("meta"), {}) or {}
     t["archived"] = int(t.get("archived") or 0)
     t["gen_mode"] = t.get("gen_mode") or ""
+    t["flow_mode"] = t.get("flow_mode") or "auto"
+    t["preset_id"] = t.get("preset_id") or ""
     rv = t.get("run_to_completion")
     if rv is None:
         t["run_to_completion"] = 1
@@ -46,6 +54,8 @@ def _decorate(t: dict) -> dict:
         except (TypeError, ValueError):
             t["run_to_completion"] = 1
     meta = t["meta"] if isinstance(t["meta"], dict) else {}
+    t["source_mode"] = meta.get("source_mode") or "normal"
+    t["player_saved"] = bool(meta.get("player_saved", False))
     t["missing_dir"] = bool(meta.get("missing_dir"))
     t["changed_files"] = list(meta.get("changed_files") or [])
     if not t["missing_dir"] and t.get("dir") and not Path(t["dir"]).is_dir():
@@ -188,13 +198,30 @@ def _counts_from_manifest_file(task_dir) -> dict | None:
     return c
 
 
-def list_all(include_finished=False) -> list[dict]:
+def seg_counts(m: Manifest) -> dict:
+    return decorate_counts(m)
+
+
+def list_all(
+    include_finished: bool = False,
+    *,
+    player_mode: bool = False,
+    include_external: bool = False,
+    show_both: bool = False,
+) -> list[dict]:
     rows = db.rows("SELECT * FROM tasks ORDER BY row_order, created")
     out = []
     for t in rows:
         t = _decorate(t)
         if not include_finished:
             if t["status"] in ("finished", "trash") or t["archived"]:
+                continue
+        is_unsaved_ext = (t.get("source_mode") == "external_player" and not t.get("player_saved"))
+        if player_mode and not show_both and not include_external:
+            if t.get("source_mode") != "external_player":
+                continue
+        elif not player_mode and not include_external and not show_both:
+            if is_unsaved_ext:
                 continue
         t["counts"] = _counts(t)
         out.append(t)
@@ -297,8 +324,9 @@ def normalize_row(row: dict) -> dict:
     """把表格一行（人填的）整理成能入库的字段；有问题抛 OranteError。"""
     name = (row.get("name") or "").strip()
     copy = (row.get("copy") or "").strip()
-    src = (row.get("image_source") or "").strip()
-    typ = TYPE_ALIASES.get((row.get("type") or "").strip().lower(), None)
+    src = (row.get("image_source") or row.get("image_dir") or "").strip()
+    raw_type = (row.get("type") or "").strip().lower()
+    typ = TYPE_ALIASES.get(raw_type, "long" if not raw_type else None)
     acc_name = (row.get("account") or "").strip()
     if not copy and not src and not name:
         return {}                                   # 空行
@@ -309,7 +337,10 @@ def normalize_row(row: dict) -> dict:
         if copy:
             raise OranteError(f"「{name or copy[:12]}」任务类型要选「长文案」或「短文案」")
         typ = "long"                                # 没文案时类型没意义，给个合法值占位
-    acc = _acc_by_name(acc_name)
+    acc = _acc_by_name(acc_name) if acc_name else None
+    if not acc and not acc_name:
+        all_accs = accounts.list_all(probe=False)
+        acc = all_accs[0] if all_accs else {"id": "", "engine": "flow"}
     if not acc:
         raise OranteError(f"「{name or copy[:12]}」没选账号或账号不存在：{acc_name!r}",
                           "先在右上角「账号」里添加，再在这一行选。")
@@ -323,6 +354,11 @@ def normalize_row(row: dict) -> dict:
     if "gen_mode" in row:
         from .services import pipeline
         out["gen_mode"] = pipeline.parse_gen_mode(row.get("gen_mode"))
+    if "flow_mode" in row:
+        raw_fm = str(row.get("flow_mode") or "").strip().lower()
+        out["flow_mode"] = raw_fm if raw_fm in ("auto", "frames", "ingredients") else "auto"
+    if "preset_id" in row:
+        out["preset_id"] = str(row.get("preset_id") or "").strip()
     return out
 
 
@@ -405,21 +441,25 @@ def upsert_rows(rows: list[dict]) -> dict:
                 continue
             src_changed = (cur.get("image_source") or "") != norm["image_source"]
             gm = norm["gen_mode"] if "gen_mode" in norm else (cur.get("gen_mode") or "")
-            db.run("UPDATE tasks SET name=?,copy=?,image_source=?,type=?,account_id=?,engine=?,duration_pref=?,gen_mode=?,row_order=?,updated=? WHERE id=?",
+            fm = norm["flow_mode"] if "flow_mode" in norm else (cur.get("flow_mode") or "auto")
+            pr_id = norm["preset_id"] if "preset_id" in norm else (cur.get("preset_id") or "")
+            db.run("UPDATE tasks SET name=?,copy=?,image_source=?,type=?,account_id=?,engine=?,duration_pref=?,gen_mode=?,flow_mode=?,preset_id=?,row_order=?,updated=? WHERE id=?",
                    (norm["name"], norm["copy"], norm["image_source"], norm["type"], norm["account_id"], norm["engine"],
-                    norm["duration_pref"], gm, i, db.now(), tid))
+                    norm["duration_pref"], gm, fm, pr_id, i, db.now(), tid))
             # 图源改了：前面的下图/编排/出片都作废，打回 draft 重新准备。
             if src_changed and cur["status"] not in ("draft", "trash"):
                 set_status(tid, "draft", force=True)
             _sync_mode_after_upsert(tid, cur, norm, gm)
             _merge_img_meta(tid, row)
         else:
-            tid = db.next_id("task", "T")
+            tid = tid or db.next_id("task", "T")
             gm = norm["gen_mode"] if "gen_mode" in norm else ""
-            db.run("INSERT INTO tasks(id,name,engine,account_id,type,copy,image_source,duration_pref,gen_mode,status,row_order,created,updated)"
-                   " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            fm = norm.get("flow_mode") or "auto"
+            pr_id = norm.get("preset_id") or ""
+            db.run("INSERT INTO tasks(id,name,engine,account_id,type,copy,image_source,duration_pref,gen_mode,flow_mode,preset_id,status,row_order,created,updated)"
+                   " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (tid, norm["name"], norm["engine"], norm["account_id"], norm["type"], norm["copy"], norm["image_source"],
-                    norm["duration_pref"], gm, "draft", i, db.now(), db.now()))
+                    norm["duration_pref"], gm, fm, pr_id, "draft", i, db.now(), db.now()))
             _merge_img_meta(tid, row)
         saved.append(tid)
     return {"saved": saved, "errors": errors}
@@ -463,6 +503,34 @@ def set_rtc_state(task_id: str, st: dict | None) -> None:
         meta.pop("rtc", None)
     db.run("UPDATE tasks SET meta=?, updated=? WHERE id=?",
            (db.j(meta), db.now(), task_id))
+
+
+def set_flow_mode(task_id: str, flow_mode: str) -> dict:
+    """设置任务级 Flow 生成模式（'auto' | 'frames' | 'ingredients'）。"""
+    from .engines.flow_api import normalize_flow_mode
+    raw = (flow_mode or "").strip().lower()
+    val = "auto" if raw in ("", "auto", "跟随账号") else normalize_flow_mode(raw, default="frames")
+    get(task_id)
+    db.run("UPDATE tasks SET flow_mode=?, updated=? WHERE id=?", (val, db.now(), task_id))
+    from . import events
+    events.emit("tasks.changed")
+    return get(task_id)
+
+
+def set_preset_id(task_id: str, preset_id: str) -> dict:
+    """设置任务级默认提示词预设 ID。"""
+    val = (preset_id or "").strip()
+    t = get(task_id)
+    meta = dict(t.get("meta") or {}) if isinstance(t.get("meta"), dict) else {}
+    if val:
+        meta["preset_id"] = val
+    else:
+        meta.pop("preset_id", None)
+    db.run("UPDATE tasks SET preset_id=?, meta=?, updated=? WHERE id=?",
+           (val, db.j(meta), db.now(), task_id))
+    from . import events
+    events.emit("tasks.changed")
+    return get(task_id)
 
 
 def set_gen_mode(task_id: str, raw) -> str:
@@ -624,9 +692,21 @@ def set_status(task_id: str, status: str, force: bool = False) -> str:
         if going_back or old == "trash":
             _note(f"状态回退 {task_id} {old} → {status}（force）", task_id)
         db.run("UPDATE tasks SET status=?, updated=? WHERE id=?", (status, db.now(), task_id))
+        if status == "finished":
+            try:
+                from .services import project as proj_mod
+                proj_mod.write_task_orproj(task_id)
+            except Exception:
+                pass
         return status
     if not going_back:
         db.run("UPDATE tasks SET status=?, updated=? WHERE id=?", (status, db.now(), task_id))
+        if status == "finished":
+            try:
+                from .services import project as proj_mod
+                proj_mod.write_task_orproj(task_id)
+            except Exception:
+                pass
         return status
     _note(f"跳过状态回退 {task_id} {old} ← {status}", task_id)
     return old
@@ -701,7 +781,7 @@ def set_account(task_id: str, account_id: str) -> dict:
     return get(task_id)
 
 
-def set_dir(task_id: str, d: Path, batch_id: str) -> None:
+def set_dir(task_id: str, d: Path, batch_id: str = "") -> None:
     db.run("UPDATE tasks SET dir=?, batch_id=?, updated=? WHERE id=?", (str(d), batch_id, db.now(), task_id))
 
 

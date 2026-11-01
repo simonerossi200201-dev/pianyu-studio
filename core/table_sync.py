@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import LTX_ROOT
+from . import LTX_ROOT, resolve_python_exe
 
 
 # --- 1. 骨架守恒文案归一化 (统一 Orante 与 CUTORA 的 wenan_norm) ---
@@ -636,3 +636,184 @@ def sync_stitch_missing_to_orante(
         "marked_segment_count": sum(len(x["marked_segments"]) for x in marked_summary),
         "marked_tasks": marked_summary,
     }
+
+
+# --- 6. CUTORA 跨平台单实例检测、API 控制与一键启动/聚焦 ---
+
+
+def is_cutora_running() -> bool:
+    """检测 CUTORA 是否正在运行（Windows 检测单实例命名互斥体，macOS 检测 cutora.lock 或本地 API）。"""
+    import os
+    import sys
+
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            h = kernel32.OpenMutexW(0x00100000, False, "Local\\CUTORA_SingleInstance_Mutex_v1")
+            if h:
+                kernel32.CloseHandle(h)
+                return True
+        except Exception:
+            pass
+        return False
+
+    if sys.platform == "darwin":
+        lock_file = Path.home() / "Library" / "Application Support" / "CUTORA" / "cutora.lock"
+        if lock_file.is_file():
+            try:
+                raw_pid = lock_file.read_text(encoding="utf-8", errors="ignore").strip()
+                if raw_pid.isdigit():
+                    os.kill(int(raw_pid), 0)
+                    return True
+            except PermissionError:
+                return True
+            except OSError:
+                pass
+            try:
+                import fcntl
+
+                with open(lock_file, "a+", encoding="utf-8") as fh:
+                    try:
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                    except BlockingIOError:
+                        return True
+            except Exception:
+                pass
+
+    # 兜底探测本地控制 API (127.0.0.1:47321)
+    try:
+        import socket
+
+        with socket.create_connection(("127.0.0.1", 47321), timeout=0.35):
+            return True
+    except Exception:
+        return False
+
+
+def call_cutora_api(command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """调用 CUTORA 本地控制 API (127.0.0.1:47321/v1/commands/<command>)。"""
+    import sys
+    import urllib.request
+
+    token = ""
+    try:
+        cutora_dir = str(LTX_ROOT / "modules" / "cutora_editor")
+        if cutora_dir not in sys.path:
+            sys.path.insert(0, cutora_dir)
+        from cutora.api.token import read_token  # type: ignore
+
+        token = read_token() or ""
+    except Exception:
+        pass
+
+    url = f"http://127.0.0.1:47321/v1/commands/{command}"
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"params": params or {}}, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8.0) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def launch_cutora_room(room: str = "stitch", project_path: str = "") -> bool:
+    """启动或切换聚焦 CUTORA 到指定功能房间 (stitch=智能拼接 / batch=批量自动剪辑 / preview=主剪辑台)。
+    支持 Windows (Local\\CUTORA_SingleInstance_Mutex_v1) 与 macOS (~/Library/Application Support/CUTORA/cutora.lock)。
+    """
+    import os
+    import subprocess
+    import time
+
+    room = (room or "stitch").strip().lower()
+    if room == "stitch":
+        try:
+            from .spine_db import get_spine_db
+
+            get_spine_db().export_batch_for_cutora_stitch()
+        except Exception:
+            pass
+        try:
+            prepare_cutora_stitch_handoff(
+                auto_start=True,
+                auto_ai=True,
+                source="launcher",
+            )
+        except Exception:
+            pass
+
+    if is_cutora_running():
+        try:
+            if project_path and Path(project_path).is_file():
+                call_cutora_api("project.open", {"path": str(project_path)})
+            res = call_cutora_api("ui.focus", {"panel": room or "preview"})
+            if res.get("ok"):
+                return True
+        except Exception:
+            pass
+        if os.name == "nt":
+            try:
+                ps_cmd = (
+                    "$ws = New-Object -ComObject WScript.Shell; "
+                    "[void]$ws.AppActivate('CUTORA')"
+                )
+                subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", ps_cmd],
+                    timeout=3,
+                    creationflags=0x08000000,
+                )
+            except Exception:
+                pass
+        elif os.uname().sysname == "Darwin":
+            try:
+                subprocess.run(
+                    ["osascript", "-e", 'tell application "System Events" to set frontmost of (first process whose name contains "Python" or name contains "CUTORA") to true'],
+                    timeout=3,
+                    capture_output=True,
+                )
+            except Exception:
+                pass
+        return True
+
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["CUTORA_RUNTIME"] = str(LTX_ROOT / "runtime")
+    env["CUTORA_START_ROOM"] = room
+    if room == "stitch":
+        env["CUTORA_SYNC_ORANTE"] = "1"
+    if project_path:
+        env["CUTORA_OPEN_PROJECT"] = str(project_path)
+    bin_dirs = [
+        str(LTX_ROOT / "runtime" / "bin"),
+        str(LTX_ROOT / "runtime" / "ffmpeg"),
+    ]
+    env["PATH"] = os.pathsep.join(bin_dirs + [env.get("PATH", "")])
+
+    py_exe = resolve_python_exe(gui=True)
+    log_dir = LTX_ROOT / "data" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stdout_log = open(log_dir / "cutora_stdout.log", "a", encoding="utf-8")
+    stderr_log = open(log_dir / "cutora_stderr.log", "a", encoding="utf-8")
+    popen_kwargs: dict[str, Any] = {
+        "cwd": str(LTX_ROOT / "modules" / "cutora_editor"),
+        "env": env,
+        "stdout": stdout_log,
+        "stderr": stderr_log,
+    }
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = 0x00000008
+    else:
+        popen_kwargs["start_new_session"] = True
+    subprocess.Popen([py_exe, "-m", "cutora"], **popen_kwargs)
+    time.sleep(0.6)
+    return True
+

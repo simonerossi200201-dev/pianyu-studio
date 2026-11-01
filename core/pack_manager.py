@@ -5,8 +5,8 @@
    外框总控台 (`studio_launcher.py`)、视觉设计、底层总线 (`core`) 与轻量级『右键表格工具』100% 保持一致，
    所有人统一从『片语工作室』入口进入。
 2. 【大模块到小模块全可拆可装】：
-   - 软件模块包：`pack-app-orante` (Orante 2.0 制片台)、`pack-app-robota` (Robota 协同操作代理)
-   - 推理引擎包：`pack-engine-comfyui` (便携式 ComfyUI 推理引擎底座 + CUDA 运行环境，免外部依赖)
+   - 软件模块包：`pack-app-orante` (Orante 2.0 制片台)
+   - 推理引擎包：`pack-engine-comfyui` (便携式 ComfyUI 推理引擎底座 + CUDA/MPS 运行环境，免外部依赖)
    - AI 模型扩展包：
      * `pack-ltx25-video` (LTX-2.5 22B 视频生成包)
      * `pack-ltx25-vfx-loras` (LTX-2.5 IC-LoRA 7合1 特效包)

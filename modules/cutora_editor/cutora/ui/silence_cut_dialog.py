@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""剪气口（DaVinci Resolve Studio / Descript 级全屏智能停顿裁剪、全局+局部双视界观察与无损自检工作台）。"""
+"""剪气口（专业非编级全屏智能停顿裁剪、全局+局部双视界观察与无损自检工作台）。"""
 from __future__ import annotations
 
 import math

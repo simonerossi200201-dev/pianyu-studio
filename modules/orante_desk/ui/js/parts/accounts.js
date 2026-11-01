@@ -4,14 +4,27 @@ window.AccountsDrawer = {
   setup() {
     const { ref, reactive, computed, onMounted } = Vue;
     const adding = ref(null);           // 'flow' | 'grok' | null
-    const form = reactive({ name: '', project_url: '' });
+    const form = reactive({ name: '', project_url: '', flow_mode: 'frames', model: 'Veo 3.1 - Lite [Lower Priority]' });
     const health = reactive({});        // id -> {state}
     const busy = ref(false);
 
     async function add() {
       if (!form.name.trim()) return toast(t('acc.name'), '', 'bad');
       busy.value = true;
-      try { await API.post('/api/accounts', { name: form.name, engine: adding.value, project_url: form.project_url }); await refreshAccounts(); adding.value = null; form.name = ''; form.project_url = ''; }
+      try {
+        await API.post('/api/accounts', {
+          name: form.name,
+          engine: adding.value,
+          project_url: form.project_url,
+          flow_mode: adding.value === 'flow' ? (form.flow_mode || 'frames') : undefined,
+          model: adding.value === 'flow' ? (form.model || undefined) : undefined,
+        });
+        await refreshAccounts();
+        adding.value = null;
+        form.name = '';
+        form.project_url = '';
+        form.flow_mode = 'frames';
+      }
       finally { busy.value = false; }
     }
     async function login(a) { const r = await API.post(`/api/accounts/${a.id}/login`); toast(r.hint || '已打开', '', 'ok'); setTimeout(() => check(a), 4000); }
@@ -26,7 +39,16 @@ window.AccountsDrawer = {
       }
     }
     async function remove(a) { if (!confirm(t('common.confirm_delete') + ' ' + a.name)) return; await API.del(`/api/accounts/${a.id}`); await refreshAccounts(); }
-    async function saveUrl(a) { await API.post(`/api/accounts/${a.id}`, { project_url: a.project_url, model: a.model, max_concurrent: +a.max_concurrent }); toast(t('toast.saved'), '', 'ok'); }
+    async function saveUrl(a) {
+      await API.post(`/api/accounts/${a.id}`, {
+        project_url: a.project_url,
+        model: a.model,
+        max_concurrent: +a.max_concurrent,
+        flow_mode: a.flow_mode || 'frames',
+      });
+      await refreshAccounts();
+      toast(t('toast.saved'), '', 'ok');
+    }
     async function importLegacy() { const r = await API.post('/api/accounts/import-legacy'); await refreshAccounts(); toast(`导入了 ${r.added.length} 个泳道`, '', 'ok'); }
     function pageInfo(a) {
       const h = health[a.id] || {};
@@ -72,14 +94,20 @@ window.AccountsDrawer = {
       const ms = throttleLeft(a);
       return ms > 0 ? Math.max(1, Math.ceil(ms / 60000)) : 0;
     }
-    const flowModels = computed(() => store.flow_models && store.flow_models.length
-      ? store.flow_models
-      : [
-          { id: 'Veo 3.1 - Lite [Lower Priority]', paid: false, enabled: true },
-          { id: 'Veo 3.1 - Lite', paid: true, enabled: false },
-          { id: 'Veo 3.1 - Fast', paid: true, enabled: false },
-          { id: 'Veo 3.1 - Quality', paid: true, enabled: false },
-        ]);
+    const flowModels = computed(() => {
+      const base = (store.flow_models && store.flow_models.length)
+        ? store.flow_models.slice()
+        : [
+            { id: 'Veo 3.1 - Lite [Lower Priority]', paid: false, enabled: true },
+            { id: 'Veo 3.1 - Lite', paid: true, enabled: false },
+            { id: 'Veo 3.1 - Fast', paid: true, enabled: false },
+            { id: 'Veo 3.1 - Quality', paid: true, enabled: false },
+          ];
+      if (!base.some(m => m && m.id === 'Omni 1.1 Flash')) {
+        base.push({ id: 'Omni 1.1 Flash', paid: false, enabled: true });
+      }
+      return base;
+    });
     const allowPaid = computed(() => !!(store.settings && store.settings['flow.allow_paid']));
     function lockInfo(a) {
       const lk = a && a.lock;
@@ -126,9 +154,13 @@ window.AccountsDrawer = {
         await window.refreshAccounts();
       } catch (e) { /* toast */ }
     }
+    function goAccountsPool() {
+      ui.drawer = null;
+      ui.node = 'accounts_pool';
+    }
     return { studio, studioState, checkStudio, STUDIO_MODES, studioMode, studioBusy, setStudioMode, toggleStudio, realAccounts,
       adding, form, health, busy, add, login, check, remove, saveUrl, importLegacy, store, t, flowModels, allowPaid, lockInfo,
-      pageBad, pageTip, pageInfo, healthPageLine, useProjectUrl, throttleMin };
+      pageBad, pageTip, pageInfo, healthPageLine, useProjectUrl, throttleMin, goAccountsPool };
   },
   template: `
   <div><div class="drawer-mask" @click="$emit('close')"></div>
@@ -138,12 +170,20 @@ window.AccountsDrawer = {
       <div class="row" style="margin-bottom:12px">
         <button class="btn" style="border-color:var(--flow);color:var(--flow)" @click="adding='flow'">{{ t('acc.add_flow') }}</button>
         <button class="btn" style="border-color:var(--grok);color:var(--grok)" @click="adding='grok'">{{ t('acc.add_grok') }}</button>
+        <button class="btn sm" type="button" @click="goAccountsPool" title="进入 0 多账号 面板管理账号池与分组轮换">0 多账号池 ↗</button>
         <span class="spacer" style="flex:1"></span>
         <button v-if="store.legacy_available" class="btn ghost sm muted" @click="importLegacy" title="开发机专用：把 lanes.json 的泳道导进来">{{ t('acc.import_legacy') }}</button>
       </div>
       <div v-if="adding" class="card" style="margin-bottom:12px">
         <div class="field"><label>{{ t('acc.name') }}</label><input v-model="form.name" :placeholder="adding==='flow' ? t('setup.acc_name_ph') : t('setup.acc_name_ph')" @keyup.enter="add"></div>
         <div class="field" v-if="adding==='flow'"><label>{{ t('acc.project_url') }}</label><input v-model="form.project_url" placeholder="https://flow.google.com/project/.../collection/..."></div>
+        <div class="field" v-if="adding==='flow'">
+          <label>默认生成模式 (Flow Video Mode)</label>
+          <select v-model="form.flow_mode">
+            <option value="frames">🎞️ 首尾帧模式 (Fotogrammi / Frames)</option>
+            <option value="ingredients">🧩 素材模式 (Riferimenti / Ingredients)</option>
+          </select>
+        </div>
         <div class="row" style="justify-content:flex-end"><button class="btn ghost" @click="adding=null">{{ t('common.cancel') }}</button><button class="btn primary" :disabled="busy" @click="add">{{ t('common.save') }}</button></div>
       </div>
       <div class="muted" style="margin:0 0 8px;font-size:12px;color:var(--ok)">⚡ 默认优先使用付费 Flow / Grok 账号（出片与扩图速度最快、效率最高）</div>
@@ -161,9 +201,14 @@ window.AccountsDrawer = {
         <button class="btn sm" @click="login(a)">{{ a.login_state==='need_relogin' ? t('acc.relogin') : t('acc.login') }}</button>
         <button class="btn sm ghost" @click="check(a)">{{ t('acc.health') }}</button>
         <button class="btn sm ghost danger" @click="remove(a)">✕</button>
-        <div v-if="a.engine==='flow'" class="row" style="width:100%;margin-top:6px">
-          <input v-model="a.project_url" style="flex:1;font-size:12px" placeholder="Flow 项目/合集链接" @change="saveUrl(a)">
-          <select v-model="a.model" style="max-width:280px;font-size:12px" :title="t('acc.model')" @change="saveUrl(a)">
+        <div v-if="a.engine==='flow'" class="row" style="width:100%;margin-top:6px;flex-wrap:wrap;gap:6px">
+          <input v-model="a.project_url" style="flex:1;min-width:180px;font-size:12px" placeholder="Flow 项目/合集链接" @change="saveUrl(a)">
+          <select :value="a.flow_mode || 'frames'" @change="a.flow_mode=$event.target.value; saveUrl(a)"
+                  style="max-width:210px;font-size:12px" title="默认生成模式：首尾帧模式 (Frames) / 素材模式 (Ingredients)">
+            <option value="frames">🎞️ 首尾帧模式 (Fotogrammi / Frames)</option>
+            <option value="ingredients">🧩 素材模式 (Riferimenti / Ingredients)</option>
+          </select>
+          <select v-model="a.model" style="max-width:240px;font-size:12px" :title="t('acc.model')" @change="saveUrl(a)">
             <option v-for="m in flowModels" :key="m.id" :value="m.id" :disabled="m.paid && !allowPaid">
               {{ m.id }}{{ m.paid ? '（' + t('acc.model.paid') + '）' : '' }}
             </option>

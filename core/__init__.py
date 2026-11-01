@@ -1,10 +1,10 @@
 """片语工作室 (D:\\0_LTX) 跨模块共享核心底座 (ltx_core)。
 
 统一提供：
-1. 全局配置加载与离线环境强制注入 (HF_HUB_OFFLINE=1, IMAGEIO_FFMPEG_EXE)，同时兼容 Python 3.10 / 3.11 / 3.12
-2. 三级硬件自适应网关 (HardwareGuard: 32GB+CPU 保障与 16GB GPU 识别)
-3. 单卡显存互斥仲裁器 (VRAMBroker: 重型模型运行前自动卸载 Ollama/语音/特效缓存)
-4. Windows 凭据管理器密钥保险箱 (SecretsVault: 零明文 API Key)
+1. 全局配置加载与离线环境强制注入 (HF_HUB_OFFLINE=1, IMAGEIO_FFMPEG_EXE)，同时兼容 Windows 与 macOS 及 Python 3.10 / 3.11 / 3.12
+2. 三级硬件自适应网关 (HardwareGuard: 32GB+CPU 保障、16GB NVIDIA GPU 与 Apple Silicon Metal 统一内存识别)
+3. 单卡显存/统一内存互斥仲裁器 (VRAMBroker: 重型模型运行前自动卸载 Ollama/特效缓存与释放 MPS 缓存)
+4. 系统凭据保险箱 (SecretsVault: Windows CredMan / macOS Keychain 零明文 API Key)
 5. 一表到底同步器与骨架守恒分词 (TableSync: 表格工具 ⇄ Orante ⇄ CUTORA 智能拼接)
 6. 统一媒体体检签名 (MediaInspect: MP4 Box + 响度 + 首帧 aHash/梯度校验一次性签发)
 7. 跨窗口实时信号总线与共享数据库 (SpineDB & EventBus)
@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +29,58 @@ MODELS_DIR = LTX_ROOT / "runtime" / "models"
 DATA_DIR = LTX_ROOT / "data"
 
 
+def resolve_runtime_bin(name: str) -> Path:
+    """跨平台解析二进制工具路径 (ffmpeg / ffprobe / rclone)，兼容 Windows (.exe) 与 macOS/POSIX。"""
+    stem = name[:-4] if name.lower().endswith(".exe") else name
+    candidates: list[Path] = []
+    if os.name == "nt":
+        candidates.extend([
+            BIN_DIR / f"{stem}.exe",
+            LTX_ROOT / "runtime" / "ffmpeg" / f"{stem}.exe",
+            LTX_ROOT / "modules" / "table_tool" / "app" / f"{stem}.exe",
+        ])
+    else:
+        candidates.extend([
+            BIN_DIR / stem,
+            LTX_ROOT / "runtime" / "ffmpeg" / stem,
+            LTX_ROOT / "modules" / "table_tool" / "app" / stem,
+            Path("/opt/homebrew/bin") / stem,
+            Path("/usr/local/bin") / stem,
+        ])
+    for c in candidates:
+        if c.is_file():
+            return c
+    which = shutil.which(stem)
+    if which:
+        return Path(which)
+    return BIN_DIR / (f"{stem}.exe" if os.name == "nt" else stem)
+
+
+def resolve_python_exe(gui: bool = False, root: Path | None = None) -> str:
+    """跨平台解析工作室虚拟环境或便携式 Python 可执行文件路径。"""
+    base = root or LTX_ROOT
+    if os.name == "nt":
+        exe_name = "pythonw.exe" if gui else "python.exe"
+        for cand in (
+            base / "runtime" / "venv" / "Scripts" / exe_name,
+            base / "runtime" / "venv" / "Scripts" / "python.exe",
+            base / "runtime" / "python" / exe_name,
+            base / "runtime" / "python" / "python.exe",
+        ):
+            if cand.is_file():
+                return str(cand)
+    else:
+        for cand in (
+            base / "runtime" / "venv" / "bin" / "python3",
+            base / "runtime" / "venv" / "bin" / "python",
+            base / "runtime" / "python" / "bin" / "python3",
+            base / "runtime" / "python" / "bin" / "python",
+        ):
+            if cand.is_file():
+                return str(cand)
+    return sys.executable
+
+
 def enforce_offline_and_runtime_env() -> None:
     """在任何子模块导入前强制注入离线与统一二进制路径环境变量。"""
     os.environ["HF_HUB_OFFLINE"] = "1"
@@ -35,15 +89,21 @@ def enforce_offline_and_runtime_env() -> None:
     os.environ["DO_NOT_TRACK"] = "1"
     os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
-    ffmpeg_exe = BIN_DIR / "ffmpeg.exe"
+    ffmpeg_exe = resolve_runtime_bin("ffmpeg")
     if ffmpeg_exe.is_file():
         os.environ["IMAGEIO_FFMPEG_EXE"] = str(ffmpeg_exe)
         os.environ["FFMPEG_BINARY"] = str(ffmpeg_exe)
 
-    bin_str = str(BIN_DIR)
+    extra_dirs = [str(BIN_DIR), str(LTX_ROOT / "runtime" / "ffmpeg")]
+    if sys.platform == "darwin":
+        for hb in ("/opt/homebrew/bin", "/usr/local/bin"):
+            if os.path.isdir(hb):
+                extra_dirs.append(hb)
     cur_path = os.environ.get("PATH", "")
-    if bin_str.lower() not in cur_path.lower():
-        os.environ["PATH"] = f"{bin_str};{cur_path}"
+    cur_lower = cur_path.lower()
+    prepend = [d for d in extra_dirs if d.lower() not in cur_lower]
+    if prepend:
+        os.environ["PATH"] = os.pathsep.join(prepend + ([cur_path] if cur_path else []))
 
 
 enforce_offline_and_runtime_env()

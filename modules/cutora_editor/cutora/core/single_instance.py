@@ -28,6 +28,23 @@ def _pid_file_path() -> str:
 
 def focus_existing_cutora_window() -> bool:
     """Attempt to bring the existing running CUTORA main window to the foreground."""
+    if sys.platform == "darwin":
+        try:
+            import subprocess
+            pid_path = _pid_file_path()
+            if os.path.isfile(pid_path):
+                with open(pid_path, "r", encoding="utf-8") as fh:
+                    raw = fh.read().strip()
+                if raw.isdigit():
+                    script = (
+                        'tell application "System Events" to set frontmost of '
+                        'every process whose unix id is %d to true' % int(raw)
+                    )
+                    subprocess.run(["osascript", "-e", script], capture_output=True, timeout=2)
+                    return True
+        except Exception:
+            pass
+        return False
     if os.name != "nt":
         return False
     try:
@@ -89,10 +106,23 @@ def focus_existing_cutora_window() -> bool:
 
 def is_cutora_running() -> bool:
     """Return True if a CUTORA GUI instance currently holds the single-instance mutex."""
-    if _MUTEX_HANDLE is not None:
+    if _MUTEX_HANDLE is not None or _LOCK_FILE_FH is not None:
         return True
     if os.name != "nt":
-        return False
+        pid_path = _pid_file_path()
+        if not os.path.isfile(pid_path):
+            return False
+        try:
+            import fcntl
+            with open(pid_path, "a", encoding="utf-8") as fh:
+                try:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                    return False
+                except OSError:
+                    return True
+        except Exception:
+            return False
     try:
         import ctypes
         kernel32 = ctypes.windll.kernel32
@@ -145,4 +175,5 @@ def acquire_single_instance_or_exit() -> bool:
         _LOCK_FILE_FH = fh
         return True
     except Exception:
+        focus_existing_cutora_window()
         raise SystemExit(0)

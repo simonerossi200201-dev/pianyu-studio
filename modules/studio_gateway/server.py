@@ -3,7 +3,7 @@
 核心职责：
 1. 100% 兼容 Orante 2.0 `StudioEngine` 的 `/v1/health`, `/v1/videos`, `/v1/videos/{id}`, `/v1/videos/{id}/file` 协议，
    并将底层本地视频生成引擎全面切换为 **LTX-2.5 22B (NVFP4 + 同步音轨)**（按要求不包含 MiniMax H3 权重，仅保留接口参数兼容）。
-2. 将 `D:\\0_LLM` 中已验证的全部本地工具链统一封装为标准 REST 接口供 Orante、CUTORA 与 Robota 调用：
+2. 将 `D:\\0_LLM` 中已验证的全部本地工具链统一封装为标准 REST 接口供 Orante 与 CUTORA 调用：
    - 视频生成：LTX-2.5 22B (`i2v` / `t2v`, `fast` / `standard` / `hq`)
    - 视频特效：LTX-2.5 IC-LoRA 7件套 (`restore`, `deblur`, `clean_plate`, `colorization`, `inpaint`, `sdr2hdr`, `refine`)
    - 人像修复：Simone 标准人像精修管线 (`face_pass` -> `relight v6h` -> `fill` -> `denoise medium`)
@@ -39,7 +39,7 @@ LTX_ROOT = Path(__file__).resolve().parents[2]
 if str(LTX_ROOT) not in sys.path:
     sys.path.insert(0, str(LTX_ROOT))
 
-from core import BIN_DIR, DATA_DIR, load_studio_config  # noqa: E402
+from core import BIN_DIR, DATA_DIR, load_studio_config, resolve_python_exe, resolve_runtime_bin  # noqa: E402
 from core.hardware_guard import (  # noqa: E402
     check_ram_watermark,
     evaluate_all_models,
@@ -66,16 +66,15 @@ def _resolve_comfy_root() -> Path:
 
 def _resolve_comfy_py() -> Path:
     c_root = _resolve_comfy_root()
-    cand = c_root / "venv" / "Scripts" / "python.exe"
-    if cand.is_file():
-        return cand
-    dev_cand = Path(r"D:\0_LLM\ComfyUI\venv\Scripts\python.exe")
-    if dev_cand.is_file():
-        return dev_cand
-    studio_venv = LTX_ROOT / "runtime" / "venv" / "Scripts" / "python.exe"
-    if studio_venv.is_file():
-        return studio_venv
-    return Path(sys.executable)
+    for cand in (
+        c_root / "venv" / "Scripts" / "python.exe",
+        c_root / "venv" / "bin" / "python3",
+        c_root / "venv" / "bin" / "python",
+        Path(r"D:\0_LLM\ComfyUI\venv\Scripts\python.exe"),
+    ):
+        if cand.is_file():
+            return cand
+    return Path(resolve_python_exe(gui=False, root=LTX_ROOT))
 
 
 def _validate_local_file(raw_path: Any, label: str = "输入文件") -> Path:
@@ -373,7 +372,7 @@ def _run_ltx25_video(rec: dict[str, Any]) -> None:
                     "audio/runners/voice_enhance.py",
                     str(LTX_ROOT / "modules" / "studio_gateway" / "runners" / "audio" / "runners" / "voice_enhance.py"),
                 )
-                ffmpeg_bin = str(BIN_DIR / "ffmpeg.exe")
+                ffmpeg_bin = str(resolve_runtime_bin("ffmpeg"))
                 if not Path(ffmpeg_bin).is_file():
                     ffmpeg_bin = str(
                         LTX_ROOT
@@ -1071,7 +1070,7 @@ def build_app() -> FastAPI:
         return FileResponse(str(fp), filename=fp.name)
 
 
-    # ---------------- 4. 跨窗口实时信号总线接口 (Orante ⇄ CUTORA ⇄ 表格工具 ⇄ Robota) ----------------
+    # ---------------- 4. 跨窗口实时信号总线接口 (Orante ⇄ CUTORA ⇄ 表格工具) ----------------
     @app.get("/v1/spine/events")
     def get_spine_events(since_id: int = 0, target: str = "*") -> dict[str, Any]:
         return {"ok": True, "events": SPINE.poll_events(since_id=since_id, target=target)}

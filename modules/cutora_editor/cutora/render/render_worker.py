@@ -3,6 +3,7 @@
 # Original lines: 4613-5915, 14873-14918
 
 import os
+import sys
 import math
 import subprocess
 import cv2
@@ -108,8 +109,8 @@ from cutora.core.proc import popen as _no_window_popen, run as _no_window_run
 
 # BUG-42：导出时最多同时开着几路解码器。拼接时间线是顺序播放的，
 # 27 个源同时开着 = 27 路解码器 × N 个 worker，内存 3 GB/进程、
-# 显卡驱动被压到重置（黑屏）。用完即关，最多留这么几路（5/6 格分屏同屏需 ≥6 路，绝不可低于 6 否则每帧驱逐重开 seek）。
-EXPORT_MAX_OPEN_CAPS = 12
+# 显卡驱动被压到重置（黑屏）。用完即关，最多留这么几路（多轨分屏同屏时由 _max_open_caps 动态按轨道数放大）。
+EXPORT_MAX_OPEN_CAPS = 4
 # Q180 导出合成多线程（含统一叠压）：解码线程只「取帧」并记下来（_REPLAY_TLS.record），合成线程照同一套
 # 串行代码画整帧、取帧时从记录里拿（_REPLAY_TLS.replay）—— 每帧逐像素等于串行，抠像 / 遮罩 / 调整图层全部并行。
 _REPLAY_TLS = threading.local()
@@ -445,8 +446,15 @@ class RenderWorker(QThread):
         # 远高于最终输出的 CRF 18，所以对成片画质是**只赚不亏**。
         def _build_concat_cmd(use_nvenc):
             if use_nvenc:
-                venc = ["-c:v", "h264_nvenc", "-preset", "p1",
-                        "-rc", "constqp", "-qp", "12", "-pix_fmt", "yuv420p"]
+                if sys.platform == "darwin":
+                    venc = [
+                        "-c:v", "h264_videotoolbox", "-allow_sw", "1",
+                        "-realtime", "0", "-prio_speed", "true",
+                        "-profile:v", "high", "-q:v", "85", "-pix_fmt", "yuv420p",
+                    ]
+                else:
+                    venc = ["-c:v", "h264_nvenc", "-preset", "p1",
+                            "-rc", "constqp", "-qp", "12", "-pix_fmt", "yuv420p"]
             else:
                 venc = ["-c:v", "libx264", "-preset", "ultrafast",
                         "-crf", "12", "-pix_fmt", "yuv420p"]
@@ -462,9 +470,12 @@ class RenderWorker(QThread):
                 temp_out
             ]
 
-        si = subprocess.STARTUPINFO(); si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si = None
+        if os.name == "nt" and hasattr(subprocess, "STARTUPINFO"):
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
-        # 尝试顺序：NVENC（若本次导出启用了 GPU）→ libx264 ultrafast
+        # 尝试顺序：硬件编码（NVENC / VideoToolbox，若本次导出启用了 GPU）→ libx264 ultrafast
         attempts = []
         if self.use_gpu:
             attempts.append(True)
@@ -472,15 +483,17 @@ class RenderWorker(QThread):
 
         res = None
         for use_nvenc in attempts:
-            res = _no_window_run(_build_concat_cmd(use_nvenc),
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                 startupinfo=si)
+            run_kw = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
+            if si is not None:
+                run_kw["startupinfo"] = si
+            res = _no_window_run(_build_concat_cmd(use_nvenc), **run_kw)
             if res.returncode == 0:
+                hw_lbl = "VideoToolbox 硬件编码" if sys.platform == "darwin" else "NVENC 硬件编码"
                 _LOG.info(f"[Export] 开场拼接完成 "
-                      f"({'NVENC 硬件编码' if use_nvenc else 'libx264 ultrafast'})")
+                      f"({hw_lbl if use_nvenc else 'libx264 ultrafast'})")
                 return temp_out
             if use_nvenc:
-                _LOG.info("[Export] 开场拼接的 NVENC 编码失败，改用 CPU (libx264 ultrafast) 重试...")
+                _LOG.info("[Export] 开场拼接的硬件编码失败，改用 CPU (libx264 ultrafast) 重试...")
 
         try:
             err = (res.stderr or b"").decode("utf-8", errors="ignore")[-800:] if res else ""
@@ -503,7 +516,7 @@ class RenderWorker(QThread):
         if self.use_gpu:
             kind = str((prof or {}).get("vcodec") or "h264")
             _enc, reason = (pick_hevc if kind == "hevc" else pick_h264)(True)
-            if not str(_enc).endswith("_nvenc"):
+            if not str(_enc).endswith(("_nvenc", "_videotoolbox")):
                 print("[Export]", reason)
                 self.use_gpu = False
         vcodec, _preset, _extra, _pix = encode_args(prof, self.use_gpu)
@@ -1589,7 +1602,6 @@ class RenderWorker(QThread):
 
     def _compose_video_frame(self, t, ctx):
         """Video layer only, sequential decode. Overlay is painted separately."""
-        from PySide6.QtCore import Qt
         video = QImage(
             int(ctx.width), int(ctx.height),
             QImage.Format.Format_ARGB32_Premultiplied)

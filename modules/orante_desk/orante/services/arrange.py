@@ -656,3 +656,427 @@ def batch_arrange_all(
         "started_count": len(started_jobs),
         "skipped": skipped,
     }
+
+
+def _load(task_id: str) -> tuple[dict, Manifest, Path]:
+    t = taskmod.get(task_id)
+    d = _task_dir(task_id)
+    m = Manifest.load(d)
+    return t, m, d
+
+
+def set_seg_flow_mode(
+    task_id: str,
+    s: int | None = None,
+    flow_mode: str = "auto",
+    items: list[dict] | None = None,
+) -> dict:
+    """设置单镜头或批量镜头的 Flow 生成模式（'auto' | 'frames' | 'ingredients'）。"""
+    from ..engines.flow_api import normalize_flow_mode
+
+    def _norm(m: str | None) -> str:
+        raw = (m or "").strip().lower()
+        if raw in ("", "auto", "跟随任务", "跟随账号"):
+            return "auto"
+        return normalize_flow_mode(raw, default="frames")
+
+    t, m, d = _load(task_id)
+    pairs: list[tuple[int, str]] = []
+    if items and isinstance(items, list):
+        for it in items:
+            if isinstance(it, dict) and it.get("s") is not None:
+                pairs.append((int(it["s"]), _norm(it.get("flow_mode"))))
+    elif s is not None:
+        pairs.append((int(s), _norm(flow_mode)))
+    else:
+        mode_val = _norm(flow_mode)
+        pairs = [(int(sg["s"]), mode_val) for sg in (m.segments or [])]
+
+    updated = 0
+    for seg_s, mode_val in pairs:
+        seg = m.seg(seg_s)
+        if not seg:
+            continue
+        seg["flow_mode"] = mode_val
+        updated += 1
+    m.save(d)
+    events.emit("arrange.changed", task_id=task_id)
+    return {"ok": True, "task_id": task_id, "updated": updated, "segments": m.segments}
+
+
+def _resolve_seg_prompt_preview(m: Manifest, seg: dict, task: dict, presets_by_id: dict[str, dict]) -> tuple[str, str]:
+    """返回 `(preset_name, prompt_preview)`。"""
+    from . import prompt_presets, prompts as pr_mod
+    pid = str(seg.get("preset_id") or task.get("preset_id") or "").strip()
+    pr = presets_by_id.get(pid) if pid else None
+    pname = (pr or {}).get("name") or ""
+    try:
+        preview = pr_mod.build_final_prompt(m, seg, task=task)
+    except Exception:
+        custom = str(seg.get("custom_prompt") or "").strip()
+        if custom:
+            preview = prompt_presets.insert_speech_at_max_newlines(custom, seg.get("text") or "")
+        elif pr and pr.get("template"):
+            preview = prompt_presets.insert_speech_at_max_newlines(pr["template"], seg.get("text") or "")
+        else:
+            preview = str(seg.get("prompt_final") or seg.get("text") or "")
+    return pname, preview
+
+
+def get_all_tasks_segments_table(
+    task_ids: list[str] | None = None,
+    include_finished: bool = False,
+    player_mode: bool = False,
+) -> dict:
+    """获取跨所有任务的镜头与提示词总表（支持任务折叠/展开与勾选、多列提示词、模式切换）。"""
+    from . import broll, prompt_presets
+
+    presets_info = prompt_presets.list_presets()
+    presets_by_id = {p["id"]: p for p in presets_info.get("presets", [])}
+
+    if task_ids:
+        raw_tasks = []
+        for tid in task_ids:
+            try:
+                raw_tasks.append(taskmod.get(str(tid).strip()))
+            except Exception:
+                pass
+    else:
+        raw_tasks = taskmod.list_all(include_finished=include_finished, player_mode=player_mode)
+
+    tasks_out: list[dict] = []
+    flat_rows: list[dict] = []
+
+    for t in raw_tasks:
+        tid = t.get("id") or ""
+        if not tid or t.get("status") == "trash":
+            continue
+        d_str = t.get("dir") or ""
+        m: Manifest | None = None
+        if d_str and Path(d_str).is_dir():
+            try:
+                _, m, _ = broll.load_synced(tid)
+            except Exception:
+                try:
+                    m = Manifest.load(Path(d_str))
+                except Exception:
+                    m = None
+
+        images_out: list[dict] = []
+        img_map: dict[str, dict] = {}
+        if m and m.images:
+            for im in m.images:
+                p_code = im.get("p") or ""
+                fname = im.get("file") or ""
+                url = f"/api/tasks/{tid}/file/{fname}" if fname else ""
+                item = {
+                    "p": p_code,
+                    "file": fname,
+                    "url": url,
+                    "desc": im.get("desc") or "",
+                    "role": im.get("role") or "主体",
+                }
+                images_out.append(item)
+                if p_code:
+                    img_map[p_code] = item
+
+        segs_out: list[dict] = []
+        if m and m.segments:
+            for sg in m.segments:
+                s_num = int(sg.get("s") or 0)
+                p_code = sg.get("image") or ""
+                im_info = img_map.get(p_code, {})
+                pname, preview = _resolve_seg_prompt_preview(m, sg, t, presets_by_id)
+                extra_cols = sg.get("extra_prompts") if isinstance(sg.get("extra_prompts"), list) else []
+                row = {
+                    "task_id": tid,
+                    "task_name": t.get("name") or tid,
+                    "s": s_num,
+                    "checked": bool(sg.get("checked", False)),
+                    "image": p_code,
+                    "image_file": im_info.get("file") or "",
+                    "image_url": im_info.get("url") or "",
+                    "image_desc": im_info.get("desc") or "",
+                    "text": sg.get("text") or "",
+                    "duration": int(sg.get("duration") or 6),
+                    "role": sg.get("role") or "主体",
+                    "shot": sg.get("shot") or "",
+                    "flow_mode": sg.get("flow_mode") or "auto",
+                    "task_flow_mode": t.get("flow_mode") or "auto",
+                    "preset_id": sg.get("preset_id") or "",
+                    "preset_name": pname,
+                    "custom_prompt": sg.get("custom_prompt") or "",
+                    "extra_prompts": extra_cols,
+                    "prompt_preview": preview,
+                    "status": sg.get("status") or "planned",
+                }
+                segs_out.append(row)
+                flat_rows.append(row)
+
+        tasks_out.append({
+            "id": tid,
+            "name": t.get("name") or tid,
+            "engine": t.get("engine") or "flow",
+            "account_id": t.get("account_id") or "",
+            "account_name": t.get("account_name") or "",
+            "flow_mode": t.get("flow_mode") or "auto",
+            "preset_id": t.get("preset_id") or "",
+            "status": t.get("status") or "draft",
+            "copy": t.get("copy") or "",
+            "images": images_out,
+            "segments": segs_out,
+            "seg_count": len(segs_out),
+        })
+
+    return {
+        "tasks": tasks_out,
+        "rows": flat_rows,
+        "total_tasks": len(tasks_out),
+        "total_segments": len(flat_rows),
+        "presets": presets_info.get("presets", []),
+        "preset_categories": presets_info.get("categories", []),
+    }
+
+
+def batch_update_segments(
+    updates: list[dict] | None = None,
+    items: list[dict] | None = None,
+    task_updates: list[dict] | None = None,
+) -> dict:
+    """批量保存跨任务镜头表的修改（勾选状态、配图、文案、时长、生成模式、预设、自定义提示词、附加列）。"""
+    from . import prompt_presets, prompts as pr_mod
+    from ..engines.flow_api import normalize_flow_mode
+
+    merged_updates = list(updates or []) + list(items or []) + list(task_updates or [])
+    by_task: dict[str, list[dict]] = {}
+    for u in merged_updates:
+        if not isinstance(u, dict):
+            continue
+        tid = str(u.get("task_id") or "").strip()
+        if tid:
+            by_task.setdefault(tid, []).append(u)
+
+    updated_segments = 0
+    updated_tasks = 0
+
+    for tid, items in by_task.items():
+        try:
+            t, m, d = _load(tid)
+        except Exception:
+            continue
+        changed = False
+        for it in items:
+            if it.get("s") is None:
+                # 任务级字段更新
+                if "flow_mode" in it:
+                    taskmod.set_flow_mode(tid, str(it["flow_mode"]))
+                if "preset_id" in it:
+                    taskmod.set_preset_id(tid, str(it["preset_id"]))
+                continue
+            seg = m.seg(int(it["s"]))
+            if not seg:
+                continue
+            if "checked" in it:
+                seg["checked"] = bool(it["checked"])
+                changed = True
+            if "image" in it and it["image"] is not None:
+                seg["image"] = str(it["image"]).strip()
+                changed = True
+            if "text" in it and it["text"] is not None:
+                seg["text"] = str(it["text"])
+                changed = True
+            if "duration" in it and it["duration"] is not None:
+                seg["duration"] = int(it["duration"])
+                changed = True
+            if "flow_mode" in it and it["flow_mode"] is not None:
+                raw_m = str(it["flow_mode"]).strip().lower()
+                seg["flow_mode"] = "auto" if raw_m in ("", "auto") else normalize_flow_mode(raw_m, default="frames")
+                changed = True
+            if "preset_id" in it and it["preset_id"] is not None:
+                pid = str(it["preset_id"]).strip()
+                seg["preset_id"] = pid
+                if pid and "custom_prompt" not in it:
+                    pr = prompt_presets.get_preset(pid)
+                    if pr and pr.get("template"):
+                        seg["custom_prompt"] = prompt_presets.insert_speech_at_max_newlines(
+                            pr["template"], seg.get("text") or ""
+                        )
+                changed = True
+            if "custom_prompt" in it and it["custom_prompt"] is not None:
+                seg["custom_prompt"] = str(it["custom_prompt"])
+                changed = True
+            if "extra_prompts" in it and isinstance(it["extra_prompts"], list):
+                seg["extra_prompts"] = [str(x) for x in it["extra_prompts"]]
+                changed = True
+            try:
+                seg["prompt_final"] = pr_mod.build_final_prompt(m, seg, task=t)
+            except Exception:
+                pass
+            updated_segments += 1
+
+        if changed:
+            m.save(d)
+            updated_tasks += 1
+            events.emit("arrange.changed", task_id=tid)
+
+    return {
+        "ok": True,
+        "updated_tasks": updated_tasks,
+        "updated_segments": updated_segments,
+    }
+
+
+def batch_apply_preset(
+    targets: list[dict],
+    mode: str = "single",
+    preset_id: str = "",
+    category: str = "",
+    extra_preset_ids: list[str] | None = None,
+    ai_describer=None,
+    gemini_template_id: str = "",
+    flow_mode: str | None = None,
+) -> dict:
+    """对勾选的镜头或任务批量套用提示词预设：
+    - mode == 'single'：所有勾选镜头统一套用 `preset_id`
+    - mode == 'random_group'：从 `category` 分组中为每个勾选镜头随机抽取一条预设套用
+    - mode == 'gemini_template'：使用 Gemini 写词模板看图生成描述词，按 `(task_id, image_p)` 去重，
+      同一任务内共用同一张图的多个镜头只调用一次 AI！
+    """
+    import random
+    from . import prompt_presets, prompts as pr_mod
+    from ..engines.flow_api import normalize_flow_mode
+
+    if not preset_id and gemini_template_id:
+        preset_id = gemini_template_id
+    mode_clean = (mode or "single").strip().lower()
+    by_task: dict[str, list[int | None]] = {}
+    for tgt in (targets or []):
+        if not isinstance(tgt, dict):
+            continue
+        tid = str(tgt.get("task_id") or "").strip()
+        if not tid:
+            continue
+        s_val = int(tgt["s"]) if tgt.get("s") is not None else None
+        by_task.setdefault(tid, []).append(s_val)
+
+    # 准备预设池
+    single_pr = prompt_presets.get_preset(preset_id) if preset_id else None
+    group_pool: list[dict] = []
+    if mode_clean == "random_group":
+        listed = prompt_presets.list_presets(category=category if category else None, role="main")
+        group_pool = listed.get("presets") or []
+        if not group_pool:
+            group_pool = prompt_presets.list_presets(role="main").get("presets") or []
+        if not group_pool:
+            raise OranteError(f"分组「{category or '默认'}」中没有可用的提示词预设")
+    elif mode_clean == "single":
+        if not single_pr:
+            raise OranteError(f"找不到指定的提示词预设：{preset_id}")
+
+    applied_segments = 0
+    ai_calls = 0
+    seen_task_images: dict[tuple[str, str], str] = {}
+
+    for tid, s_list in by_task.items():
+        try:
+            t, m, d = _load(tid)
+        except Exception:
+            continue
+
+        if None in s_list:
+            target_segs = list(m.segments or [])
+            if mode_clean == "single" and single_pr:
+                taskmod.set_preset_id(tid, single_pr["id"])
+        else:
+            want_s = set(s_list)
+            target_segs = [sg for sg in (m.segments or []) if int(sg.get("s") or 0) in want_s]
+
+        for sg in target_segs:
+            if extra_preset_ids is not None:
+                sg["extra_prompts"] = [str(x) for x in extra_preset_ids if str(x).strip()]
+            if flow_mode:
+                raw_fm = str(flow_mode).strip().lower()
+                sg["flow_mode"] = "auto" if raw_fm in ("", "auto") else normalize_flow_mode(raw_fm, default="frames")
+
+            if mode_clean == "single" and single_pr:
+                sg["preset_id"] = single_pr["id"]
+                sg["custom_prompt"] = prompt_presets.insert_speech_at_max_newlines(
+                    single_pr["template"], sg.get("text") or ""
+                )
+                sg["prompt_final"] = pr_mod.build_final_prompt(m, sg, task=t)
+                sg["final_prompt"] = sg["prompt_final"]
+                applied_segments += 1
+
+            elif mode_clean == "random_group" and group_pool:
+                chosen = random.choice(group_pool)
+                sg["preset_id"] = chosen["id"]
+                sg["custom_prompt"] = prompt_presets.insert_speech_at_max_newlines(
+                    chosen["template"], sg.get("text") or ""
+                )
+                sg["prompt_final"] = pr_mod.build_final_prompt(m, sg, task=t)
+                sg["final_prompt"] = sg["prompt_final"]
+                applied_segments += 1
+
+            elif mode_clean == "gemini_template":
+                img_p = (sg.get("image") or "").strip() or "p01"
+                dedup_key = (tid, img_p)
+                if dedup_key not in seen_task_images:
+                    tpl_text = (single_pr or {}).get("template") or ""
+                    if callable(ai_describer):
+                        gen_desc = str(ai_describer(tid, img_p, tpl_text))
+                    else:
+                        im_obj = m.image(img_p) or {}
+                        img_rel = im_obj.get("file") or ""
+                        img_path = (d / img_rel) if img_rel else None
+                        gen_desc = ""
+                        if img_path and img_path.is_file():
+                            try:
+                                from . import gemini as gem_mod
+                                g = gem_mod.Gemini()
+                                raw_resp = g.describe_image(img_path, tpl_text or "Generate video prompt")
+                                if isinstance(raw_resp, str) and raw_resp.strip().startswith("{"):
+                                    import json as _json
+                                    parsed = _json.loads(raw_resp)
+                                    gen_desc = str(parsed.get("prompt") or parsed.get("desc") or raw_resp)
+                                else:
+                                    gen_desc = str(raw_resp or "")
+                            except Exception:
+                                gen_desc = ""
+                        if not gen_desc:
+                            existing_desc = (im_obj.get("desc") or "").strip()
+                            if existing_desc:
+                                gen_desc = existing_desc
+                            elif tpl_text:
+                                gen_desc = tpl_text
+                            else:
+                                gen_desc = f"[闭眼][常规] 人物特写与自然动作 ({img_p})"
+                    seen_task_images[dedup_key] = gen_desc
+                    ai_calls += 1
+                    im_obj = m.image(img_p)
+                    if im_obj is not None:
+                        im_obj["desc"] = gen_desc
+
+                gen_tpl = seen_task_images[dedup_key]
+                if "\n" in gen_tpl:
+                    sg["custom_prompt"] = prompt_presets.insert_speech_at_max_newlines(
+                        gen_tpl, sg.get("text") or ""
+                    )
+                else:
+                    sg["custom_prompt"] = ""
+                if single_pr:
+                    sg["preset_id"] = single_pr["id"]
+                sg["prompt_final"] = pr_mod.build_final_prompt(m, sg, task=t)
+                sg["final_prompt"] = sg["prompt_final"]
+                applied_segments += 1
+
+        m.save(d)
+        events.emit("arrange.changed", task_id=tid)
+
+    return {
+        "ok": True,
+        "mode": mode_clean,
+        "applied_segments": applied_segments,
+        "updated_segments": applied_segments,
+        "unique_image_ai_calls": ai_calls,
+        "gemini_calls": ai_calls,
+    }

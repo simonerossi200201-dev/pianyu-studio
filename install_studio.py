@@ -32,6 +32,18 @@ from core.spine_db import get_spine_db
 
 
 def register_context_menu() -> bool:
+    script = LTX_ROOT / "modules" / "table_tool" / "app" / "表格工具.py"
+    if sys.platform == "darwin":
+        try:
+            from core import resolve_python_exe
+            from modules.table_tool.install import install_macos_finder_integration
+
+            py_exe = resolve_python_exe(gui=True, root=LTX_ROOT)
+            install_macos_finder_integration(str(script), python_exe=py_exe)
+            return True
+        except Exception as e:
+            print(f"  [提示] macOS Finder 快速操作注册跳过: {e}")
+            return False
     if os.name != "nt":
         return False
     try:
@@ -39,7 +51,6 @@ def register_context_menu() -> bool:
         pyw = LTX_ROOT / "runtime" / "venv" / "Scripts" / "pythonw.exe"
         if not pyw.is_file():
             pyw = Path(sys.executable)
-        script = LTX_ROOT / "modules" / "table_tool" / "app" / "表格工具.py"
         ico = LTX_ROOT / "resources" / "brand" / "app.ico"
 
         for reg_path, arg in [

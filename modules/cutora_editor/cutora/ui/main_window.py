@@ -8750,9 +8750,19 @@ class MainWindow(CommandBodies, QMainWindow):
         try:
             import subprocess
             if newest:
-                subprocess.Popen(["explorer", "/select,", os.path.normpath(newest)])
+                if os.name == "nt":
+                    subprocess.Popen(["explorer", "/select,", os.path.normpath(newest)])
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", "-R", os.path.normpath(newest)])
+                else:
+                    subprocess.Popen(["xdg-open", os.path.normpath(os.path.dirname(newest))])
             else:
-                os.startfile(os.path.normpath(base))
+                if os.name == "nt" and hasattr(os, "startfile"):
+                    os.startfile(os.path.normpath(base))
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", os.path.normpath(base)])
+                else:
+                    subprocess.Popen(["xdg-open", os.path.normpath(base)])
         except Exception:
             try:
                 from PySide6.QtCore import QUrl

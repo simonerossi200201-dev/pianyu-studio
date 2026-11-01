@@ -4,11 +4,19 @@
     components: { NodeBar, AccountsDrawer, SettingsDrawer, LogDrawer,
       SetupWizard: window.SetupWizard,
       TaskPick: window.TaskPick,
-      SuiteBar: window.SuiteBar,
+      Panel_accounts_pool: window.Panel_accounts_pool,
       Panel_tasks, Panel_imgstudio: window.Panel_imgstudio, Panel_gemini, Panel_track, Panel_generate, Panel_review },
     setup() {
       const { computed, ref, onMounted, onUnmounted } = Vue;
-      const panels = { tasks: 'Panel_tasks', imgstudio: 'Panel_imgstudio', gemini: 'Panel_gemini', track: 'Panel_track', generate: 'Panel_generate', review: 'Panel_review' };
+      const panels = {
+        accounts_pool: 'Panel_accounts_pool',
+        tasks: 'Panel_tasks',
+        imgstudio: 'Panel_imgstudio',
+        gemini: 'Panel_gemini',
+        track: 'Panel_track',
+        generate: 'Panel_generate',
+        review: 'Panel_review',
+      };
       const currentPanel = computed(() => panels[ui.node] || 'Panel_tasks');
       const panelKey = computed(() => (ui.node || 'tasks') + '-' + (store.suiteTick || 0));
       const capTid = computed({
@@ -105,6 +113,21 @@
       }
 
       function onRefreshKey(ev) {
+        if (ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) {
+          const altMap = {
+            '0': 'accounts_pool',
+            '1': 'tasks',
+            '2': 'track',
+            '3': 'gemini',
+            '4': 'generate',
+            '5': 'review',
+          };
+          if (altMap[ev.key]) {
+            ev.preventDefault();
+            goNode(altMap[ev.key]);
+            return;
+          }
+        }
         const isF5 = ev.key === 'F5';
         const isCtrlR = (ev.ctrlKey || ev.metaKey) && !ev.altKey && !ev.shiftKey
           && (ev.key === 'r' || ev.key === 'R');
@@ -166,6 +189,7 @@
         const at = (x, s) => order.indexOf(x.status) >= order.indexOf(s);
         const lit = (can, busyKind) => busyKinds.has(busyKind) ? 'busy' : (can ? 'done' : 'idle');
         return {
+          accounts_pool: ((store.multiAccounts && store.multiAccounts.length > 0) || (store.accounts && store.accounts.length > 0)) ? 'done' : 'idle',
           tasks: lit(ts.length > 0, 'prepare'),
           imgstudio: (store.imgStudioBusy ? 'busy' : 'done'),
           gemini: (busyKinds.has('describe') || (store.descQueue && store.descQueue.on))
@@ -198,11 +222,12 @@ const lampTips = computed(() => {
         const cur = (tid && ts.find(x => x.id === tid)) || ts[0] || null;
         if (!cur) {
           const empty = t('node.tip.no_task');
-          return { tasks: empty, imgstudio: t('node.tip.imgstudio_ok'), gemini: empty, track: empty, generate: empty, review: empty };
+          return { accounts_pool: t('node.tip.accounts_pool_ok'), tasks: empty, imgstudio: t('node.tip.imgstudio_ok'), gemini: empty, track: empty, generate: empty, review: empty };
         }
         const miss = Number((cur.counts && cur.counts.desc_missing) || 0);
         const ready = !!(cur.counts && cur.counts.images_ready);
         const tip = {};
+        tip.accounts_pool = t('node.tip.accounts_pool_ok');
         tip.tasks = at(cur, 'prepared') ? t('node.tip.prepared') : t('node.tip.need_prepare');
         tip.imgstudio = t('node.tip.imgstudio_ok');
         if (!at(cur, 'prepared')) tip.gemini = t('node.tip.need_prepare');
@@ -236,6 +261,17 @@ const lampTips = computed(() => {
         window.removeEventListener('pagehide', onAppUnload);
         if (refreshOkTimer) clearTimeout(refreshOkTimer);
       });
+      function dismissQuotaAlert() {
+        store.quotaExhaustedAlert = null;
+      }
+      function goPoolFromAlert() {
+        store.quotaExhaustedAlert = null;
+        goNode('accounts_pool');
+      }
+      function goTasksFromAlert() {
+        store.quotaExhaustedAlert = null;
+        goNode('tasks');
+      }
       return {
         store, ui, t, currentPanel, panelKey, capTid, capTasks, activeJobs, readyAccounts, lamps, lampTips, nodeSubs, descQueue,
         refreshing, refreshOk, refreshMenu, sseOk, doRefresh, goNode,
@@ -244,6 +280,8 @@ const lampTips = computed(() => {
         bootRetry, bootOpenLogs, bootCopyDiag,
         runToastAction: window.runToastAction,
         showSetup: computed(() => !!ui.showSetup),
+        toggleTheme: window.toggleTheme,
+        dismissQuotaAlert, goPoolFromAlert, goTasksFromAlert,
       };
     }
   });
@@ -252,7 +290,7 @@ const lampTips = computed(() => {
   try {
     const ok = await bootstrap();
     if (ok) {
-      if (store.start_node && ['tasks','imgstudio','gemini','track','generate','review'].includes(store.start_node)) {
+      if (store.start_node && ['accounts_pool','tasks','imgstudio','gemini','track','generate','review'].includes(store.start_node)) {
         ui.node = store.start_node;
       }
       connectEvents();
