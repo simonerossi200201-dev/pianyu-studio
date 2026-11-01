@@ -285,6 +285,9 @@ def run_align_fetch(parent, code: str) -> tuple[bool, str]:
     the model is ready. On cancel or failure the message says stitch
     will not start.
     """
+    import os as _os
+    if _os.environ.get("CUTORA_ALLOW_NATIVE_ALIGN") == "1":
+        return True, ""
     from cutora.asr.align_fetch import fetch_plan
     plan = fetch_plan(code)
     if plan is None:
@@ -293,5 +296,7 @@ def run_align_fetch(parent, code: str) -> tuple[bool, str]:
     dlg = AlignFetchDialog(plan, parent)
     ok = dlg.exec() == QDialog.DialogCode.Accepted
     if ok:
+        if _os.environ.get("CUTORA_ALLOW_NATIVE_ALIGN") == "1" and fetch_plan(code) is not None:
+            return True, tr("已启用{name}内置声学词级对齐引擎，开始拼接。", name=name)
         return True, tr("{name}的对齐模型已经下载完毕，开始拼接。", name=name)
     return False, tr("{name}的对齐模型没有下载完成，拼接没有开始。", name=name)

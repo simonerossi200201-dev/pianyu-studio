@@ -21,7 +21,7 @@ class ApiSettingsPage(QWidget):
         lay = QVBoxLayout(self)
         from cutora.ui.widgets.collapsible import labeled_toggle
         self.chk_on_host, self.chk_on = labeled_toggle(tr("启用本地 API"))
-        self.chk_on.setChecked(bool(s.get("api_enabled")))
+        self.chk_on.setChecked(bool(s.get("api_enabled", True)))
         self.chk_on.toggled.connect(self._on_toggle)
         lay.addWidget(self.chk_on_host)
 

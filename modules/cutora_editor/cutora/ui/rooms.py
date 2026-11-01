@@ -781,12 +781,31 @@ def _enter_ai_studio_room(dlg, **kw):
     return None
 
 
+def _resolve_ltx_root():
+    import os as _os
+    from pathlib import Path as _Path
+    here = _Path(__file__).resolve()
+    candidates = []
+    if len(here.parents) >= 5:
+        candidates.append(here.parents[4])
+    rt_env = (_os.environ.get("CUTORA_RUNTIME") or "").strip()
+    if rt_env:
+        candidates.append(_Path(rt_env).resolve().parent)
+    candidates.append(_Path(r"D:\0_LTX"))
+    for c in candidates:
+        try:
+            if (c / "core" / "table_sync.py").is_file() or (c / "data").is_dir():
+                return c
+        except Exception:
+            pass
+    return candidates[0] if candidates else here.parent
+
+
 def _has_unconsumed_stitch_handoff() -> bool:
     try:
         import json as _json
         import os as _os
-        from pathlib import Path as _Path
-        p = str(_Path(__file__).resolve().parents[4] / "data" / "cutora_stitch_handoff.json")
+        p = str(_resolve_ltx_root() / "data" / "cutora_stitch_handoff.json")
         if not _os.path.isfile(p):
             return False
         with open(p, "r", encoding="utf-8") as f:
@@ -874,7 +893,13 @@ def install(win) -> RoomHost:
                 host.enter("stitch")
                 room_obj = host.rooms.get("stitch")
                 dlg = getattr(room_obj, "widget", None) if room_obj else None
-                if dlg is not None and hasattr(dlg, "_busy") and not dlg._busy() and hasattr(dlg, "_sync_from_orante"):
+                if (
+                    dlg is not None
+                    and _has_unconsumed_stitch_handoff()
+                    and hasattr(dlg, "_busy")
+                    and not dlg._busy()
+                    and hasattr(dlg, "_sync_from_orante")
+                ):
                     dlg._sync_from_orante(quiet=False)
             except Exception:
                 pass

@@ -644,3 +644,49 @@ def cmd_blackbox_export(ctx: Context, params: dict) -> dict:
     inc_win = bool(params.get("include_win_events", True))
     return export_blackbox_zip(dest_dir=dest, include_win_events=inc_win)
 
+
+def cmd_ui_focus(ctx: Context, params: dict) -> dict:
+    window = _win(ctx)
+    panel = str(params.get("panel") or params.get("room") or "preview").strip().lower()
+    try:
+        if hasattr(window, "showNormal"):
+            window.showNormal()
+        if hasattr(window, "raise_"):
+            window.raise_()
+        if hasattr(window, "activateWindow"):
+            window.activateWindow()
+    except Exception:
+        pass
+    host = getattr(window, "room_host", None)
+    entered = False
+    synced_count = 0
+    if host is not None:
+        if panel in ("preview", "editor", "main", ""):
+            cur = getattr(host, "current_key", None)
+            if callable(cur) and cur():
+                try:
+                    host.close_room(cur())
+                    entered = True
+                except Exception:
+                    pass
+        elif panel in getattr(host, "rooms", {}):
+            try:
+                host.enter(panel)
+                entered = True
+                if panel == "stitch":
+                    from cutora.ui.rooms import _has_unconsumed_stitch_handoff
+                    room_obj = host.rooms.get("stitch")
+                    dlg = getattr(room_obj, "widget", None) if room_obj else None
+                    if (
+                        dlg is not None
+                        and _has_unconsumed_stitch_handoff()
+                        and hasattr(dlg, "_busy")
+                        and not dlg._busy()
+                        and hasattr(dlg, "_sync_from_orante")
+                    ):
+                        synced_count = int(dlg._sync_from_orante(quiet=False) or 0)
+            except Exception:
+                pass
+    return {"panel": panel, "entered": entered, "synced_count": synced_count}
+
+

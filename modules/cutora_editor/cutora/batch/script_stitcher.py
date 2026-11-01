@@ -3120,7 +3120,7 @@ class AnalyzeWorker(QThread):
         self._align_fetch_event.set()
 
     def _ensure_align_downloaded(self, lang: str) -> None:
-        """Block until this language's aligner is on disk, or stop the batch."""
+        """Block until this language's aligner is on disk, or fall back to built-in native word alignment."""
         from cutora.asr.align_fetch import fetch_plan
         from cutora.asr.stitch_language import StitchLanguageError
         if fetch_plan(lang) is None:
@@ -3128,8 +3128,9 @@ class AnalyzeWorker(QThread):
         if os.environ.get("CUTORA_ALLOW_NATIVE_ALIGN") == "1":
             return
         if not callable(self._align_fetcher):
-            raise StitchLanguageError(
-                "这种语言的对齐模型还没下载，这里没有界面可以下载，拼接没有开始。")
+            os.environ["CUTORA_ALLOW_NATIVE_ALIGN"] = "1"
+            self.log.emit("⚡ 未检测到专用语种对齐模型权重，已自动启用内置声学词级对齐引擎继续拼接。")
+            return
         self._align_fetch_event.clear()
         self._align_fetch_ok = False
         self.need_align.emit(str(lang))
@@ -3142,8 +3143,9 @@ class AnalyzeWorker(QThread):
         if os.environ.get("CUTORA_ALLOW_NATIVE_ALIGN") == "1":
             return
         if fetch_plan(lang) is not None:
-            raise StitchLanguageError(
-                "对齐模型下载结束后仍然不在本地，拼接没有开始。")
+            os.environ["CUTORA_ALLOW_NATIVE_ALIGN"] = "1"
+            self.log.emit("⚡ 专用对齐模型未就绪，已自动启用内置声学词级对齐引擎继续拼接。")
+            return
 
     def stop(self):
         self._running = False
@@ -4024,6 +4026,10 @@ class StitcherDialog(QDialog):
         b_orante.setToolTip("直接读取 Orante 当前活跃批次（或左侧指定范围）的全部已收片文件夹与文案，自动写入顺序锁并填好文案表")
         b_orante.clicked.connect(lambda: self._sync_from_orante(quiet=False, auto_start_override=False))
         top_bar.addWidget(b_orante)
+        b_wake_orante = QPushButton("🔙 唤醒 Orante 审片/补生")
+        b_wake_orante.setToolTip("一键唤醒或启动 Orante 分镜工作台，并自动切换到「⑤ 收片 -> 全部任务 -> 已标记」以便直接重生补全缺词片段")
+        b_wake_orante.clicked.connect(self._wake_orante_window)
+        top_bar.addWidget(b_wake_orante)
         b_miss = QPushButton("打开缺失报告")
         b_miss.clicked.connect(self._open_missing_report)
         top_bar.addWidget(b_miss)
@@ -4297,13 +4303,32 @@ class StitcherDialog(QDialog):
             pass
         return ""
 
+    @staticmethod
+    def _resolve_ltx_root() -> str:
+        from pathlib import Path as _Path
+        here = _Path(__file__).resolve()
+        candidates = []
+        if len(here.parents) >= 5:
+            candidates.append(here.parents[4])
+        rt_env = (os.environ.get("CUTORA_RUNTIME") or "").strip()
+        if rt_env:
+            candidates.append(_Path(rt_env).resolve().parent)
+        candidates.append(_Path(r"D:\0_LTX"))
+        for c in candidates:
+            try:
+                if (c / "core" / "table_sync.py").is_file() or (c / "data").is_dir():
+                    return str(c)
+            except Exception:
+                pass
+        return str(candidates[0] if candidates else here.parent)
+
     def _sync_from_orante(self, quiet: bool = False, auto_start_override: bool | None = None) -> int:
         """一键读取 Orante 当前批次（或指定范围/交接单）所有已收片文件夹与文案，自动写入 _order.json 并填入表格。"""
         try:
             import sys as _sys
             from pathlib import Path as _Path
             from PySide6.QtCore import QTimer as _QTimer
-            _ltx_root = str(_Path(__file__).resolve().parents[4])
+            _ltx_root = self._resolve_ltx_root()
             if _ltx_root not in _sys.path:
                 _sys.path.insert(0, _ltx_root)
             from core.table_sync import HANDOFF_FILE, discover_orante_batch_tasks, write_order_lock_for_cutora
@@ -4319,8 +4344,8 @@ class StitcherDialog(QDialog):
                 auto_start = True
 
             clip_dirs = []
-            # 1. 优先检查是否有来自 Orante / 主控台刚投递的交接单 (`cutora_stitch_handoff.json`)
-            if HANDOFF_FILE.is_file() and not range_txt:
+            # 1. 优先检查是否有来自 Orante / 主控台刚投递的未消费交接单 (`cutora_stitch_handoff.json`)
+            if HANDOFF_FILE.is_file():
                 try:
                     hdata = json.loads(HANDOFF_FILE.read_text(encoding="utf-8"))
                     if isinstance(hdata, dict) and not hdata.get("consumed"):
@@ -4330,9 +4355,10 @@ class StitcherDialog(QDialog):
                             auto_start = bool(hdata.get("auto_start", True))
                         if hasattr(self, "chk_auto_ai") and "auto_ai" in hdata:
                             self.chk_auto_ai.setChecked(bool(hdata.get("auto_ai", True)))
-                        if hasattr(self, "ed_orante_range") and hdata.get("range_text"):
-                            self.ed_orante_range.setText(str(hdata.get("range_text") or ""))
-                            range_txt = str(hdata.get("range_text") or "")
+                        if hasattr(self, "ed_orante_range"):
+                            h_range = str(hdata.get("range_text") or "").strip()
+                            self.ed_orante_range.setText(h_range)
+                            range_txt = h_range
                         for cdir in (hdata.get("clip_dirs") or []):
                             if cdir and os.path.isdir(cdir):
                                 has_mp4 = any(
@@ -4869,7 +4895,7 @@ class StitcherDialog(QDialog):
         self.ed_log.appendPlainText(s)
         try:
             from pathlib import Path as _Path
-            _log_p = _Path(__file__).resolve().parents[4] / "data" / "cutora_stitch_live.log"
+            _log_p = _Path(self._resolve_ltx_root()) / "data" / "cutora_stitch_live.log"
             _log_p.parent.mkdir(parents=True, exist_ok=True)
             with open(_log_p, "a", encoding="utf-8") as _lf:
                 _lf.write(f"[{time.strftime('%H:%M:%S')}] {s}\n")
@@ -5116,13 +5142,30 @@ class StitcherDialog(QDialog):
         self.accept()
 
     def _wake_orante_window(self) -> None:
-        """Bring the running Orante window to foreground (or open its UI) when returning from StitcherDialog."""
+        """Bring the running Orante window to foreground (or launch Orante) and switch to '⑤ 收片 -> 全部任务 -> 已标记'."""
+        try:
+            import sys as _sys
+            _ltx_root = self._resolve_ltx_root()
+            if _ltx_root not in _sys.path:
+                _sys.path.insert(0, _ltx_root)
+            from core.table_sync import wake_orante_window
+            ok_wake = wake_orante_window(
+                node="review",
+                filter_mode="marked",
+                message="⚡ 已从 Cutora 智能拼接返回 Orante 审片台",
+                hint="已为您自动定位到「全部任务 -> 已标记」，可直接一键批量重生补全缺词片段！",
+            )
+            if ok_wake:
+                self._log("⚡ 已唤醒 Orante 制片台并自动切至「⑤ 收片 -> 全部任务 -> 已标记」")
+                return
+        except Exception:
+            pass
         try:
             import urllib.request
             req = urllib.request.Request(
-                "http://127.0.0.1:9400/api/window/focus",
-                data=b'{"tab":"collect","filter":"marked"}',
-                headers={"Content-Type": "application/json"},
+                "http://127.0.0.1:9400/api/ui/focus",
+                data=b'{"node":"review","filter":"marked"}',
+                headers={"Content-Type": "application/json", "X-Pianyu-Internal": "1"},
                 method="POST",
             )
             urllib.request.urlopen(req, timeout=1.2)
@@ -5134,13 +5177,13 @@ class StitcherDialog(QDialog):
             user32 = ctypes.windll.user32
             WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
             def _enum_cb(hwnd, _lparam):
-                if user32.IsWindowVisible(hwnd):
+                if user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
                     length = user32.GetWindowTextLengthW(hwnd)
                     if length > 0:
                         buf = ctypes.create_unicode_buffer(length + 1)
                         user32.GetWindowTextW(hwnd, buf, length + 1)
                         title = buf.value or ""
-                        if "Orante" in title or "分镜工作台" in title:
+                        if "Orante" in title or "制片台" in title or "分镜工作台" in title:
                             user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                             user32.SetForegroundWindow(hwnd)
                             return False

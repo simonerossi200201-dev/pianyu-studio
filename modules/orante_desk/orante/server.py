@@ -68,6 +68,15 @@ async def _local_session(request: Request, call_next):
             return JSONResponse({"ok": False, "error": "拒绝访问", "hint": ""}, status_code=403)
         return await call_next(request)
 
+    if path in {"/api/tasks/sync-stitch-marks", "/api/ui/focus", "/api/window/focus"}:
+        # 仅放行来自本机 CUTORA / table_sync 进程的内部联动唤醒请求（浏览器跨站请求必带 Origin，本机进程不带 Origin）
+        origin_hdr = (request.headers.get("origin") or "").strip()
+        if not origin_hdr and (
+            request.headers.get("x-pianyu-internal") == "1"
+            or "application/json" in (request.headers.get("content-type") or "").lower()
+        ):
+            return await call_next(request)
+
     guarded = path.startswith("/api/") or path.startswith("/media/")
     if guarded:
         if not _origin_ok(request.headers.get("origin") or "", request.headers.get("host") or ""):
@@ -1462,13 +1471,12 @@ async def tasks_send_to_cutora_stitch(req: Request):
     _ltx_root = str(paths.ROOT.parents[1]) if len(paths.ROOT.parents) >= 2 else str(paths.ROOT)
     if _ltx_root not in _sys.path:
         _sys.path.insert(0, _ltx_root)
-    from core.table_sync import prepare_cutora_stitch_handoff
-    from core.robota_guide import DailyWorkflowConductor
+    from core.table_sync import launch_cutora_room, prepare_cutora_stitch_handoff
 
     d = await body(req) or {}
     mode = str(d.get("mode") or "all").strip().lower()
     range_text = str(d.get("range_text") or "").strip()
-    task_ids = d.get("task_ids") if isinstance(d.get("task_ids"), list) else None
+    task_ids = [str(x).strip() for x in (d.get("task_ids") or []) if str(x).strip()] if isinstance(d.get("task_ids"), list) else None
     tid = str(d.get("tid") or "").strip()
     auto_start = bool(d.get("auto_start", True))
     auto_ai = bool(d.get("auto_ai", True))
@@ -1478,22 +1486,28 @@ async def tasks_send_to_cutora_stitch(req: Request):
         range_text = tid
     elif mode == "all":
         range_text = ""
-        task_ids = None
 
     handoff = prepare_cutora_stitch_handoff(
         range_text=range_text,
-        task_ids=task_ids,
+        task_ids=task_ids or None,
         auto_start=auto_start,
         auto_ai=auto_ai,
         source="orante",
     )
+    if not handoff.get("task_count") and mode == "all" and task_ids:
+        handoff = prepare_cutora_stitch_handoff(
+            range_text="",
+            task_ids=None,
+            auto_start=auto_start,
+            auto_ai=auto_ai,
+            source="orante",
+        )
     if not handoff.get("task_count"):
         raise OranteError("没有找到可送入 Cutora 智能拼接的已收片任务", "请检查任务范围或确认片段已生成落盘。")
 
     launched = False
     try:
-        cond = DailyWorkflowConductor()
-        launched = bool(cond.launch_cutora_room(room="stitch"))
+        launched = bool(launch_cutora_room(room="stitch", prepare_handoff=False))
     except Exception:
         pass
 
@@ -1512,7 +1526,72 @@ async def tasks_sync_stitch_marks(req: Request):
     d = await body(req) or {}
     marked_tasks = d.get("marked_tasks") or []
     events.emit("tasks.changed")
+    if marked_tasks:
+        events.emit(
+            "ui.focus",
+            node="review",
+            filter="marked",
+            message=f"⚡ Cutora 智能拼接已回传 {len(marked_tasks)} 个任务的缺词标记",
+            hint="已为您自动切换到「全部任务 -> 已标记」，可直接一键批量重生补全！",
+        )
     return ok(synced=len(marked_tasks), marked_tasks=marked_tasks)
+
+
+@app.post("/api/ui/focus")
+@app.post("/api/window/focus")
+async def api_ui_focus(req: Request):
+    """唤醒 Orante 桌面窗口并聚焦到指定节点（如 5 收片 / 已标记筛选）。"""
+    import subprocess as _sp
+    from . import main as _main
+
+    d = await body(req) or {}
+    raw_node = str(d.get("node") or d.get("tab") or "review").strip().lower()
+    node_map = {
+        "collect": "review",
+        "review": "review",
+        "tasks": "tasks",
+        "track": "track",
+        "gemini": "gemini",
+        "generate": "generate",
+        "accounts": "accounts_pool",
+        "accounts_pool": "accounts_pool",
+        "imgstudio": "imgstudio",
+    }
+    node = node_map.get(raw_node, "review")
+    flt = str(d.get("filter") or "").strip().lower()
+    tid = str(d.get("tid") or "").strip()
+    msg = str(d.get("message") or "").strip()
+    hint = str(d.get("hint") or "").strip()
+
+    events.emit("ui.focus", node=node, filter=flt, tid=tid, message=msg, hint=hint)
+
+    win = getattr(_main, "_window", None)
+    if win is not None:
+        try:
+            if hasattr(win, "restore"):
+                win.restore()
+            if hasattr(win, "show"):
+                win.show()
+        except Exception:
+            pass
+    try:
+        _main.bring_existing_orante_window()
+    except Exception:
+        pass
+    if paths.IS_MAC:
+        try:
+            _sp.run(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "System Events" to set frontmost of (first process whose name contains "Orante" or name contains "Python") to true',
+                ],
+                timeout=2,
+                capture_output=True,
+            )
+        except Exception:
+            pass
+    return ok(node=node, filter=flt, tid=tid)
 
 
 @app.post("/api/tasks/{tid}/reveal")

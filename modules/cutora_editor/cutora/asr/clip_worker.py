@@ -233,6 +233,8 @@ def _serve() -> None:
                 reply({"ok": False, "error": "not loaded"})
                 continue
             language = str(job.get("language") or "")
+            if job.get("allow_native_align"):
+                os.environ["CUTORA_ALLOW_NATIVE_ALIGN"] = "1"
             try:
                 align_model, metadata = get_align_model(language)
                 reply({"ok": True, "language": language})
@@ -438,7 +440,13 @@ class AsrClient:
     def load_align(self, language: str, timeout_sec: float = 180) -> None:
         """Load the aligner once, after the batch language is locked."""
         out = self._roundtrip(
-            {"cmd": "load_align", "language": language}, timeout_sec=timeout_sec)
+            {
+                "cmd": "load_align",
+                "language": language,
+                "allow_native_align": os.environ.get("CUTORA_ALLOW_NATIVE_ALIGN") == "1",
+            },
+            timeout_sec=timeout_sec,
+        )
         if out is None:
             raise WatchdogTimeout("ASR worker 无响应")
         if not out.get("ok"):

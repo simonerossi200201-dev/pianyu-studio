@@ -353,9 +353,23 @@ def discover_orante_batch_tasks(
                         continue
                     if batch_no and r.batch_no and r.batch_no.upper() != batch_no.upper():
                         continue
-                    # 仅纳入有 clips 目录的任务
+                    # 仅纳入有 clips 目录且内含视频文件的任务
                     if r.clips_dir and Path(r.clips_dir).is_dir():
-                        records.append(r)
+                        has_vid = any(
+                            p.is_file() and p.suffix.lower() in {".mp4", ".mov", ".mkv", ".webm", ".avi"}
+                            for p in Path(r.clips_dir).iterdir()
+                        )
+                        if has_vid:
+                            records.append(r)
+                if not records and all_recs:
+                    for r in all_recs:
+                        if r.clips_dir and Path(r.clips_dir).is_dir():
+                            has_vid = any(
+                                p.is_file() and p.suffix.lower() in {".mp4", ".mov", ".mkv", ".webm", ".avi"}
+                                for p in Path(r.clips_dir).iterdir()
+                            )
+                            if has_vid:
+                                records.append(r)
                 if records:
                     break
         except Exception:
@@ -617,18 +631,19 @@ def sync_stitch_missing_to_orante(
                 }
             )
 
-    # 3. 实时通知 Orante 后端 (127.0.0.1:9400) 广播刷新并同步标记
+    # 3. 实时通知所有运行中的 Orante 后端 (127.0.0.1:9400..9419) 广播刷新并同步标记
     if marked_summary:
-        try:
-            req = urllib.request.Request(
-                "http://127.0.0.1:9400/api/tasks/sync-stitch-marks",
-                data=json.dumps({"marked_tasks": marked_summary}, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=3.0).read()
-        except Exception:
-            pass
+        for port in (find_running_orante_ports() or [9400]):
+            try:
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/api/tasks/sync-stitch-marks",
+                    data=json.dumps({"marked_tasks": marked_summary}, ensure_ascii=False).encode("utf-8"),
+                    headers={"Content-Type": "application/json", "X-Pianyu-Internal": "1"},
+                    method="POST",
+                )
+                urllib.request.urlopen(req, timeout=2.5).read()
+            except Exception:
+                pass
 
     return {
         "ok": True,
@@ -638,7 +653,163 @@ def sync_stitch_missing_to_orante(
     }
 
 
-# --- 6. CUTORA 跨平台单实例检测、API 控制与一键启动/聚焦 ---
+# --- 6. Orante ⇄ CUTORA 跨平台单实例检测、API 控制与一键双向唤醒/聚焦 ---
+
+
+def find_running_orante_ports(base_port: int = 9400, span: int = 20) -> list[int]:
+    """扫描本机运行中的 Orante 实例端口 (默认 9400..9419)。"""
+    import socket
+    import urllib.request
+
+    active_ports: list[int] = []
+    for offset in range(max(1, span)):
+        port = base_port + offset
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.12):
+                pass
+        except Exception:
+            continue
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/ping",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=0.45) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                if isinstance(data, dict) and data.get("ok") and data.get("app") == "orante":
+                    active_ports.append(port)
+        except Exception:
+            continue
+    return active_ports
+
+
+def _bring_window_foreground_by_keywords(keywords: tuple[str, ...], app_activate_name: str = "") -> bool:
+    """跨平台将标题包含指定关键字的桌面窗口恢复并置顶 (Windows Win32 + macOS AppleScript)。"""
+    import os
+    import subprocess
+    import sys
+
+    activated = False
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            user32 = ctypes.windll.user32
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+            def _enum_cb(hwnd, _lparam):
+                nonlocal activated
+                if user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buf = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buf, length + 1)
+                        title = buf.value or ""
+                        if any(k.lower() in title.lower() for k in keywords):
+                            if user32.IsIconic(hwnd):
+                                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                            else:
+                                user32.ShowWindow(hwnd, 5)  # SW_SHOW
+                            user32.SetForegroundWindow(hwnd)
+                            activated = True
+                            return False
+                return True
+
+            user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+        except Exception:
+            pass
+        if not activated and app_activate_name:
+            try:
+                ps_cmd = (
+                    "$ws = New-Object -ComObject WScript.Shell; "
+                    f"[void]$ws.AppActivate('{app_activate_name}')"
+                )
+                subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", ps_cmd],
+                    timeout=2.5,
+                    creationflags=0x08000000,
+                )
+                activated = True
+            except Exception:
+                pass
+    elif sys.platform == "darwin":
+        try:
+            cond = " or ".join(f'name contains "{k}"' for k in keywords)
+            script = f'tell application "System Events" to set frontmost of (first process whose {cond} or name contains "Python") to true'
+            subprocess.run(["osascript", "-e", script], timeout=2.5, capture_output=True)
+            activated = True
+        except Exception:
+            pass
+    return activated
+
+
+def wake_orante_window(
+    node: str = "review",
+    filter_mode: str = "marked",
+    tid: str = "",
+    message: str = "",
+    hint: str = "",
+) -> bool:
+    """从 CUTORA 一键唤醒或拉起 Orante 窗口，并自动切换到指定节点（默认 ⑤ 收片 -> 全部任务 -> 已标记）。"""
+    import os
+    import subprocess
+    import time
+    import urllib.request
+
+    ports = find_running_orante_ports()
+    if ports:
+        payload = json.dumps(
+            {
+                "node": node,
+                "filter": filter_mode,
+                "tid": tid,
+                "message": message,
+                "hint": hint,
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        for port in ports:
+            try:
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/api/ui/focus",
+                    data=payload,
+                    headers={"Content-Type": "application/json", "X-Pianyu-Internal": "1"},
+                    method="POST",
+                )
+                urllib.request.urlopen(req, timeout=1.8).read()
+            except Exception:
+                pass
+        _bring_window_foreground_by_keywords(("Orante", "制片台", "分镜工作台"), app_activate_name="Orante")
+        return True
+
+    # 若 Orante 尚未启动，则自动在后台拉起 Orante 并定位到目标节点
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["ORANTE_START_NODE"] = node
+    bin_dirs = [
+        str(LTX_ROOT / "runtime" / "bin"),
+        str(LTX_ROOT / "runtime" / "ffmpeg" / "bin"),
+        str(LTX_ROOT / "runtime" / "ffmpeg"),
+    ]
+    env["PATH"] = os.pathsep.join(bin_dirs + [env.get("PATH", "")])
+    py_exe = resolve_python_exe(gui=True)
+    log_dir = LTX_ROOT / "data" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stdout_log = open(log_dir / "orante_stdout.log", "a", encoding="utf-8")
+    stderr_log = open(log_dir / "orante_stderr.log", "a", encoding="utf-8")
+    popen_kwargs: dict[str, Any] = {
+        "cwd": str(LTX_ROOT / "modules" / "orante_desk"),
+        "env": env,
+        "stdout": stdout_log,
+        "stderr": stderr_log,
+    }
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = 0x00000008
+    else:
+        popen_kwargs["start_new_session"] = True
+    subprocess.Popen([py_exe, "-m", "orante"], **popen_kwargs)
+    time.sleep(0.5)
+    return True
 
 
 def is_cutora_running() -> bool:
@@ -726,7 +897,21 @@ def call_cutora_api(command: str, params: dict[str, Any] | None = None) -> dict[
         return {"ok": False, "error": str(exc)}
 
 
-def launch_cutora_room(room: str = "stitch", project_path: str = "") -> bool:
+def _has_unconsumed_handoff() -> bool:
+    try:
+        if not HANDOFF_FILE.is_file():
+            return False
+        data = json.loads(HANDOFF_FILE.read_text(encoding="utf-8"))
+        return bool(isinstance(data, dict) and not data.get("consumed") and data.get("clip_dirs"))
+    except Exception:
+        return False
+
+
+def launch_cutora_room(
+    room: str = "stitch",
+    project_path: str = "",
+    prepare_handoff: bool = False,
+) -> bool:
     """启动或切换聚焦 CUTORA 到指定功能房间 (stitch=智能拼接 / batch=批量自动剪辑 / preview=主剪辑台)。
     支持 Windows (Local\\CUTORA_SingleInstance_Mutex_v1) 与 macOS (~/Library/Application Support/CUTORA/cutora.lock)。
     """
@@ -742,46 +927,24 @@ def launch_cutora_room(room: str = "stitch", project_path: str = "") -> bool:
             get_spine_db().export_batch_for_cutora_stitch()
         except Exception:
             pass
-        try:
-            prepare_cutora_stitch_handoff(
-                auto_start=True,
-                auto_ai=True,
-                source="launcher",
-            )
-        except Exception:
-            pass
+        if prepare_handoff or not _has_unconsumed_handoff():
+            try:
+                prepare_cutora_stitch_handoff(
+                    auto_start=True,
+                    auto_ai=True,
+                    source="launcher",
+                )
+            except Exception:
+                pass
 
     if is_cutora_running():
         try:
             if project_path and Path(project_path).is_file():
                 call_cutora_api("project.open", {"path": str(project_path)})
-            res = call_cutora_api("ui.focus", {"panel": room or "preview"})
-            if res.get("ok"):
-                return True
+            call_cutora_api("ui.focus", {"panel": room or "preview"})
         except Exception:
             pass
-        if os.name == "nt":
-            try:
-                ps_cmd = (
-                    "$ws = New-Object -ComObject WScript.Shell; "
-                    "[void]$ws.AppActivate('CUTORA')"
-                )
-                subprocess.run(
-                    ["powershell", "-NoProfile", "-Command", ps_cmd],
-                    timeout=3,
-                    creationflags=0x08000000,
-                )
-            except Exception:
-                pass
-        elif os.uname().sysname == "Darwin":
-            try:
-                subprocess.run(
-                    ["osascript", "-e", 'tell application "System Events" to set frontmost of (first process whose name contains "Python" or name contains "CUTORA") to true'],
-                    timeout=3,
-                    capture_output=True,
-                )
-            except Exception:
-                pass
+        _bring_window_foreground_by_keywords(("CUTORA", "片段拼接", "智能拼接"), app_activate_name="CUTORA")
         return True
 
     env = os.environ.copy()

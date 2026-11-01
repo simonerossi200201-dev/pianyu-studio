@@ -31,5 +31,7 @@ window.API = (() => {
       return call('DELETE', u, d, opts);
     },
     job: (kind, task_id, args) => call('POST', '/api/jobs', Object.assign({ kind, task_id }, args || {})),
+    call,
   };
 })();
+window.api = (method, url, data, opts) => window.API.call(method, url, data, opts);

@@ -26,6 +26,7 @@ window.store = Vue.reactive({
     error: '',
   },
   refreshSeq: 0,       // 全局刷新成功后 +1，各面板自己重新拉数据
+  reviewForceAllMarked: 0, // Cutora 回传唤醒时强制展开「全部任务 -> 已标记」
   suiteTick: 0,        // 切套装后 +1，主面板强制重挂，避免界面还是旧配置
   segAt: {},           // task_id -> 上次段计数变化的时间戳（生成面板「没动静」用）
   port: 0,             // 本窗口端口
@@ -437,7 +438,25 @@ window.connectEvents = (force) => {
     const d = JSON.parse(e.data);
     applyTaskCounts(d.task_id, d.counts);
   });
-  es.addEventListener('tasks.changed', () => refreshTasks());
+  es.addEventListener('tasks.changed', () => {
+    refreshTasks();
+    store.refreshSeq = (store.refreshSeq || 0) + 1;
+  });
+  es.addEventListener('ui.focus', e => {
+    try {
+      const d = JSON.parse(e.data) || {};
+      if (d.node) ui.node = d.node;
+      if (d.tid) { ui.panelTid = d.tid; ui.selectedTaskId = d.tid; }
+      if (d.filter === 'marked' || d.filter === 'mark') {
+        store.reviewForceAllMarked = Date.now();
+      }
+      refreshTasks().catch(() => {});
+      store.refreshSeq = (store.refreshSeq || 0) + 1;
+      if (d.message) {
+        toast(d.message, d.hint || '', 'ok');
+      }
+    } catch (err) { /* ignore */ }
+  });
   es.addEventListener('accounts.changed', () => { refreshAccounts(); refreshMultiAccounts({ silent: true }); });
   es.addEventListener('multi_accounts.changed', () => refreshMultiAccounts({ silent: true }));
   es.addEventListener('presets.changed', () => refreshPromptPresets({ silent: true }));

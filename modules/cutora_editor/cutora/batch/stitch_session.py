@@ -14,6 +14,25 @@ import os
 from PySide6.QtCore import QObject, Signal
 
 
+def _resolve_ltx_root() -> str:
+    from pathlib import Path
+    here = Path(__file__).resolve()
+    candidates = []
+    if len(here.parents) >= 5:
+        candidates.append(here.parents[4])
+    rt_env = (os.environ.get("CUTORA_RUNTIME") or "").strip()
+    if rt_env:
+        candidates.append(Path(rt_env).resolve().parent)
+    candidates.append(Path(r"D:\0_LTX"))
+    for c in candidates:
+        try:
+            if (c / "core" / "table_sync.py").is_file() or (c / "data").is_dir():
+                return str(c)
+        except Exception:
+            pass
+    return str(candidates[0] if candidates else here.parent)
+
+
 def assign_outputs(groups, folder_of, base_of, folders):
     """Output paths StitcherDialog._start used to assign inline.
 
@@ -56,7 +75,7 @@ def plan_job(folders, group_mark, order_mark, group_by_folder, scripts):
         try:
             import sys
             from pathlib import Path
-            _ltx_root = str(Path(__file__).resolve().parents[4])
+            _ltx_root = _resolve_ltx_root()
             if _ltx_root not in sys.path:
                 sys.path.insert(0, _ltx_root)
             from core.table_sync import discover_orante_batch_tasks, write_order_lock_for_cutora
@@ -257,7 +276,9 @@ class StitchSession(QObject):
             if callable(fn):
                 ok = bool(fn(str(code or "")))
             else:
-                self.log.emit("没有下载界面，对齐模型没法在这里下载。")
+                os.environ["CUTORA_ALLOW_NATIVE_ALIGN"] = "1"
+                self.log.emit("⚡ 已自动启用内置声学词级对齐引擎继续拼接。")
+                ok = True
         except Exception as exc:
             self.log.emit("对齐模型下载失败: %s" % exc)
             ok = False
@@ -276,7 +297,7 @@ class StitchSession(QObject):
             try:
                 import sys
                 from pathlib import Path
-                _ltx_root = str(Path(__file__).resolve().parents[4])
+                _ltx_root = _resolve_ltx_root()
                 if _ltx_root not in sys.path:
                     sys.path.insert(0, _ltx_root)
                 from core.table_sync import sync_stitch_missing_to_orante

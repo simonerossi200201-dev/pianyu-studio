@@ -3143,7 +3143,16 @@ window.Panel_review = (() => {
         cancelEdit();
         onTid();
       });
-      watch(() => store.refreshSeq, () => { if (tid.value) loadReview(); });
+      watch(() => store.refreshSeq, () => {
+        if (allMode.value) loadAll();
+        if (tid.value) loadReview();
+      });
+      watch(() => store.reviewForceAllMarked, (v) => {
+        if (!v) return;
+        filter.value = 'mark';
+        if (!allMode.value) setAllMode(true);
+        else loadAll();
+      });
       watch(() => ui.pendingTid, (v) => { if (v) takePendingTid(tid, 'review'); });
       watch(() => ui.panelTid, (v) => { if (v && v !== tid.value) tid.value = v; });
       watch(view, (v) => {
@@ -3317,6 +3326,10 @@ window.Panel_review = (() => {
       onMounted(async () => {
         await loadExtra();
         if (!adoptPanelTid(tid, 'review')) pickDefaultTid();
+        if (store.reviewForceAllMarked && (Date.now() - store.reviewForceAllMarked < 15000)) {
+          filter.value = 'mark';
+          setAllMode(true);
+        }
         document.addEventListener('keydown', onKey);
         document.addEventListener('click', onRvDocClick);
         ui.panelTid = tid.value || '';
@@ -3367,12 +3380,16 @@ window.Panel_review = (() => {
           toast('请输入任务或视频编号范围（例如 T0137-T0162 或 v01-v26）', '', 'err');
           return;
         }
+        const taskIds = mode === 'current'
+          ? (tid.value ? [tid.value] : [])
+          : (mode === 'all' ? (readyTasks.value || []).map(t => t.id).filter(Boolean) : []);
         cutoraStitch.busy = true;
         try {
-          const r = await api('POST', '/api/tasks/send-to-cutora-stitch', {
+          const r = await API.post('/api/tasks/send-to-cutora-stitch', {
             mode,
             range_text: rangeText,
             tid: tid.value || '',
+            task_ids: taskIds,
             auto_start: cutoraStitch.autoStart,
             auto_ai: cutoraStitch.autoAi,
           });
@@ -3383,7 +3400,9 @@ window.Panel_review = (() => {
             'ok'
           );
         } catch (e) {
-          toast((e && e.message) || '送入 Cutora 智能拼接失败', (e && e.hint) || '', 'err');
+          if (!(e && e.body)) {
+            toast((e && e.message) || '送入 Cutora 智能拼接失败', (e && e.hint) || '', 'err');
+          }
         } finally {
           cutoraStitch.busy = false;
         }

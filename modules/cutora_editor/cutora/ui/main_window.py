@@ -3465,7 +3465,7 @@ class MainWindow(CommandBodies, QMainWindow):
             except Exception:
                 pass
         self.show_editor()
-        if bool(s.get("api_enabled", True)):
+        if bool(s.get("api_enabled", True)) or bool(os.environ.get("CUTORA_RUNTIME")) or bool(os.environ.get("CUTORA_FORCE_API")):
             try:
                 from cutora.api import DEFAULT_PORT
                 from cutora.api.lifecycle import start_api

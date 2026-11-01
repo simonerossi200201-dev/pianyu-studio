@@ -311,4 +311,12 @@ def build() -> list:
             },
             headless=True,
         ),
+        spec(
+            "ui.focus", "唤醒窗口并切换功能房间",
+            "恢复并置顶 CUTORA 主窗口，同时切换到指定功能房间（stitch=片段拼接 / batch=批量加载 / monitor=中央监视器 / silence=剪气口 / ai_studio=AI工坊 / preview=主剪辑台）。若进入 stitch 且存在未消费的 Orante 交接单，自动加载并启动智能拼接。",
+            H + ":cmd_ui_focus",
+            params={
+                "panel": s("string", "目标功能房间：stitch / batch / monitor / silence / ai_studio / preview，默认 preview"),
+            },
+        ),
     ]
