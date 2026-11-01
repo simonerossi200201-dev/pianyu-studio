@@ -903,10 +903,11 @@ def build_final_prompt(m: Manifest, seg: dict, desc_override=None, task: dict | 
     # 1. 镜头级自定义提示词或预设
     seg_custom = str(seg.get("custom_prompt") or "").strip()
     if seg_custom:
-        if seg_text and seg_text.strip() and seg_text.strip() not in seg_custom:
-            out = prompt_presets.insert_speech_at_max_newlines(seg_custom, seg_text)
+        seg_custom_adapted = flow_shots.adapt_prompt_head_to_language(seg_custom, seg_text)
+        if seg_text and seg_text.strip() and seg_text.strip() not in seg_custom_adapted:
+            out = prompt_presets.insert_speech_at_max_newlines(seg_custom_adapted, seg_text)
         else:
-            out = seg_custom
+            out = seg_custom_adapted
         if extra_tail:
             out = f"{out.rstrip()}\n{extra_tail}"
         return _fill_pause(out, seg_text)
@@ -915,7 +916,8 @@ def build_final_prompt(m: Manifest, seg: dict, desc_override=None, task: dict | 
     if seg_preset_id:
         pr = prompt_presets.get_preset(seg_preset_id)
         if pr and pr.get("template"):
-            out = prompt_presets.insert_speech_at_max_newlines(pr["template"], seg_text)
+            tpl = flow_shots.adapt_prompt_head_to_language(str(pr["template"]), seg_text)
+            out = prompt_presets.insert_speech_at_max_newlines(tpl, seg_text)
             if extra_tail:
                 out = f"{out.rstrip()}\n{extra_tail}"
             return _fill_pause(out, seg_text)
@@ -928,7 +930,8 @@ def build_final_prompt(m: Manifest, seg: dict, desc_override=None, task: dict | 
         t_meta = {}
     task_custom = str(t_meta.get("custom_prompt") or snap.get("custom_prompt") or "").strip()
     if task_custom:
-        out = prompt_presets.insert_speech_at_max_newlines(task_custom, seg_text)
+        tpl = flow_shots.adapt_prompt_head_to_language(task_custom, seg_text)
+        out = prompt_presets.insert_speech_at_max_newlines(tpl, seg_text)
         if extra_tail:
             out = f"{out.rstrip()}\n{extra_tail}"
         return _fill_pause(out, seg_text)
@@ -942,7 +945,8 @@ def build_final_prompt(m: Manifest, seg: dict, desc_override=None, task: dict | 
     if task_preset_id:
         pr = prompt_presets.get_preset(task_preset_id)
         if pr and pr.get("template"):
-            out = prompt_presets.insert_speech_at_max_newlines(pr["template"], seg_text)
+            tpl = flow_shots.adapt_prompt_head_to_language(str(pr["template"]), seg_text)
+            out = prompt_presets.insert_speech_at_max_newlines(tpl, seg_text)
             if extra_tail:
                 out = f"{out.rstrip()}\n{extra_tail}"
             return _fill_pause(out, seg_text)

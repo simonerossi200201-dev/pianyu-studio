@@ -12,10 +12,10 @@ if _REPO_ROOT not in sys.path:
 
 # === 启动前环境自检 (防止依赖缺失导致闪退) ===
 def self_check_dependencies():
+    import importlib.util
     missing = []
     errors = {}
-    # 检查核心依赖 —— 捕获所有异常（不仅是 ImportError），
-    # 因为 DLL 加载失败、版本冲突等也会阻止 import。
+    # 使用 find_spec 毫秒级探测核心依赖包是否存在，避免在闪屏弹出前同步 import pandas/transformers 造成 2 秒冷启动卡顿
     for pkg_import, pkg_pip in [
         ("yaml", "PyYAML"),
         ("pandas", "pandas"),
@@ -23,7 +23,10 @@ def self_check_dependencies():
         ("transformers", "transformers"),
     ]:
         try:
-            __import__(pkg_import)
+            spec = importlib.util.find_spec(pkg_import)
+            if spec is None:
+                missing.append(pkg_pip)
+                errors[pkg_pip] = f"Module '{pkg_import}' not found"
         except Exception as _e:
             missing.append(pkg_pip)
             errors[pkg_pip] = str(_e)
@@ -158,6 +161,27 @@ def _enable_faulthandler() -> None:
 def _git_identity() -> tuple[str, str]:
     """Return (short_hash, branch); ``unknown`` if git is unavailable."""
     from cutora.core.paths import REPO_ROOT
+
+    # 优先纯 Python 直接读取 .git/HEAD（< 1ms），避免每次启动拉起两次 git.exe 子进程
+    try:
+        for base in (REPO_ROOT, os.path.dirname(os.path.dirname(REPO_ROOT))):
+            git_dir = os.path.join(base, ".git")
+            head_file = os.path.join(git_dir, "HEAD")
+            if os.path.isfile(head_file):
+                raw = open(head_file, "r", encoding="utf-8", errors="ignore").read().strip()
+                if raw.startswith("ref: "):
+                    ref = raw[5:].strip()
+                    branch = ref.split("/")[-1]
+                    ref_path = os.path.join(git_dir, *ref.split("/"))
+                    if os.path.isfile(ref_path):
+                        sha = open(ref_path, "r", encoding="utf-8", errors="ignore").read().strip()[:7]
+                        if sha:
+                            return sha, branch
+                elif len(raw) >= 7:
+                    return raw[:7], "HEAD"
+    except Exception:
+        pass
+
     from cutora.core.proc import run
 
     def _git(*args: str) -> str:
@@ -470,15 +494,21 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
 
     splash_message(splash, "准备用户数据…")
     _migrate_user_data_or_log()
-    splash_message(splash, "清理缓存…")
-    try:
-        from cutora.audio.waveform import prune_waveform_cache
-        prune_waveform_cache()
-    except Exception:
-        pass
+
+    def _prune_waveform_bg():
+        import threading
+        def _job():
+            try:
+                from cutora.audio.waveform import prune_waveform_cache
+                prune_waveform_cache()
+            except Exception:
+                pass
+        threading.Thread(target=_job, name="cutora-wave-prune", daemon=True).start()
+
+    QTimer.singleShot(2500, _prune_waveform_bg)
 
     splash_message(splash, "加载字体…")
-    if not load_embedded_fonts():
+    if not load_embedded_fonts(lazy=(window_factory is None)):
         splash.close()
         # pythonw 下没有控制台，直接 SystemExit 用户一个字都看不到，
         # 只会看见「点了没反应」。必须弹一个置顶的框告诉他发生了什么。
@@ -541,6 +571,31 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
     w.show()
     w.raise_()
     w.activateWindow()
+
+    # 主窗口展示后，利用空闲时间片分批渐进注册剩余内置字体（每 35ms 加载 4 个家族，主界面零卡顿）
+    if window_factory is None or getattr(window_factory, "__name__", "") == "MainWindow":
+        try:
+            from cutora.ui.panels.fonts import ALLOWED_FONTS, get_font_manager
+            _rem_fams = list(ALLOWED_FONTS)
+            _trickle_timer = QTimer(w)
+            _trickle_timer.setInterval(35)
+
+            def _trickle_step():
+                mgr = get_font_manager()
+                for _ in range(4):
+                    if not _rem_fams:
+                        _trickle_timer.stop()
+                        return
+                    fam = _rem_fams.pop(0)
+                    try:
+                        mgr._ensure_family_loaded(fam)
+                    except Exception:
+                        pass
+
+            _trickle_timer.timeout.connect(_trickle_step)
+            QTimer.singleShot(800, _trickle_timer.start)
+        except Exception:
+            pass
     _open_proj = os.environ.get("CUTORA_OPEN_PROJECT", "").strip()
     if not _open_proj:
         for _arg in sys.argv[1:]:

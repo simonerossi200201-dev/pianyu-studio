@@ -3120,16 +3120,43 @@ class AnalyzeWorker(QThread):
         self._align_fetch_event.set()
 
     def _ensure_align_downloaded(self, lang: str) -> None:
-        """Block until this language's aligner is on disk, or fall back to built-in native word alignment."""
+        """Block until this language's official aligner is on disk, or download it automatically."""
         from cutora.asr.align_fetch import fetch_plan
         from cutora.asr.stitch_language import StitchLanguageError
-        if fetch_plan(lang) is None:
+        plan = fetch_plan(lang)
+        if plan is None:
             return
         if os.environ.get("CUTORA_ALLOW_NATIVE_ALIGN") == "1":
             return
         if not callable(self._align_fetcher):
+            # Headless / CLI / test worker without UI fetcher: try direct official model download first!
+            model_id = str(plan.get("id") or "")
+            name_zh = str(plan.get("name_zh") or lang)
+            size_mb = float(plan.get("size_bytes") or 0) / (1024.0 * 1024.0)
+            if model_id and os.environ.get("CUTORA_SKIP_AUTO_ALIGN_DOWNLOAD") != "1":
+                self.log.emit(f"📥 检测到缺少 {name_zh}({lang}) 官方对齐模型 ({model_id}, 约 {size_mb:.0f} MB)，正在全自动下载官方权重...")
+                try:
+                    from cutora.asr.download import download_model
+                    last_pct = [-1]
+
+                    def _prog(done_b, tot_b, fname):
+                        if tot_b > 0:
+                            pct = int(round(100.0 * done_b / float(tot_b)))
+                            if pct >= last_pct[0] + 10 or pct == 100:
+                                last_pct[0] = pct
+                                self.log.emit(
+                                    f"  ⏳ 下载 {name_zh} 官方对齐模型 ({fname}): {pct}% "
+                                    f"({done_b / 1048576.0:.1f} / {tot_b / 1048576.0:.1f} MB)"
+                                )
+
+                    download_model(model_id, progress_cb=_prog)
+                    if fetch_plan(lang) is None:
+                        self.log.emit(f"✔ {name_zh}({lang}) 官方对齐模型下载并校验完成！")
+                        return
+                except Exception as dl_exc:
+                    self.log.emit(f"⚠ 官方对齐模型自动下载未完成 ({dl_exc})，自动切换内置声学词级对齐引擎兜底。")
             os.environ["CUTORA_ALLOW_NATIVE_ALIGN"] = "1"
-            self.log.emit("⚡ 未检测到专用语种对齐模型权重，已自动启用内置声学词级对齐引擎继续拼接。")
+            self.log.emit("⚡ 已自动启用内置声学词级对齐引擎继续拼接。")
             return
         self._align_fetch_event.clear()
         self._align_fetch_ok = False
@@ -3255,15 +3282,27 @@ class AnalyzeWorker(QThread):
         return box.get("v")
 
     def _prepare_asr(self):
-        """Lock the batch language, then load align once. None-tier stops here."""
+        """Lock the batch language (from copy text first when auto!), then load align once. None-tier stops here."""
         from cutora.asr.languages import whisper_language_arg
         from cutora.asr.models import align_tier, language_capability
         from cutora.asr.stitch_language import (
-            StitchLanguageError, align_choice_log, detection_log,
-            read_whisper_detection, read_whisper_info, resolve_detected_language,
-            unstitchable_message,
+            StitchLanguageError, align_choice_log, detect_language_from_scripts,
+            detection_log, read_whisper_detection, read_whisper_info,
+            resolve_detected_language, unstitchable_message,
         )
         explicit = whisper_language_arg(self.language)
+        if explicit is None and getattr(self, "scripts", None):
+            script_lang, script_prob = detect_language_from_scripts(self.scripts)
+            if script_lang and align_tier(script_lang) != "none":
+                cap = language_capability(script_lang) or {}
+                name_zh = cap.get("name_zh") or script_lang
+                self.log.emit(
+                    f"📖 已根据原文案自动锁定识别语言：{name_zh}（{script_lang}），"
+                    f"置信度 {script_prob * 100:.0f}%（以文案为根源基准校验视频配音）"
+                )
+                explicit = script_lang
+                self.language = script_lang
+
         inproc = os.environ.get("CUTORA_ASR_INPROC") == "1"
         client = None
         model = None
@@ -3279,12 +3318,13 @@ class AnalyzeWorker(QThread):
         if not inproc:
             try:
                 from cutora.asr.clip_worker import AsrClient
+                self.log.emit("⏳ 正在启动语音识别与词级对齐子进程 (首次加载大模型约需 5~10 秒，请稍候)...")
                 client = AsrClient(log=self.log.emit)
                 if explicit is None:
                     client.start("en", defer_align=True)
                 else:
                     client.start(explicit)
-                self.log.emit("  ASR 跑在可杀子进程里（看门狗 %d× 时长）" % 10)
+                self.log.emit("  ✔ ASR 语音引擎已就绪（运行于独立守护子进程，看门狗 %d× 时长）" % 10)
             except Exception as e:
                 self.log.emit("  ⚠ ASR 子进程未启动，回退进程内: %s" % str(e)[:80])
                 try:
@@ -4801,6 +4841,16 @@ class StitcherDialog(QDialog):
         self.tbl_script.setRowCount(len(self._group_keys))
         for r, gnum in enumerate(self._group_keys):
             g_info = res.group(gnum)
+            if g_info is None:
+                folder_for_g = self._folder_of.get(gnum, "")
+                for _cand in res.groups:
+                    if (
+                        str(_cand.key).lower() == str(gnum).lower()
+                        or str(_cand.base).lower() == str(gnum).lower()
+                        or (folder_for_g and os.path.normcase(_cand.folder) == os.path.normcase(folder_for_g) and len(res.groups) == len(self._group_keys))
+                    ):
+                        g_info = _cand
+                        break
             it0 = QTableWidgetItem(gnum)
             it0.setFlags(it0.flags() & ~Qt.ItemFlag.ItemIsEditable)
             if g_info is not None:
@@ -4812,25 +4862,27 @@ class StitcherDialog(QDialog):
             it1 = QTableWidgetItem(txt_val)
             it1.setToolTip(txt_val)
             self.tbl_script.setItem(r, 1, it1)
-            if self.tbl_script.columnCount() >= 3 and g_info is not None:
-                c_names = [c.name for c in g_info.clips]
-                preview_seq = " → ".join(c_names[:3]) + (" …" if len(c_names) > 3 else "")
-                badge = "⚠" if g_info.low else "✓"
-                it2 = QTableWidgetItem(f"{badge} {len(c_names)}段 · {preview_seq}")
-                it2.setFlags(it2.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                tip_lines = [
-                    f"分组依据: {g_info.basis}",
-                    f"置信度: {g_info.confidence * 100:.0f}%",
-                    "组内排序:",
-                ] + [f"  {idx + 1}. {nm}" for idx, nm in enumerate(c_names)]
-                if g_info.warnings:
-                    tip_lines.append("提示: " + "；".join(g_info.warnings))
-                it2.setToolTip("\n".join(tip_lines))
-                if g_info.low:
-                    it2.setForeground(QColor("#E5A93C"))
-                else:
-                    it2.setForeground(QColor("#56D364"))
-                self.tbl_script.setItem(r, 2, it2)
+            if self.tbl_script.columnCount() >= 3:
+                c_names = [c.name for c in g_info.clips] if g_info is not None else [os.path.basename(p) for p in (self._groups.get(gnum) or [])]
+                if c_names:
+                    preview_seq = " → ".join(c_names[:3]) + (" …" if len(c_names) > 3 else "")
+                    is_low = bool(g_info.low) if g_info is not None else False
+                    badge = "⚠" if is_low else "✓"
+                    it2 = QTableWidgetItem(f"{badge} {len(c_names)}段 · {preview_seq}")
+                    it2.setFlags(it2.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    tip_lines = [
+                        f"分组依据: {g_info.basis if g_info is not None else '自动识别前缀与序号'}",
+                        f"置信度: {(g_info.confidence * 100) if g_info is not None else 100:.0f}%",
+                        "组内排序:",
+                    ] + [f"  {idx + 1}. {nm}" for idx, nm in enumerate(c_names)]
+                    if g_info is not None and g_info.warnings:
+                        tip_lines.append("提示: " + "；".join(g_info.warnings))
+                    it2.setToolTip("\n".join(tip_lines))
+                    if is_low:
+                        it2.setForeground(QColor("#E5A93C"))
+                    else:
+                        it2.setForeground(QColor("#56D364"))
+                    self.tbl_script.setItem(r, 2, it2)
         self._update_fill_label()
 
     def _paste_clipboard(self):

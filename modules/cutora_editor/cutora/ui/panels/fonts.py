@@ -448,9 +448,10 @@ class FontManager:
                 fam_files[fam] = paths
         if not fam_files:
             return self.register()
-        self.font_files = fam_files
-        FONT_FILES = fam_files
-        ALLOWED_FONTS = sorted(f for f in fam_files.keys() if f != "Noto Color Emoji")
+        FONT_FILES.clear()
+        FONT_FILES.update(fam_files)
+        self.font_files = FONT_FILES
+        ALLOWED_FONTS[:] = sorted(f for f in fam_files.keys() if f != "Noto Color Emoji")
         self._family_name_map = {f: f for f in fam_files}
         self._registered = True
         _mark_fonts_registered()
@@ -636,15 +637,19 @@ def load_embedded_fonts(lazy: bool = False) -> bool:
             FONT_MANAGER = FontManager({})
             if FONT_MANAGER.register_lazy_from_manifest():
                 load_font_metadata()
+                refresh_all_font_combos()
                 return True
         fam_files, file_fams, file_ids, stats = scan_fonts_from_dir()
         if not fam_files:
             _log_no_loadable(stats)
             return False
-        FONT_FILES = fam_files
-        FONT_FILE_FAMILIES = file_fams
-        FONT_FILE_IDS = file_ids
-        ALLOWED_FONTS = sorted(
+        FONT_FILES.clear()
+        FONT_FILES.update(fam_files)
+        FONT_FILE_FAMILIES.clear()
+        FONT_FILE_FAMILIES.update(file_fams)
+        FONT_FILE_IDS.clear()
+        FONT_FILE_IDS.update(file_ids)
+        ALLOWED_FONTS[:] = sorted(
             f for f in fam_files.keys() if f not in ("Noto Color Emoji",))
         FONT_MANAGER = FontManager(FONT_FILES)
         ok = FONT_MANAGER.register()

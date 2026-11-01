@@ -900,6 +900,7 @@ def build_prompt(desc, card, eye="闭眼", scene="常规", seg="", shots=None,
         parts.append(blocks.get(k, ""))
     head = "\n".join(p for p in parts if p)
     if seg:
+        head = adapt_prompt_head_to_language(head, seg)
         return f"{head}\n{seg}" if head else seg
     # 规格 86：仅当调用方显式传 no_copy=True 时追加静音提示。
     # 不用 seg 是否为空判断——有文案任务里空镜等段 text 也可能为空，必须与现在逐字节一致。
@@ -910,7 +911,55 @@ def build_prompt(desc, card, eye="闭眼", scene="常规", seg="", shots=None,
     return head
 
 
-# ---------------- vXX_shot.txt 读写 ----------------
+def detect_copy_language_zh(text: str) -> str:
+    """根据台词文案自动判定语种中文名（如 '法语', '西班牙语', '葡萄牙语', '德语', '意大利语', '英语' 等）。"""
+    s = (text or "").strip()
+    if not s:
+        return "英语"
+    if re.search(r"[\u4e00-\u9fff]", s):
+        return "中文"
+    if re.search(r"[\u3040-\u30ff]", s):
+        return "日语"
+    if re.search(r"[\uac00-\ud7af]", s):
+        return "韩语"
+    if re.search(r"[\u0400-\u04ff]", s):
+        return "俄语"
+    if re.search(r"[\u0600-\u06ff]", s):
+        return "阿拉伯语"
+    low = f" {s.lower()} "
+    words = set(re.findall(r"[a-zà-ÿœæçñß]+", low))
+    scores = {
+        "法语": len(words & {"le", "la", "les", "de", "des", "du", "un", "une", "et", "est", "en", "que", "qui", "dans", "pour", "sur", "pas", "plus", "avec", "tout", "tous", "mais", "ou", "seigneur", "dieu", "prière", "paix", "cœur", "mon", "ma", "mes", "tu", "te", "toi", "cette", "cet", "aux", "son", "sa", "ses", "comme", "sans", "sous", "chez", "croyant", "partage"}) * 2 + len(re.findall(r"[éèêëàâùûîïôœç]|qu['’]|l['’]|d['’]|n['’]|j['’]|c['’]|s['’]|t['’]|m['’]", low)) * 2,
+        "西班牙语": len(words & {"el", "la", "los", "las", "de", "del", "un", "una", "y", "es", "en", "que", "por", "con", "para", "como", "más", "pero", "sus", "al", "lo", "todo", "todos", "dios", "señor", "oración", "paz", "mi", "mis", "tu", "tus", "su"}) * 2 + len(re.findall(r"[ñ¿¡áéíóú]", low)),
+        "葡萄牙语": len(words & {"o", "a", "os", "as", "um", "uma", "de", "do", "da", "dos", "das", "em", "no", "na", "para", "com", "não", "mais", "mas", "como", "seu", "sua", "deus", "senhor", "oração", "paz", "meu", "minha", "você"}) * 2 + len(re.findall(r"[ãõç]", low)) * 3,
+        "意大利语": len(words & {"il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "di", "del", "della", "che", "non", "per", "con", "sono", "come", "più", "dio", "signore", "preghiera", "pace", "mio", "mia"}) * 2,
+        "德语": len(words & {"der", "die", "das", "den", "dem", "des", "ein", "eine", "und", "ist", "in", "zu", "mit", "auf", "für", "nicht", "sich", "auch", "ich", "du", "wir", "ihr", "gott", "herr", "gebet", "frieden"}) * 2 + len(re.findall(r"[äöüß]", low)) * 3,
+        "英语": len(words & {"the", "and", "to", "of", "in", "is", "it", "you", "that", "for", "on", "with", "as", "are", "this", "by", "be", "at", "or", "from", "lord", "god", "prayer", "peace", "your", "my", "who", "will"}) * 2,
+    }
+    best_lang, best_sc = max(scores.items(), key=lambda kv: kv[1])
+    if best_sc >= 2 and best_lang != "英语" and best_sc > scores["英语"]:
+        return best_lang
+    return "英语"
+
+
+def adapt_prompt_head_to_language(head: str, copy_text: str) -> str:
+    """当台词文案不是英语时，自动将指令头中的 '带有美国口音的英语' / '下面这一句英文' 等硬编码替换为文案真实语种。"""
+    if not head or not copy_text:
+        return head
+    lang_zh = detect_copy_language_zh(copy_text)
+    if not lang_zh or lang_zh == "英语":
+        return head
+    out = head
+    out = re.sub(r"用带有[^，,。；;\n]*口音的(英语|英文)", f"用自然纯正的{lang_zh}", out)
+    out = re.sub(r"带有[^，,。；;\n]*口音的(英语|英文)", f"自然纯正的{lang_zh}", out)
+    out = out.replace("美国口音", f"纯正{lang_zh}口音").replace("英式口音", f"纯正{lang_zh}口音")
+    out = out.replace("下面这一句英文", f"下面这一句{lang_zh}")
+    out = out.replace("下面这句英文", f"下面这句{lang_zh}")
+    out = out.replace("这几句英文", f"这几句{lang_zh}")
+    out = out.replace("用英语有声地", f"用{lang_zh}有声地")
+    out = out.replace("用英文有声地", f"用{lang_zh}有声地")
+    out = out.replace("用英语", f"用{lang_zh}")
+    return out
 
 # 自动生成的文件带指纹标记；手工改过的文件没有（或指纹对不上）。
 # —— 为什么需要这个 ——

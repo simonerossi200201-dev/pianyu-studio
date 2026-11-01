@@ -133,15 +133,8 @@ def _nvidia_compute_cap():
         return _CC_CACHE["v"]
     val = None
     try:
-        import subprocess
-        from cutora.core.proc import run as _run
-        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
-        r = _run(["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
-                 capture_output=True, text=True, timeout=4, creationflags=flags)
-        if r.returncode == 0:
-            txt = (r.stdout or "").strip().splitlines()[0].strip()
-            major, minor = txt.split(".")[:2]
-            val = int(major) * 10 + int(minor)
+        from cutora.core.runtime import nvidia_gpu_probe
+        _, val = nvidia_gpu_probe()
     except Exception:
         val = None
     _CC_CACHE["v"] = val

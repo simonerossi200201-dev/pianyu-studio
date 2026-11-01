@@ -1096,7 +1096,7 @@ main.stage > section.panel-track{
 .panel-track .th .rev .drop{color:var(--bad);border-color:var(--bad)}
 .panel-track .trackbar{
   display:flex;gap:2px;margin-bottom:5px;user-select:none;
-  position:sticky;top:0;z-index:3;background:var(--ground);padding:4px 0
+  position:relative;background:var(--ground);padding:4px 0
 }
 .panel-track .tcell{
   flex:1 1 0;min-width:5px;height:34px;border-radius:2px;cursor:pointer;
@@ -3756,4 +3756,317 @@ main.stage > section.panel-imgstudio{overflow:hidden;padding:12px 16px;display:f
 .rv-guide-steps .btn{
   display:flex;align-items:center;padding:10px 12px;width:100%;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   2 排镜头 & 3 提示词 — Google Sheet 标准单元格网格、调整行高列宽、
+   右下角拖拽填充柄、同组外框颜色、悬浮图片阅读器与右键菜单
+   ═══════════════════════════════════════════════════════════════════════════ */
+.gs-sheet-table{
+  width:100%;
+  table-layout:fixed;
+  border-collapse:separate;
+  border-spacing:0;
+  font-size:12.5px;
+  user-select:none;
+  background:var(--ground);
+}
+.gs-sheet-table thead th{
+  position:sticky;
+  top:0;
+  z-index:6;
+  background:var(--panel-2);
+  color:var(--ink-2);
+  font-family:var(--mono);
+  font-size:11px;
+  font-weight:600;
+  padding:6px 8px;
+  border-right:1px solid var(--rule-2);
+  border-bottom:2px solid var(--rule-2);
+  border-top:1px solid var(--rule-2);
+  text-align:left;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.gs-sheet-table thead tr.gs-func-row th{
+  top:31px;
+  z-index:5;
+  background:var(--raise) !important;
+  border-bottom:1px solid var(--rule-2);
+}
+.gs-sheet-table tbody td{
+  position:relative;
+  padding:4px 8px;
+  border-right:1px solid rgba(160,152,136,.22);
+  border-bottom:1px solid rgba(160,152,136,.22);
+  color:var(--ink);
+  vertical-align:top;
+  box-sizing:border-box;
+  overflow:hidden;
+  background:var(--panel);
+  transition:background .08s;
+}
+.gs-sheet-table tbody tr:hover td{
+  background:rgba(255,255,255,.025);
+}
+/* 列宽拖拽调整手柄 */
+.gs-col-resizer{
+  position:absolute;
+  top:0;
+  right:-3px;
+  width:7px;
+  bottom:0;
+  cursor:col-resize;
+  z-index:10;
+}
+.gs-col-resizer:hover, .gs-col-resizer.active{
+  background:var(--accent);
+  opacity:.85;
+}
+/* 行高拖拽调整手柄 */
+.gs-row-resizer{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:-3px;
+  height:6px;
+  cursor:row-resize;
+  z-index:9;
+}
+.gs-row-resizer:hover, .gs-row-resizer.active{
+  background:var(--accent);
+  opacity:.85;
+}
+/* 单元格选中与焦点框 */
+.gs-sheet-table tbody td.gs-cell-in-range{
+  background:rgba(59,130,246,.14) !important;
+}
+.gs-sheet-table tbody td.gs-cell-active{
+  outline:2px solid #3b82f6;
+  outline-offset:-2px;
+  background:rgba(59,130,246,.18) !important;
+  z-index:3;
+}
+.gs-sheet-table tbody td.gs-cell-fill-preview{
+  outline:1px dashed #f59e0b;
+  outline-offset:-1px;
+  background:rgba(245,158,11,.12) !important;
+}
+/* 右下角 Google Sheet 拖拽拷贝填充小方块 */
+.gs-fill-handle{
+  position:absolute;
+  right:0;
+  bottom:0;
+  width:8px;
+  height:8px;
+  background:#3b82f6;
+  border:1.5px solid #ffffff;
+  cursor:crosshair;
+  z-index:12;
+  box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+.gs-fill-handle:hover{
+  transform:scale(1.25);
+  background:#2563eb;
+}
+/* 隐藏任务行时保留同组外框颜色分区 */
+.gs-sheet-table tbody tr.gs-group-row td:first-child{
+  border-left:3px solid var(--group-border-color, #3b82f6) !important;
+}
+.gs-sheet-table tbody tr.gs-group-row td:last-child{
+  border-right:3px solid var(--group-border-color, #3b82f6) !important;
+}
+.gs-sheet-table tbody tr.gs-group-first td{
+  border-top:2.5px solid var(--group-border-color, #3b82f6) !important;
+}
+.gs-sheet-table tbody tr.gs-group-last td{
+  border-bottom:2.5px solid var(--group-border-color, #3b82f6) !important;
+}
+/* 任务徽标（隐藏任务行时可点击展开该任务行） */
+.gs-task-mini-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+  padding:1px 5px;
+  border-radius:4px;
+  font-family:var(--mono);
+  font-size:10px;
+  font-weight:700;
+  cursor:pointer;
+  color:#fff;
+  background:var(--group-border-color, #3b82f6);
+  margin-right:4px;
+  box-shadow:0 1px 2px rgba(0,0,0,.3);
+}
+.gs-task-mini-badge:hover{
+  filter:brightness(1.15);
+}
+/* 单元格文本自动换行 vs 溢出截断 (Google Sheet 模式) */
+.gs-cell-text.wrap{
+  white-space:pre-wrap;
+  word-break:break-word;
+  line-height:1.45;
+}
+.gs-cell-text.clip{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  line-height:1.45;
+}
+/* 每一行配图缩略图 */
+.gs-row-thumb{
+  width:42px;
+  height:30px;
+  object-fit:cover;
+  border-radius:4px;
+  border:1px solid var(--rule-2);
+  background:#111;
+  flex:0 0 auto;
+  cursor:pointer;
+}
+.gs-row-thumb:hover{
+  border-color:var(--accent);
+  transform:scale(1.06);
+}
+/* 外部悬浮图片阅读器窗口 */
+.gs-floating-img-viewer{
+  position:fixed;
+  right:24px;
+  bottom:24px;
+  width:380px;
+  max-width:92vw;
+  background:var(--panel-2);
+  border:1.5px solid var(--accent);
+  border-radius:10px;
+  box-shadow:0 16px 42px rgba(0,0,0,.68);
+  z-index:9500;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.gs-floating-img-viewer .fv-hd{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:8px 12px;
+  background:var(--raise);
+  border-bottom:1px solid var(--rule-2);
+  cursor:move;
+  font-size:12px;
+  font-weight:600;
+}
+.gs-floating-img-viewer .fv-body{
+  padding:10px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+  background:#0c0c0e;
+}
+.gs-floating-img-viewer .fv-img{
+  width:100%;
+  max-height:360px;
+  object-fit:contain;
+  border-radius:6px;
+  background:#050506;
+}
+.gs-floating-img-viewer .fv-ft{
+  padding:8px 12px;
+  background:var(--panel-2);
+  border-top:1px solid var(--rule);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font-size:11.5px;
+}
+/* 鼠标悬停单元格内容预览浮窗 */
+.gs-cell-hover-popover{
+  position:fixed;
+  max-width:460px;
+  max-height:260px;
+  overflow-y:auto;
+  padding:10px 12px;
+  background:rgba(20,20,24,.96);
+  color:#f4f1ea;
+  border:1px solid var(--accent);
+  border-radius:8px;
+  box-shadow:0 10px 28px rgba(0,0,0,.65);
+  font-size:12.5px;
+  line-height:1.55;
+  white-space:pre-wrap;
+  word-break:break-word;
+  z-index:9800;
+  pointer-events:none;
+}
+/* 右键上下文菜单 (用于预设管理分组等) */
+.gs-context-menu{
+  position:fixed;
+  min-width:220px;
+  background:var(--panel-2);
+  border:1px solid var(--rule-2);
+  border-radius:8px;
+  box-shadow:0 12px 32px rgba(0,0,0,.65);
+  padding:5px;
+  z-index:9900;
+  font-size:12.5px;
+}
+.gs-context-menu .ctx-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:7px 10px;
+  border-radius:5px;
+  cursor:pointer;
+  color:var(--ink);
+}
+.gs-context-menu .ctx-item:hover{
+  background:rgba(212,175,55,.16);
+  color:var(--accent);
+}
+.gs-context-menu .ctx-sep{
+  height:1px;
+  background:var(--rule);
+  margin:4px 2px;
+}
+/* 顶部工具栏精简下拉收纳菜单 */
+.gs-toolbar-dropdown{
+  position:relative;
+  display:inline-block;
+}
+.gs-toolbar-dropdown-menu{
+  position:absolute;
+  right:0;
+  top:calc(100% + 4px);
+  min-width:190px;
+  background:var(--panel-2);
+  border:1px solid var(--rule-2);
+  border-radius:8px;
+  box-shadow:0 10px 28px rgba(0,0,0,.6);
+  padding:5px;
+  z-index:800;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.gs-toolbar-dropdown-menu .dd-item{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  font-size:12px;
+  color:var(--ink);
+  border-radius:5px;
+  cursor:pointer;
+  background:transparent;
+  border:none;
+  text-align:left;
+  width:100%;
+}
+.gs-toolbar-dropdown-menu .dd-item:hover{
+  background:rgba(212,175,55,.15);
+  color:var(--accent);
+}
+
 

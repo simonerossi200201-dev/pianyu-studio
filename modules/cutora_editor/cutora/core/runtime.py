@@ -192,26 +192,88 @@ def preload_system_msvc_runtime() -> str | None:
     return mapped
 
 
-def _nvidia_gpu_name() -> str | None:
-    """不碰 torch 的显卡名（nvidia-smi / nvcuda.dll）。没有 N 卡 → None。"""
-    if _CUDA_DEVICE_NAME and _CUDA_DEVICE_NAME != "cpu":
-        return _CUDA_DEVICE_NAME
+_NV_PROBE_CACHE: dict[str, object] = {"done": False, "name": None, "cc": None}
+
+
+def nvidia_gpu_probe() -> tuple[str | None, int | None]:
+    """一次查询并持久化缓存 (gpu_name, compute_cap_int)，避免每次启动重复拉起两次 nvidia-smi.exe。"""
+    if _NV_PROBE_CACHE.get("done"):
+        return _NV_PROBE_CACHE.get("name"), _NV_PROBE_CACHE.get("cc")  # type: ignore[return-value]
+
+    nvcuda_dll = r"C:\Windows\System32\nvcuda.dll"
+    driver_sig = ""
+    if os.name == "nt":
+        if not os.path.isfile(nvcuda_dll):
+            _NV_PROBE_CACHE.update(done=True, name=None, cc=None)
+            return None, None
+        try:
+            st = os.stat(nvcuda_dll)
+            driver_sig = f"{st.st_size}:{st.st_mtime_ns}"
+        except OSError:
+            driver_sig = "nt"
+
+    cache_file = None
+    try:
+        from cutora.core.paths import user_cache_dir
+        cache_file = os.path.join(user_cache_dir(), "gpu_probe_cache.json")
+        if os.path.isfile(cache_file):
+            import json
+            data = json.loads(open(cache_file, "r", encoding="utf-8").read())
+            if isinstance(data, dict) and data.get("sig") == driver_sig and data.get("name"):
+                name = str(data["name"])
+                cc = int(data["cc"]) if data.get("cc") is not None else None
+                _NV_PROBE_CACHE.update(done=True, name=name, cc=cc)
+                return name, cc
+    except Exception:
+        pass
+
+    name: str | None = None
+    cc: int | None = None
     try:
         import subprocess
         from cutora.core.proc import run as _run
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
-        smi_exe = r"C:\Windows\System32\nvidia-smi.exe" if (os.name == "nt" and os.path.isfile(r"C:\Windows\System32\nvidia-smi.exe")) else "nvidia-smi"
-        r = _run([smi_exe, "--query-gpu=name", "--format=csv,noheader"],
-                 capture_output=True, text=True, timeout=8, creationflags=flags)
+        smi_exe = (
+            r"C:\Windows\System32\nvidia-smi.exe"
+            if (os.name == "nt" and os.path.isfile(r"C:\Windows\System32\nvidia-smi.exe"))
+            else "nvidia-smi"
+        )
+        r = _run(
+            [smi_exe, "--query-gpu=name,compute_cap", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=5, creationflags=flags,
+        )
         if r.returncode == 0:
-            name = (r.stdout or "").strip().splitlines()[0].strip()
-            if name:
-                return name
+            line = (r.stdout or "").strip().splitlines()[0].strip()
+            parts = [p.strip() for p in line.split(",")]
+            if parts and parts[0]:
+                name = parts[0]
+            if len(parts) >= 2 and "." in parts[1]:
+                major, minor = parts[1].split(".")[:2]
+                cc = int(major) * 10 + int(minor)
     except Exception:
         pass
-    if os.name == "nt" and os.path.isfile(r"C:\Windows\System32\nvcuda.dll"):
-        return "NVIDIA GeForce RTX GPU"
-    return None
+
+    if not name and os.name == "nt" and os.path.isfile(nvcuda_dll):
+        name = "NVIDIA GeForce RTX GPU"
+
+    _NV_PROBE_CACHE.update(done=True, name=name, cc=cc)
+    if cache_file and name:
+        try:
+            import json
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            with open(cache_file, "w", encoding="utf-8") as fh:
+                json.dump({"sig": driver_sig, "name": name, "cc": cc}, fh, ensure_ascii=False)
+        except Exception:
+            pass
+    return name, cc
+
+
+def _nvidia_gpu_name() -> str | None:
+    """不碰 torch 的显卡名（nvidia-smi / nvcuda.dll）。没有 N 卡 → None。"""
+    if _CUDA_DEVICE_NAME and _CUDA_DEVICE_NAME != "cpu":
+        return _CUDA_DEVICE_NAME
+    name, _ = nvidia_gpu_probe()
+    return name
 
 
 def init_torch_runtime(render_child: bool = False) -> None:

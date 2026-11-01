@@ -469,6 +469,13 @@ def _tok_words(text: str) -> list[str]:
     return re.findall(r"[a-z0-9']+", (text or "").lower())
 
 
+def _skel_norm(s: str) -> str:
+    """去除所有空白与标点并转小写，用于忽略法语/拉丁语分词内部的断字空格误差（如 'che min' vs 'chemin'）。"""
+    import unicodedata
+    s = unicodedata.normalize("NFKC", str(s or "")).lower()
+    return re.sub(r"[\W_]+", "", s, flags=re.UNICODE)
+
+
 def sync_stitch_missing_to_orante(
     missing_map: dict[str, Any],
     cuts_map: dict[str, Any] | None = None,
@@ -476,9 +483,10 @@ def sync_stitch_missing_to_orante(
     out_dirs: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """将 CUTORA 智能拼接发现的缺词/遗漏片段自动定位到 Orante 对应任务的指定分镜 (`seg['mark'] = True`, `seg['missing'] = ...`)，
-    写回 각 `<task_dir>/manifest.json` 并在各自 `<clips_dir>/_stitched/缺失文案清单.txt` 落盘，同时通知运行中的 Orante 刷新。
+    写回各 `<task_dir>/manifest.json` 并在各自 `<clips_dir>/_stitched/缺失文案清单.txt` 落盘，同时通知运行中的 Orante 刷新。
     这样用户回到 Orante -> 收片 -> 全部任务 -> 已标记 即可一键批量重生补全！
     """
+    import difflib
     import urllib.request
 
     cuts_map = cuts_map or {}
@@ -495,8 +503,6 @@ def sync_stitch_missing_to_orante(
             clip_names = []
         else:
             continue
-        if not holes:
-            continue
 
         folder_str = folder_of.get(gnum) or ""
         if not folder_str and gnum in out_dirs:
@@ -506,107 +512,191 @@ def sync_stitch_missing_to_orante(
         cdir = Path(folder_str)
         tdir = cdir.parent if cdir.name.lower() in ("clips", "片段") else cdir
         mf_path = tdir / "manifest.json"
+        st_dir = cdir / "_stitched"
 
-        # 1. 在该任务自己的 clips/_stitched/缺失文案清单.txt 写入缺失报告
-        try:
-            st_dir = cdir / "_stitched"
-            st_dir.mkdir(parents=True, exist_ok=True)
-            lines = [
-                "缺失文案清单 — 以下内容现有片段都没讲到, 请在 Orante「全部任务 -> 已标记」中一键重生",
-                "=" * 60,
-                f"\n【组 {gnum}】 现有片段: {', '.join(clip_names)}",
-            ]
-            for mi, mm in enumerate(holes, 1):
-                if isinstance(mm, dict):
-                    s0 = int(mm.get("s", 0)) + 1
-                    e0 = int(mm.get("e", 0))
-                    mtxt = str(mm.get("text") or "").strip()
-                    lines.append(f"  缺失{mi} (文案第{s0}~{e0}词):")
-                    lines.append(f"    {mtxt}")
-                else:
-                    lines.append(f"  缺失{mi}:")
-                    lines.append(f"    {mm}")
-            (st_dir / "缺失文案清单.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
-        except Exception:
-            pass
+        # 若未传入 cuts_map 或键名被归一化（如 T0191 -> T191），尝试从 _stitched/cutlist.json 兜底读取
+        group_cuts: list[dict[str, Any]] = list(cuts_map.get(gnum) or [])
+        if not group_cuts:
+            for k, v in cuts_map.items():
+                if str(k).lstrip("Tt0") == str(gnum).lstrip("Tt0") and isinstance(v, list):
+                    group_cuts = list(v)
+                    break
+        if not group_cuts and (st_dir / "cutlist.json").is_file():
+            try:
+                cl_data = json.loads((st_dir / "cutlist.json").read_text(encoding="utf-8"))
+                if isinstance(cl_data, dict):
+                    for k, v in cl_data.items():
+                        if isinstance(v, list) and (k == gnum or str(k).lstrip("Tt0") == str(gnum).lstrip("Tt0") or len(cl_data) == 1):
+                            group_cuts = list(v)
+                            break
+            except Exception:
+                pass
 
-        if not mf_path.is_file():
+        # 建立分镜号 s_num -> cutlist 条目映射
+        clip_by_s: dict[int, dict[str, Any]] = {}
+        for it in group_cuts:
+            if not isinstance(it, dict):
+                continue
+            nm = str(it.get("name") or "")
+            m_sn = re.search(r"-s0*(\d+)", nm, re.IGNORECASE)
+            if m_sn:
+                clip_by_s[int(m_sn.group(1))] = it
+
+        mdata: dict[str, Any] | None = None
+        segs: list[dict[str, Any]] = []
+        if mf_path.is_file():
+            try:
+                mdata = json.loads(mf_path.read_text(encoding="utf-8"))
+                segs = list(mdata.get("segments") or [])
+            except Exception:
+                mdata = None
+                segs = []
+
+        # 先清除该任务所有分镜上的历史旧标记，防止上次拼接的残留标记污染本次结果
+        for seg in segs:
+            if isinstance(seg, dict):
+                seg["mark"] = False
+                seg.pop("missing", None)
+
+        if not holes:
+            if mdata is not None and segs:
+                try:
+                    mf_path.write_text(json.dumps(mdata, ensure_ascii=False, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
             continue
 
-        # 2. 精准匹配到 manifest.json 的具体分镜 s，并设置 mark=True 与 missing 文案
-        try:
-            mdata = json.loads(mf_path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        segs = mdata.get("segments") or []
-        if not segs:
-            continue
+        # 预计算每个分镜的无空格字符骨架与在整篇文案中的真实词区间
+        copy_text = ""
+        if mdata and isinstance(mdata.get("copy"), dict):
+            copy_text = str(mdata["copy"].get("text") or "")
+        copy_words = _tok_words(copy_text) if copy_text else []
 
-        # 计算每个分镜在整篇文案中的词区间 [w0, w1)
-        seg_spans: list[tuple[dict[str, Any], int, int, list[str]]] = []
+        seg_infos: list[dict[str, Any]] = []
         cursor = 0
         for seg in segs:
-            w_list = _tok_words(str(seg.get("text") or ""))
-            seg_spans.append((seg, cursor, cursor + len(w_list), w_list))
-            cursor += len(w_list)
+            s_num = int(seg.get("s", 0))
+            s_txt = str(seg.get("text") or "")
+            s_skel = _skel_norm(s_txt)
+            w_list = _tok_words(s_txt)
+            # 若存在 copy_words，通过字符骨架在 copy_words 中对齐真实起止词号，消除断词空格偏移
+            w0, w1 = cursor, cursor + len(w_list)
+            if copy_words and s_skel:
+                best_w0, best_w1, best_ratio = w0, w1, 0.0
+                search_lo = max(0, cursor - 6)
+                search_hi = min(len(copy_words), cursor + len(w_list) + 10)
+                for i0 in range(search_lo, search_hi):
+                    acc = ""
+                    for i1 in range(i0 + 1, min(len(copy_words) + 1, i0 + len(w_list) + 6)):
+                        acc += _skel_norm(copy_words[i1 - 1])
+                        r = difflib.SequenceMatcher(None, s_skel, acc).ratio()
+                        if r > best_ratio:
+                            best_ratio = r
+                            best_w0, best_w1 = i0, i1
+                if best_ratio >= 0.72:
+                    w0, w1 = best_w0, best_w1
+                    cursor = w1
+                else:
+                    cursor += len(w_list)
+            else:
+                cursor += len(w_list)
+
+            cl_item = clip_by_s.get(s_num) or {}
+            is_failed_clip = bool(
+                cl_item and (
+                    cl_item.get("keep") is False
+                    or cl_item.get("level") in ("junk", "low", "none")
+                )
+            )
+            is_good_clip = bool(
+                cl_item and cl_item.get("keep") is True
+                and cl_item.get("level") == "ok"
+                and float(cl_item.get("ratio") or 0.0) >= 0.70
+            )
+            seg_infos.append({
+                "seg": seg,
+                "s": s_num,
+                "text": s_txt,
+                "skel": s_skel,
+                "w0": w0,
+                "w1": w1,
+                "words": w_list,
+                "is_failed_clip": is_failed_clip,
+                "is_good_clip": is_good_clip,
+            })
 
         hit_s_nums: list[int] = []
+        hole_matched_s: list[list[int]] = []
+
         for mm in holes:
             if not isinstance(mm, dict):
                 mm = {"text": str(mm), "s": -1, "e": -1}
             m_text = str(mm.get("text") or "").strip()
             if not m_text:
+                hole_matched_s.append([])
                 continue
             m_s = int(mm.get("s", -1))
             m_e = int(mm.get("e", -1))
-            m_words = _tok_words(m_text)
-            matched_segs: list[dict[str, Any]] = []
+            m_skel = _skel_norm(m_text)
+            matched_infos: list[dict[str, Any]] = []
 
-            # (A) 词坐标区间重叠匹配
-            if m_s >= 0 and m_e > m_s:
-                for seg, w0, w1, _ in seg_spans:
-                    if max(w0, m_s) < min(w1, m_e):
-                        matched_segs.append(seg)
-
-            # (B) 子串或词集合高重合度匹配
-            if not matched_segs and m_words:
-                best_seg = None
-                best_score = 0.0
-                m_low = m_text.lower()
-                for seg, _, _, s_words in seg_spans:
-                    stxt_low = str(seg.get("text") or "").lower()
-                    if m_low in stxt_low or (stxt_low and stxt_low in m_low):
-                        matched_segs.append(seg)
+            # (A) 优先使用无空格字符骨架精准匹配（彻底免疫 'che min' / 'Part age' 等断字空格与词号偏移）
+            if m_skel and seg_infos:
+                scored: list[tuple[float, float, float, dict[str, Any]]] = []
+                for si in seg_infos:
+                    s_skel = si["skel"]
+                    if not s_skel:
                         continue
-                    if s_words:
-                        common = sum(1 for w in m_words if w in s_words)
-                        score = common / max(1, len(m_words))
-                        if score > best_score:
-                            best_score = score
-                            best_seg = seg
-                if not matched_segs and best_seg is not None and best_score >= 0.35:
-                    matched_segs.append(best_seg)
+                    match = difflib.SequenceMatcher(None, m_skel, s_skel).find_longest_match(
+                        0, len(m_skel), 0, len(s_skel)
+                    )
+                    ov = match.size
+                    cov_seg = ov / max(1, len(s_skel))
+                    cov_hole = ov / max(1, len(m_skel))
+                    score = max(cov_seg, cov_hole)
+                    if si["is_failed_clip"] and ov >= 8:
+                        score += 0.25
+                    scored.append((score, cov_seg, cov_hole, si))
 
-            # (C) cutlist 邻近低置信/截断片段的真实文件名 -s00X 匹配
-            if not matched_segs:
-                for it in (cuts_map.get(gnum) or []):
-                    nm = str(it.get("name") or "")
-                    m_sn = re.search(r"-s0*(\d+)", nm, re.IGNORECASE)
-                    if not m_sn:
+                for score, cov_seg, cov_hole, si in scored:
+                    # 若某分镜本身视频已判定为 ok 且仅在边界沾了 1~2 个词（如上一镜结尾吞词），不误标该 ok 分镜
+                    if si["is_good_clip"] and cov_seg < 0.45 and any(
+                        other["is_failed_clip"] and max(c_s, c_h) >= 0.45
+                        for _, c_s, c_h, other in scored
+                    ):
                         continue
-                    s_num = int(m_sn.group(1))
-                    it_e = int(it.get("s_end", -1))
-                    it_s = int(it.get("s_start", -1))
-                    if (m_s >= 0 and (abs(it_e - m_s) <= 2 or abs(it_s - m_e) <= 2)) or it.get("level") in ("low", "none", "partial"):
-                        for seg in segs:
-                            if int(seg.get("s", 0)) == s_num and seg not in matched_segs:
-                                matched_segs.append(seg)
+                    if cov_seg >= 0.42 or cov_hole >= 0.45:
+                        matched_infos.append(si)
+
+                if not matched_infos and scored:
+                    scored.sort(key=lambda x: x[0], reverse=True)
+                    if scored[0][0] >= 0.30:
+                        matched_infos.append(scored[0][3])
+
+            # (B) 词坐标区间重叠匹配（使用经过字符骨架校准后的 w0, w1）
+            if not matched_infos and m_s >= 0 and m_e > m_s:
+                for si in seg_infos:
+                    ov_w = max(0, min(si["w1"], m_e) - max(si["w0"], m_s))
+                    seg_w_len = max(1, si["w1"] - si["w0"])
+                    hole_w_len = max(1, m_e - m_s)
+                    if ov_w > 0 and (ov_w / seg_w_len >= 0.35 or ov_w / hole_w_len >= 0.45):
+                        if si["is_good_clip"] and (ov_w / seg_w_len) < 0.45:
+                            continue
+                        matched_infos.append(si)
+
+            # (C) cutlist 中明确失败的片段兜底匹配
+            if not matched_infos and seg_infos:
+                for si in seg_infos:
+                    if si["is_failed_clip"]:
+                        matched_infos.append(si)
 
             # (D) 兜底：若仍未命中，标记最后一个分镜
-            if not matched_segs and segs:
-                matched_segs.append(segs[-1])
+            if not matched_infos and seg_infos:
+                matched_infos.append(seg_infos[-1])
 
-            for seg in matched_segs:
+            cur_hole_s: list[int] = []
+            for si in matched_infos:
+                seg = si["seg"]
                 seg["mark"] = True
                 prev_miss = str(seg.get("missing") or "").strip()
                 if not prev_miss:
@@ -614,22 +704,53 @@ def sync_stitch_missing_to_orante(
                 elif m_text not in prev_miss:
                     seg["missing"] = f"{prev_miss} … {m_text}"
                 s_val = int(seg.get("s", 0))
+                if s_val not in cur_hole_s:
+                    cur_hole_s.append(s_val)
                 if s_val not in hit_s_nums:
                     hit_s_nums.append(s_val)
+            hole_matched_s.append(sorted(cur_hole_s))
 
-        if hit_s_nums:
+        # 1. 在该任务自己的 clips/_stitched/缺失文案清单.txt 写入缺失报告（带对应分镜号，与 Orante 标记 100% 一致）
+        try:
+            st_dir.mkdir(parents=True, exist_ok=True)
+            lines = [
+                "缺失文案清单 — 以下内容现有片段都没讲到, 请在 Orante「全部任务 -> 已标记」中一键重生",
+                "=" * 60,
+                f"\n【组 {gnum}】 现有片段: {', '.join(clip_names)}",
+            ]
+            if hit_s_nums:
+                s_tags = ", ".join(f"s{sn:03d}" for sn in sorted(hit_s_nums))
+                lines.append(f"  已自动标记 Orante 分镜 ({len(hit_s_nums)}段): {s_tags}")
+            for mi, mm in enumerate(holes, 1):
+                s_list = hole_matched_s[mi - 1] if mi - 1 < len(hole_matched_s) else []
+                s_label = f"对应分镜 {'/'.join(f's{x:03d}' for x in s_list)} · " if s_list else ""
+                if isinstance(mm, dict):
+                    s0 = int(mm.get("s", 0)) + 1
+                    e0 = int(mm.get("e", 0))
+                    mtxt = str(mm.get("text") or "").strip()
+                    lines.append(f"  缺失{mi} ({s_label}文案第{s0}~{e0}词):")
+                    lines.append(f"    {mtxt}")
+                else:
+                    lines.append(f"  缺失{mi} ({s_label.rstrip(' · ')}):")
+                    lines.append(f"    {mm}")
+            (st_dir / "缺失文案清单.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except Exception:
+            pass
+
+        if mdata is not None and segs:
             try:
                 mf_path.write_text(json.dumps(mdata, ensure_ascii=False, indent=2), encoding="utf-8")
             except Exception:
                 pass
-            marked_summary.append(
-                {
-                    "task_id": str(mdata.get("task_id") or tdir.name.split("-")[0]),
-                    "name": str(mdata.get("name") or tdir.name),
-                    "task_dir": str(tdir),
-                    "marked_segments": sorted(hit_s_nums),
-                }
-            )
+            if hit_s_nums:
+                marked_summary.append(
+                    {
+                        "task_id": str(mdata.get("task_id") or tdir.name.split("-")[0]),
+                        "name": str(mdata.get("name") or tdir.name),
+                        "task_dir": str(tdir),
+                        "marked_segments": sorted(hit_s_nums),
+                    }
+                )
 
     # 3. 实时通知所有运行中的 Orante 后端 (127.0.0.1:9400..9419) 广播刷新并同步标记
     if marked_summary:

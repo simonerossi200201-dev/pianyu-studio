@@ -1438,15 +1438,440 @@ window.Panel_track = (() => {
         return mediaUrl(tid.value, cell.file, cell.mtime);
       }
 
-      // ─── 需求 4 新增：扩图预设、任务级总预设与 Flow 模式、Google Sheet 风格可编辑段表、显示全部任务折叠总表 ───
+      // ─── 需求 4 升级：Google Sheet 标准单元格网格、可调行高列宽、右下角拖拽拷贝、隐藏任务行保留颜色外边框、行内缩略图 + 外部图片预览悬浮窗 ───
       const TASK_COLORS = ['#d4a24c', '#3b82f6', '#10b981', '#a855f7', '#ec4899', '#f97316', '#06b6d4', '#84cc16'];
       const expandPresetId = ref('');
       const presetSearch = ref('');
-      const showAllTasks = ref(false);
+      const showAllTasks = ref(true);           // 默认展示全部任务形成完整表格
+      const showTaskHeaderRows = ref(false);    // 默认隐藏“任务”行，只保留同组外框颜色
+      const expandedTaskRows = reactive({});    // 点击某组首行任务徽标可单独展开该任务的任务行
+      const batchMenuOpen = ref(false);         // 顶部工具栏收纳下拉菜单
       const allTasksTable = ref([]);
       const collapsedTasks = reactive({});
       const segChecked = reactive({}); // `${taskId}:${s}` -> bool
       const segDrag = reactive({ active: false, val: true });
+
+      // Google Sheet 列宽与行高状态
+      const colWidths = reactive({
+        check: 36,
+        seg: 92,
+        image: 138,
+        dur: 72,
+        flow: 112,
+        conn: 98,
+        text: 360,
+        preset: 136,
+        prompt: 340,
+      });
+      const rowHeights = reactive({}); // `${taskId}:${s}` -> px
+      let resizeState = null;
+
+      function startColResize(colKey, ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const startX = ev.clientX;
+        const startW = Number(colWidths[colKey] || 120);
+        resizeState = { type: 'col', key: colKey, startX, startW };
+        const onMove = (e) => {
+          if (!resizeState || resizeState.type !== 'col') return;
+          colWidths[colKey] = Math.max(42, startW + (e.clientX - startX));
+        };
+        const onUp = () => {
+          resizeState = null;
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      }
+
+      function startRowResize(rowKey, ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const tr = ev.target.closest('tr');
+        const startY = ev.clientY;
+        const startH = Number(rowHeights[rowKey] || (tr ? tr.offsetHeight : 38));
+        resizeState = { type: 'row', key: rowKey, startY, startH };
+        const onMove = (e) => {
+          if (!resizeState || resizeState.type !== 'row') return;
+          rowHeights[rowKey] = Math.max(28, startH + (e.clientY - startY));
+        };
+        const onUp = () => {
+          resizeState = null;
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      }
+
+      // 扁平化可见数据行列表（用于 Google Sheet 2D 单元格选区、右下角拖拽填充与悬浮图片阅读器）
+      const sheetFlatRows = computed(() => {
+        const out = [];
+        if (!showAllTasks.value) {
+          const list = segments.value || [];
+          const tColor = taskColor(0, selectedTask.value);
+          list.forEach((sg, idx) => {
+            const p = fmtP(cellP(sg) || sg.image || 'p01');
+            const im = (images.value || []).find(x => fmtP(x.p) === p);
+            const thumbUrl = im && im.file ? mediaUrl(tid.value, im.file, im.mtime) : (tid.value ? `/api/tasks/${encodeURIComponent(tid.value)}/file/images/${p}.jpg` : '');
+            out.push({
+              flatIdx: out.length,
+              rowKey: `${tid.value}:${sg.s}`,
+              taskId: tid.value,
+              taskName: (selectedTask.value && selectedTask.value.name) || tid.value,
+              taskColor: tColor,
+              taskObj: selectedTask.value,
+              taskImages: images.value || [],
+              seg: sg,
+              sIdx: idx,
+              isFirstInGroup: idx === 0,
+              isLastInGroup: idx === list.length - 1,
+              thumbUrl,
+              pCode: p,
+            });
+          });
+          return out;
+        }
+        (allTasksTable.value || []).forEach((tk, tIdx) => {
+          if (collapsedTasks[tk.id]) return;
+          const list = tk.segments || [];
+          const tColor = taskColor(tIdx, tk);
+          const tkImgs = (tk.images && tk.images.length) ? tk.images : (tid.value === tk.id ? images.value : []);
+          list.forEach((sg, idx) => {
+            const p = fmtP(sg.image || 'p01');
+            const im = (tkImgs || []).find(x => fmtP(x.p) === p);
+            const relFile = (im && im.file) || sg.image_file || `images/${p}.jpg`;
+            const thumbUrl = mediaUrl(tk.id, relFile, (im && im.mtime) || 0);
+            out.push({
+              flatIdx: out.length,
+              rowKey: `${tk.id}:${sg.s}`,
+              taskId: tk.id,
+              taskName: tk.name || tk.id,
+              taskColor: tColor,
+              taskObj: tk,
+              taskImages: tkImgs,
+              seg: sg,
+              sIdx: idx,
+              isFirstInGroup: idx === 0,
+              isLastInGroup: idx === list.length - 1,
+              thumbUrl,
+              pCode: p,
+            });
+          });
+        });
+        return out;
+      });
+
+      // Google Sheet 列字段定义 (0..6)
+      const GS_COLS = ['image', 'duration', 'flow_mode', 'mode', 'text', 'preset_id', 'custom_prompt'];
+      const gsSel = reactive({
+        r0: -1, c0: -1, r1: -1, c1: -1,
+        activeR: -1, activeC: -1,
+        selecting: false,
+        fillDragging: false,
+        fillTargetR: -1,
+      });
+
+      function gsNormRange() {
+        if (gsSel.r0 < 0 || gsSel.c0 < 0) return null;
+        return {
+          minR: Math.min(gsSel.r0, gsSel.r1),
+          maxR: Math.max(gsSel.r0, gsSel.r1),
+          minC: Math.min(gsSel.c0, gsSel.c1),
+          maxC: Math.max(gsSel.c0, gsSel.c1),
+        };
+      }
+
+      function isGsCellInRange(r, c) {
+        const rg = gsNormRange();
+        if (!rg) return false;
+        return r >= rg.minR && r <= rg.maxR && c >= rg.minC && c <= rg.maxC;
+      }
+
+      function isGsCellActive(r, c) {
+        return gsSel.activeR === r && gsSel.activeC === c;
+      }
+
+      function isGsFillHandleCell(r, c) {
+        const rg = gsNormRange();
+        if (!rg) return false;
+        return r === rg.maxR && c === rg.maxC;
+      }
+
+      function isGsCellFillPreview(r, c) {
+        if (!gsSel.fillDragging || gsSel.fillTargetR < 0) return false;
+        const rg = gsNormRange();
+        if (!rg || c < rg.minC || c > rg.maxC) return false;
+        if (gsSel.fillTargetR > rg.maxR) return r > rg.maxR && r <= gsSel.fillTargetR;
+        if (gsSel.fillTargetR < rg.minR) return r >= gsSel.fillTargetR && r < rg.minR;
+        return false;
+      }
+
+      function onGsCellMouseDown(r, c, ev) {
+        if (ev.button !== 0) return;
+        const rowItem = sheetFlatRows.value[r];
+        if (rowItem) {
+          hotSwitchTask(rowItem.taskId);
+          floatingViewer.rowIdx = r;
+        }
+        if (ev.shiftKey && gsSel.activeR >= 0 && gsSel.activeC >= 0) {
+          gsSel.r1 = r;
+          gsSel.c1 = c;
+          return;
+        }
+        gsSel.r0 = r;
+        gsSel.c0 = c;
+        gsSel.r1 = r;
+        gsSel.c1 = c;
+        gsSel.activeR = r;
+        gsSel.activeC = c;
+        gsSel.selecting = true;
+      }
+
+      function onGsCellMouseEnter(r, c) {
+        if (gsSel.fillDragging) {
+          gsSel.fillTargetR = r;
+          return;
+        }
+        if (gsSel.selecting) {
+          gsSel.r1 = r;
+          gsSel.c1 = c;
+        }
+      }
+
+      function startGsFillDrag(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const rg = gsNormRange();
+        if (!rg) return;
+        gsSel.fillDragging = true;
+        gsSel.fillTargetR = rg.maxR;
+      }
+
+      function getCellVal(rowItem, colIdx) {
+        if (!rowItem || !rowItem.seg) return '';
+        const sg = rowItem.seg;
+        const field = GS_COLS[colIdx];
+        if (field === 'image') return fmtP(sg.image || 'p01');
+        if (field === 'duration') return String(sg.duration || 6);
+        if (field === 'flow_mode') return sg.flow_mode || 'auto';
+        if (field === 'mode') return sg.mode || (sg.role === 'bridge' ? 'bridge' : 'single');
+        if (field === 'text') return sg.text || '';
+        if (field === 'preset_id') return sg.preset_id || '';
+        if (field === 'custom_prompt') return sg.custom_prompt || sg.prompt_preview || '';
+        return '';
+      }
+
+      function applyCellValToRow(rowItem, colIdx, rawVal, updatesOut) {
+        if (!rowItem || !rowItem.seg) return;
+        const sg = rowItem.seg;
+        const field = GS_COLS[colIdx];
+        const u = { task_id: rowItem.taskId, s: sg.s };
+        const val = String(rawVal == null ? '' : rawVal).trim();
+        if (field === 'image') {
+          const p = fmtP(val || 'p01');
+          sg.image = p;
+          u.image = p;
+          if (rowItem.taskId === tid.value) pins[sg.s] = p;
+        } else if (field === 'duration') {
+          const d = parseInt(val.replace(/s$/i, ''), 10) || 6;
+          sg.duration = d;
+          u.duration = d;
+        } else if (field === 'flow_mode') {
+          const fm = ['auto', 'frames', 'ingredients'].includes(val) ? val : 'auto';
+          sg.flow_mode = fm;
+          u.flow_mode = fm;
+        } else if (field === 'mode') {
+          const cm = ['single', 'bridge', 'chain'].includes(val) ? val : 'single';
+          sg.mode = cm;
+          u.mode = cm;
+        } else if (field === 'text') {
+          sg.text = String(rawVal == null ? '' : rawVal);
+          u.text = sg.text;
+        } else if (field === 'preset_id') {
+          // 支持填入预设 ID 或预设名称
+          let pid = val;
+          const byName = allPresets.value.find(p => p && (p.id === val || p.name === val));
+          if (byName) pid = byName.id;
+          sg.preset_id = pid;
+          u.preset_id = pid;
+        } else if (field === 'custom_prompt') {
+          sg.custom_prompt = String(rawVal == null ? '' : rawVal);
+          u.custom_prompt = sg.custom_prompt;
+        }
+        updatesOut.push(u);
+      }
+
+      async function commitGsFillDrag() {
+        if (!gsSel.fillDragging) return;
+        const rg = gsNormRange();
+        const targetR = gsSel.fillTargetR;
+        gsSel.fillDragging = false;
+        gsSel.fillTargetR = -1;
+        if (!rg || targetR < 0 || (targetR >= rg.minR && targetR <= rg.maxR)) return;
+        const flat = sheetFlatRows.value;
+        const srcRows = [];
+        for (let r = rg.minR; r <= rg.maxR; r++) {
+          if (flat[r]) srcRows.push(flat[r]);
+        }
+        if (!srcRows.length) return;
+        const updates = [];
+        const startR = targetR > rg.maxR ? rg.maxR + 1 : targetR;
+        const endR = targetR > rg.maxR ? targetR : rg.minR - 1;
+        for (let r = startR; r <= endR; r++) {
+          const dst = flat[r];
+          if (!dst) continue;
+          const src = srcRows[(r - startR) % srcRows.length];
+          for (let c = rg.minC; c <= rg.maxC; c++) {
+            const v = getCellVal(src, c);
+            applyCellValToRow(dst, c, v, updates);
+          }
+        }
+        if (targetR > rg.maxR) gsSel.r1 = targetR;
+        else gsSel.r0 = targetR;
+        if (updates.length) {
+          saveSettings();
+          await saveBatchSegUpdates(updates, `已拖拽填充 ${updates.length} 个单元格`);
+        }
+      }
+
+      async function handleGsCopyPasteKey(ev) {
+        const tag = (ev.target && ev.target.tagName || '').toLowerCase();
+        const inInput = tag === 'input' || tag === 'textarea' || tag === 'select';
+        const rg = gsNormRange();
+
+        // 外部图片预览悬浮窗快捷键支持 (↓/↑/J/K/Space 切换上/下一行图片)
+        if (floatingViewer.on && !inInput && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+          const flatLen = sheetFlatRows.value.length;
+          if (flatLen > 0) {
+            if (ev.key === 'ArrowDown' || ev.key === 'j' || ev.key === 'J' || ev.key === ' ') {
+              ev.preventDefault();
+              stepFloatingViewer(1);
+              return;
+            }
+            if (ev.key === 'ArrowUp' || ev.key === 'k' || ev.key === 'K') {
+              ev.preventDefault();
+              stepFloatingViewer(-1);
+              return;
+            }
+          }
+        }
+
+        if (!rg) return;
+        const isMultiCell = rg.minR !== rg.maxR || rg.minC !== rg.maxC;
+        if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c' && (!inInput || isMultiCell)) {
+          ev.preventDefault();
+          const flat = sheetFlatRows.value;
+          const lines = [];
+          for (let r = rg.minR; r <= rg.maxR; r++) {
+            const rowItem = flat[r];
+            if (!rowItem) continue;
+            const cols = [];
+            for (let c = rg.minC; c <= rg.maxC; c++) {
+              cols.push(String(getCellVal(rowItem, c)).replace(/\r?\n/g, ' '));
+            }
+            lines.push(cols.join('\t'));
+          }
+          if (navigator.clipboard && lines.length) {
+            navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
+            toast(`已复制 ${rg.maxR - rg.minR + 1} 行 × ${rg.maxC - rg.minC + 1} 列单元格`, '', 'ok');
+          }
+          return;
+        }
+        if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'v' && (!inInput || isMultiCell)) {
+          if (!navigator.clipboard || !navigator.clipboard.readText) return;
+          try {
+            const text = await navigator.clipboard.readText();
+            if (!text) return;
+            ev.preventDefault();
+            const flat = sheetFlatRows.value;
+            const rowsText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            while (rowsText.length && rowsText[rowsText.length - 1] === '') rowsText.pop();
+            const updates = [];
+            for (let i = 0; i < rowsText.length; i++) {
+              const dst = flat[rg.minR + i];
+              if (!dst) break;
+              const cols = rowsText[i].split('\t');
+              for (let j = 0; j < cols.length; j++) {
+                const cIdx = rg.minC + j;
+                if (cIdx >= GS_COLS.length) break;
+                applyCellValToRow(dst, cIdx, cols[j], updates);
+              }
+            }
+            if (updates.length) {
+              await saveBatchSegUpdates(updates, `已批量粘贴 ${updates.length} 个单元格`);
+            }
+          } catch (e) { /* clipboard permission fallback */ }
+        }
+      }
+
+      // 外部图片预览悬浮窗口状态与拖拽
+      const floatingViewer = reactive({
+        on: false,
+        rowIdx: 0,
+        x: null,
+        y: null,
+      });
+
+      const currentFloatingRow = computed(() => {
+        const flat = sheetFlatRows.value;
+        if (!flat.length) return null;
+        const idx = Math.max(0, Math.min(flat.length - 1, floatingViewer.rowIdx || 0));
+        return flat[idx] || flat[0];
+      });
+
+      function toggleFloatingViewer() {
+        floatingViewer.on = !floatingViewer.on;
+        if (floatingViewer.on && gsSel.activeR >= 0) {
+          floatingViewer.rowIdx = gsSel.activeR;
+        }
+      }
+
+      function stepFloatingViewer(delta) {
+        const flat = sheetFlatRows.value;
+        if (!flat.length) return;
+        const next = Math.max(0, Math.min(flat.length - 1, (floatingViewer.rowIdx || 0) + delta));
+        floatingViewer.rowIdx = next;
+        gsSel.activeR = next;
+        gsSel.r0 = next;
+        gsSel.r1 = next;
+        if (gsSel.activeC < 0) { gsSel.activeC = 0; gsSel.c0 = 0; gsSel.c1 = 0; }
+        const item = flat[next];
+        if (item) {
+          hotSwitchTask(item.taskId);
+          const tr = document.querySelector(`.panel-track tr[data-rowkey="${item.rowKey}"]`);
+          if (tr && tr.scrollIntoView) tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+
+      function startFloatingViewerDrag(ev) {
+        if (ev.button !== 0) return;
+        const box = ev.target.closest('.gs-floating-img-viewer');
+        if (!box) return;
+        const rect = box.getBoundingClientRect();
+        const offsetX = ev.clientX - rect.left;
+        const offsetY = ev.clientY - rect.top;
+        const onMove = (e) => {
+          floatingViewer.x = Math.max(8, Math.min(window.innerWidth - rect.width - 8, e.clientX - offsetX));
+          floatingViewer.y = Math.max(8, Math.min(window.innerHeight - 80, e.clientY - offsetY));
+        };
+        const onUp = () => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      }
+
+      function toggleSingleTaskHeaderRow(taskId, ev) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        expandedTaskRows[taskId] = !expandedTaskRows[taskId];
+      }
+
+      function isTaskHeaderVisible(taskId) {
+        return !!showTaskHeaderRows.value || !!expandedTaskRows[taskId];
+      }
 
       const allPresets = computed(() => store.promptPresets || []);
       const expandPresets = computed(() => {
@@ -1667,23 +2092,32 @@ window.Panel_track = (() => {
         }
       }
 
+      function stopAllMouseUp() {
+        stopSegDrag();
+        gsSel.selecting = false;
+        if (gsSel.fillDragging) commitGsFillDrag();
+      }
+
       onMounted(() => {
         document.addEventListener('click', onDocClick);
         document.addEventListener('keydown', onMenuKey);
-        window.addEventListener('mouseup', stopSegDrag);
+        document.addEventListener('keydown', handleGsCopyPasteKey);
+        window.addEventListener('mouseup', stopAllMouseUp);
         window.refreshPromptPresets({ silent: true }).catch(() => {});
         if (!adoptPanelTid(tid, 'track') && !tid.value && readyTasks.value.length) {
           tid.value = readyTasks.value[0].id;
         }
         ui.panelTid = tid.value || '';
         ui.selectedTaskId = tid.value || '';
+        if (showAllTasks.value) loadAllTasksTable(true).catch(() => {});
         if (window.registerFlush) window.registerFlush('track', flushTrack);
       });
       onUnmounted(() => {
         if (accGest && accGest.dispose) accGest.dispose();
         document.removeEventListener('click', onDocClick);
         document.removeEventListener('keydown', onMenuKey);
-        window.removeEventListener('mouseup', stopSegDrag);
+        document.removeEventListener('keydown', handleGsCopyPasteKey);
+        window.removeEventListener('mouseup', stopAllMouseUp);
         if (window.unregisterFlush) window.unregisterFlush('track');
         stopPolls();
         if (holdTimer) clearTimeout(holdTimer);
@@ -1710,7 +2144,13 @@ window.Panel_track = (() => {
         planNow, reseed, onHoldInput, onUnitChange, toggleSpacing, applyTrack, runJob,
         cancelExpand, toggleLog, goExpandPrompt, canBeRef, toggleRef, itemClass, itemTitle,
         rowOf, whyMark, isNowBroll, txtOpen, toggleTxt, openImgMenu, onImgMenu, imgMenuOff, quickImgAct,
-        expandPresetId, presetSearch, showAllTasks, allTasksTable, collapsedTasks, segChecked,
+        expandPresetId, presetSearch, showAllTasks, showTaskHeaderRows, expandedTaskRows, batchMenuOpen,
+        allTasksTable, collapsedTasks, segChecked,
+        colWidths, rowHeights, startColResize, startRowResize,
+        sheetFlatRows, gsSel, isGsCellInRange, isGsCellActive, isGsFillHandleCell, isGsCellFillPreview,
+        onGsCellMouseDown, onGsCellMouseEnter, startGsFillDrag,
+        floatingViewer, currentFloatingRow, toggleFloatingViewer, stepFloatingViewer, startFloatingViewerDrag,
+        toggleSingleTaskHeaderRow, isTaskHeaderVisible,
         allPresets, expandPresets, filteredPresets, curTaskFlowMode, curTaskPresetId,
         taskColor, toggleShowAllTasks, expandAllTasks, hotSwitchTask,
         isSegChecked, startSegDrag, enterSegDrag, isTaskAllSegChecked, toggleTaskAllSeg,
@@ -1719,177 +2159,239 @@ window.Panel_track = (() => {
       };
     },
     template: `
-<section class="panel-track">
-  <div class="thd">
+<section class="panel-track" @click="batchMenuOpen = false">
+  <!-- 顶部固定工具栏：主次分明、左侧任务切换、中部任务总预设与Flow模式固定常驻、右侧视图开关与核心操作 -->
+  <div class="thd" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h2>{{ t('node.track') }}</h2>
     <task-pick v-model="tid" min-status="prepared" :tasks="allTasks"></task-pick>
     <span class="tag" v-if="selectedTask" :class="selectedTask.engine">{{ selectedTask.engine }}</span>
-    <span class="bstat">{{ statsText }}</span>
-    <button class="btn sm primary" type="button"
-            :disabled="batchApplying || !readyTasks.length"
-            title="短视频/单图任务无需逐个手动编排：一键对列表内全部已准备/已描述任务批量完成配图编排"
-            @click="batchApplyAll(false)">
-      ⚡ 一键批量应用/跳过编排 ({{ unarrangedCount || readyTasks.length }})
-    </button>
-    <button class="btn sm" type="button"
-            :disabled="batchApplying || !readyTasks.length"
-            title="一键对全部任务完成编排并直接送入 ④ 生成排队出片"
-            @click="batchApplyAll(true)">
-      🚀 批量跳过编排并立即排队生成
-    </button>
-    <button class="btn sm" type="button" :disabled="!tid" @click="openRescan">{{ t('rescan.btn') }}</button>
-  </div>
 
-  <div class="xcard" v-if="card.on" :class="{failed: card.failed}">
-    <div class="xcard-ops">
-      <button class="btn sm" v-if="cardLive" @click="cancelExpand">{{ t('track.stop') }}</button>
-      <button class="btn sm" @click="toggleLog">{{ t('track.log') }}</button>
+    <!-- 固定在顶部工具栏的核心功能：任务总预设 & 默认 Flow 模式 -->
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:var(--panel-2);border:1px solid var(--rule-2);border-radius:6px">
+      <span style="font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap">📌 任务总预设:</span>
+      <input v-model="presetSearch" class="trk-tp-search" style="width:96px;padding:3px 6px;font-size:12px" placeholder="搜预设…">
+      <select :value="curTaskPresetId" class="trk-tp-select" style="min-width:155px;max-width:210px;padding:3px 6px;font-size:12px"
+              @change="onTaskPresetChange(tid, $event.target.value)">
+        <option value="">— 选择预设应用到本任务 —</option>
+        <option v-for="p in filteredPresets" :key="p.id" :value="p.id">
+          {{ p.category ? '[' + p.category + '] ' : '' }}{{ p.name }}
+        </option>
+      </select>
+      <span class="muted" style="font-size:11.5px;margin-left:4px;white-space:nowrap">Flow模式:</span>
+      <select :value="curTaskFlowMode" class="trk-tp-select" style="width:120px;padding:3px 6px;font-size:12px"
+              @change="onTaskFlowModeChange(tid, $event.target.value)">
+        <option value="auto">继承账号</option>
+        <option value="frames">🎞️ 首尾帧</option>
+        <option value="ingredients">🧩 素材</option>
+      </select>
     </div>
-    <div class="xcard-row">
-      <div class="xring" :class="{spin: cardLive}">
-        <svg viewBox="0 0 72 72" aria-hidden="true">
-          <circle class="bg" cx="36" cy="36" r="30"></circle>
-          <circle class="fg" cx="36" cy="36" r="30"
-                  :stroke-dasharray="RING" :stroke-dashoffset="ringOff"></circle>
-          <circle class="hi" cx="36" cy="36" r="30"></circle>
-        </svg>
-        <div class="xnum">{{ prog.done }} / {{ prog.total }}</div>
-      </div>
-      <div class="xmid">
-        <div class="xphase">{{ card.hold ? card.holdMsg : phaseText }}</div>
-        <div class="xcur">{{ card.failed ? card.error : (card.hold ? '' : prog.current) }}</div>
-        <div class="xbar"><i :style="{width: barPct + '%'}"></i></div>
-      </div>
-      <div class="xitems">
-        <div v-for="(it, idx) in shownItems" :key="idx" :class="itemClass(it)" :title="itemTitle(it)">
-          <img v-if="it.thumb" :src="mediaUrl(tid, it.thumb)" alt="">
-          <span class="xbadge" v-if="it.ref">{{ fmtP(it.ref) }}</span>
-        </div>
-        <div class="xmore" v-if="hiddenN">+{{ hiddenN }}</div>
-      </div>
-    </div>
-    <pre class="xlog" v-if="card.logOpen">{{ card.logText || '…' }}</pre>
-  </div>
-  <div class="banner info" v-if="tid && isSimpleTask">
-    <span>{{ t('track.simple86_banner') }}</span>
-  </div>
-  <div class="banner warn" v-if="tid && needDesc && !isSimpleTask">
-    <span>{{ t('track.need_desc') }}</span>
-    <button class="btn sm" type="button" @click="goDescribe">{{ t('track.need_desc.go') }}</button>
-  </div>
-  <div class="banner warn" v-if="!card.on && needExpand">
-    <span>{{ t('track.expand_banner', { n: String(okSubjects.length) }) }}</span>
-    <span class="refpick">
-      <button class="btn sm ghost" type="button" @click="refsOpen=!refsOpen">
-        {{ t('track.expand_refs', { ps: refLabel }) }} ▾
+
+    <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px">
+      <button type="button" class="btn sm tog" :class="{on: showAllTasks}" @click="toggleShowAllTasks" title="切换显示全部任务或仅当前任务">
+        全部任务
       </button>
-      <div class="refpick-menu" v-if="refsOpen">
-        <label v-for="im in okSubjects" :key="'r'+im.p" class="refpick-item">
-          <input type="checkbox" :checked="!!im.expand_ref" @change="toggleRef(im, $event)">
-          <img :src="mediaUrl(tid, im.file, im.mtime)" :alt="fmtP(im.p)">
-          <span>{{ fmtP(im.p) }}</span>
-        </label>
+      <button type="button" class="btn sm tog" :class="{on: showTaskHeaderRows}"
+              @click="showTaskHeaderRows = !showTaskHeaderRows"
+              title="默认隐藏任务分组行（仅保留同组颜色外框），开启后显示任务汇总操作行">
+        任务行
+      </button>
+      <button type="button" class="btn sm tog" :class="{on: floatingViewer.on}"
+              @click="toggleFloatingViewer"
+              title="开启外部悬浮图片阅读器：点击任意行清晰预览该行图片，支持 ↑/↓/J/K 快捷键切换下一行">
+        🖼️ 悬浮看图
+      </button>
+
+      <!-- 次要与批量功能收纳下拉菜单 -->
+      <div class="gs-toolbar-dropdown" @click.stop>
+        <button type="button" class="btn sm" @click="batchMenuOpen = !batchMenuOpen">
+          更多操作 ▾
+        </button>
+        <div class="gs-toolbar-dropdown-menu" v-if="batchMenuOpen">
+          <button type="button" class="dd-item" :disabled="batchApplying || !readyTasks.length"
+                  @click="batchMenuOpen=false; batchApplyAll(true)">
+            🚀 跳过编排并立即排队生成
+          </button>
+          <button type="button" class="dd-item" @click="batchMenuOpen=false; showTaskHeaderRows = !showTaskHeaderRows">
+            {{ showTaskHeaderRows ? '🙈 隐藏全部任务行 (仅留色框)' : '📂 显示全部任务行 (批量操作)' }}
+          </button>
+          <button type="button" class="dd-item" v-if="showAllTasks" @click="batchMenuOpen=false; expandAllTasks(false)">
+            ▾ 展开全部任务组
+          </button>
+          <button type="button" class="dd-item" v-if="showAllTasks" @click="batchMenuOpen=false; expandAllTasks(true)">
+            ▸ 收起全部任务组
+          </button>
+          <button type="button" class="dd-item" @click="batchMenuOpen=false; goDescribe()">
+            📝 打开 3 提示词总表 ↗
+          </button>
+          <button type="button" class="dd-item" :disabled="!tid" @click="batchMenuOpen=false; openRescan()">
+            🔄 {{ t('rescan.btn') }}
+          </button>
+        </div>
       </div>
+
+      <button class="btn sm primary" type="button"
+              :disabled="batchApplying || !readyTasks.length"
+              title="对列表内全部已准备/已描述任务批量完成配图编排"
+              @click="batchApplyAll(false)">
+        ⚡ 应用编排 ({{ unarrangedCount || readyTasks.length }})
+      </button>
     </span>
-    <select v-model="expandPresetId" class="trk-expand-preset-sel" title="从 3 提示词 预设库中选择扩图提示词">
-      <option value="">✨ 扩图提示词：默认内置扩图词</option>
-      <option v-for="ep in expandPresets" :key="ep.id" :value="ep.id">
-        🎨 {{ ep.category ? '[' + ep.category + '] ' : '' }}{{ ep.name }}
-      </option>
-    </select>
-    <span class="split-btn accpick-host">
-      <button class="btn sm" :disabled="busy.has('expand') || !!runningKind || !canExpand"
-              :title="canExpand ? expandBtnLabel : t('track.expand_need_ref')"
-              @click="runJob('expand')">
-        {{ expandBtnLabel }}
-      </button>
-      <button class="btn sm split-caret pg-trig" type="button"
-              :class="{ dragging: accGest.dragging, bump: accGest.bump,
-                        'pg-in-down': accGest.slide==='down', 'pg-in-up': accGest.slide==='up' }"
-              :disabled="busy.has('expand') || !!runningKind"
-              :title="t('track.acc.follow')"
-              @wheel="accGest.onWheel"
-              @pointerdown="accGest.onPointerDown"
-              @pointermove="accGest.onPointerMove"
-              @pointerup="accGest.onPointerUp"
-              @pointercancel="accGest.onPointerCancel"
-              @lostpointercapture="accGest.onLostPointerCapture"
-              @click.stop="accGest.onClick"
-              @contextmenu="accGest.onContextMenu">
-        ▾
-        <span class="pg-ew" v-if="accGest.dragging">◂ ▸</span>
-        <span class="pg-pos" v-if="accGest.posHint">{{ accGest.posHint }}</span>
-      </button>
-      <div class="accpick-menu" v-if="accOpen && !upscaleDlg.on" @click.stop>
-        <div class="accpick-item" :class="{on: !accPinned}" @click="pickExpandAcc('')">
-          {{ accPinned ? '○ ' : '● ' }}{{ accFollowLabel }}
-        </div>
-        <div class="accpick-borrowed" v-if="accBorrowed">{{ t('track.acc.borrowed') }}</div>
-        <div class="accpick-sep"></div>
-        <div v-for="a in accOptions" :key="a.id" class="accpick-item"
-             :class="{on: accPinned && accState.current && accState.current.id===a.id}"
-             :title="a.alive ? '' : t('track.acc.offline_tip')"
-             @click="pickExpandAcc(a.id)">
-          <span>{{ a.engine }} · {{ a.name }}{{ a.owner_port && !a.lock_mine ? t('track.acc.held', { port: String(a.owner_port) }) : '' }}</span>
-          <span class="acc-alive">{{ a.alive ? t('track.acc.online') : t('track.acc.offline') }}</span>
-        </div>
-      </div>
-    </span>
-    <a class="xlink" href="#" @click.prevent="goExpandPrompt">{{ t('track.expand_prompts') }}</a>
-  </div>
-  <div class="banner warn" v-if="!card.on && pendingImgs.length">
-    <span>{{ t('track.pending_banner', { n: String(pendingImgs.length) }) }}</span>
-  </div>
-  <div class="banner bad" v-if="!card.on && blockedImgs.length">
-    <span>{{ t('track.refill_banner', { n: String(blockedImgs.length) }) }}</span>
-    <button class="btn sm" :disabled="busy.has('refill') || !!runningKind" @click="runJob('refill')">
-      {{ t('track.refill_btn') }}
-    </button>
-  </div>
-  <div class="banner bad" v-if="brollHits.length">
-    <span>{{ t('track.broll_banner', { n: String(brollHits.length) }) }}</span>
   </div>
 
   <div class="empty" v-if="!tid && !allTasks.length">{{ t('track.no_task') }}</div>
 
   <template v-else-if="tid && tidReady">
-    <div class="bctl">
-      <span>{{ t('track.hold') }}
-        <input type="range" :min="unit==='sec'?6:1" :max="unit==='sec'?60:8"
-               v-model.number="hold" @input="onHoldInput">
-        <b>{{ hold }}</b> {{ unit==='sec' ? t('track.hold.sec') : t('track.hold.seg') }}
-      </span>
-      <span>{{ t('track.jitter') }}
-        <select v-model.number="jitter">
-          <option :value="0">0</option>
-          <option :value="1">1</option>
-          <option :value="2">2</option>
-        </select>
-      </span>
-      <button class="btn sm tog" :class="{on: noAdj}" type="button"
-              :title="t('track.spacing_tip')" @click="toggleSpacing">{{ t('track.spacing') }}</button>
-      <span class="muted" v-if="spacingPending">{{ t('track.spacing_pending') }}</span>
-      <span>{{ t('track.unit') }}
-        <select v-model="unit" @change="onUnitChange">
-          <option value="seg">{{ t('track.unit.seg') }}</option>
-          <option value="sec">{{ t('track.unit.sec') }}</option>
-        </select>
-      </span>
-      <button class="btn sm" :title="t('track.reseed_title')" @click="reseed">{{ t('track.reseed') }}</button>
-      <span style="margin-left:auto"></span>
-      <button class="btn sm" :title="t('track.plan_title')" :disabled="planning" @click="planNow">{{ t('track.plan') }}</button>
-    </div>
-
-    <div class="ts-bar">
-      <input :value="ts.qLive" :placeholder="t('search.placeholder')"
-             @input="ts.setQ($event.target.value)" @keydown="ts.onBoxKey">
-      <span class="ts-count">{{ ts.countText }}</span>
-      <button type="button" class="ts-nav" :disabled="!ts.hits.length" @click="ts.prev">‹</button>
-      <button type="button" class="ts-nav" :disabled="!ts.hits.length" @click="ts.next">›</button>
-      <button type="button" class="ts-x" v-if="ts.qLive" @click="ts.clear">×</button>
-    </div>
-
+    <!-- 主滚动工作区：扩图栏、编排控制栏、红绿镜头条与表格全部在同一个滚动容器内一起向上滚动，释放完整表格视野 -->
     <div class="bwrap">
+      <div class="xcard" v-if="card.on" :class="{failed: card.failed}">
+        <div class="xcard-ops">
+          <button class="btn sm" v-if="cardLive" @click="cancelExpand">{{ t('track.stop') }}</button>
+          <button class="btn sm" @click="toggleLog">{{ t('track.log') }}</button>
+        </div>
+        <div class="xcard-row">
+          <div class="xring" :class="{spin: cardLive}">
+            <svg viewBox="0 0 72 72" aria-hidden="true">
+              <circle class="bg" cx="36" cy="36" r="30"></circle>
+              <circle class="fg" cx="36" cy="36" r="30"
+                      :stroke-dasharray="RING" :stroke-dashoffset="ringOff"></circle>
+              <circle class="hi" cx="36" cy="36" r="30"></circle>
+            </svg>
+            <div class="xnum">{{ prog.done }} / {{ prog.total }}</div>
+          </div>
+          <div class="xmid">
+            <div class="xphase">{{ card.hold ? card.holdMsg : phaseText }}</div>
+            <div class="xcur">{{ card.failed ? card.error : (card.hold ? '' : prog.current) }}</div>
+            <div class="xbar"><i :style="{width: barPct + '%'}"></i></div>
+          </div>
+          <div class="xitems">
+            <div v-for="(it, idx) in shownItems" :key="idx" :class="itemClass(it)" :title="itemTitle(it)">
+              <img v-if="it.thumb" :src="mediaUrl(tid, it.thumb)" alt="">
+              <span class="xbadge" v-if="it.ref">{{ fmtP(it.ref) }}</span>
+            </div>
+            <div class="xmore" v-if="hiddenN">+{{ hiddenN }}</div>
+          </div>
+        </div>
+        <pre class="xlog" v-if="card.logOpen">{{ card.logText || '…' }}</pre>
+      </div>
+
+      <div class="banner info" v-if="tid && isSimpleTask">
+        <span>{{ t('track.simple86_banner') }}</span>
+      </div>
+      <div class="banner warn" v-if="tid && needDesc && !isSimpleTask">
+        <span>{{ t('track.need_desc') }}</span>
+        <button class="btn sm" type="button" @click="goDescribe">{{ t('track.need_desc.go') }}</button>
+      </div>
+      <!-- 扩图提示横幅：随页面一起向上滚动，不再固定占据顶部空间 -->
+      <div class="banner warn" v-if="!card.on && needExpand">
+        <span>{{ t('track.expand_banner', { n: String(okSubjects.length) }) }}</span>
+        <span class="refpick">
+          <button class="btn sm ghost" type="button" @click="refsOpen=!refsOpen">
+            {{ t('track.expand_refs', { ps: refLabel }) }} ▾
+          </button>
+          <div class="refpick-menu" v-if="refsOpen">
+            <label v-for="im in okSubjects" :key="'r'+im.p" class="refpick-item">
+              <input type="checkbox" :checked="!!im.expand_ref" @change="toggleRef(im, $event)">
+              <img :src="mediaUrl(tid, im.file, im.mtime)" :alt="fmtP(im.p)">
+              <span>{{ fmtP(im.p) }}</span>
+            </label>
+          </div>
+        </span>
+        <select v-model="expandPresetId" class="trk-expand-preset-sel" title="从 3 提示词 预设库中选择扩图提示词">
+          <option value="">✨ 扩图词：默认内置</option>
+          <option v-for="ep in expandPresets" :key="ep.id" :value="ep.id">
+            🎨 {{ ep.category ? '[' + ep.category + '] ' : '' }}{{ ep.name }}
+          </option>
+        </select>
+        <span class="split-btn accpick-host">
+          <button class="btn sm" :disabled="busy.has('expand') || !!runningKind || !canExpand"
+                  :title="canExpand ? expandBtnLabel : t('track.expand_need_ref')"
+                  @click="runJob('expand')">
+            {{ expandBtnLabel }}
+          </button>
+          <button class="btn sm split-caret pg-trig" type="button"
+                  :class="{ dragging: accGest.dragging, bump: accGest.bump,
+                            'pg-in-down': accGest.slide==='down', 'pg-in-up': accGest.slide==='up' }"
+                  :disabled="busy.has('expand') || !!runningKind"
+                  :title="t('track.acc.follow')"
+                  @wheel="accGest.onWheel"
+                  @pointerdown="accGest.onPointerDown"
+                  @pointermove="accGest.onPointerMove"
+                  @pointerup="accGest.onPointerUp"
+                  @pointercancel="accGest.onPointerCancel"
+                  @lostpointercapture="accGest.onLostPointerCapture"
+                  @click.stop="accGest.onClick"
+                  @contextmenu="accGest.onContextMenu">
+            ▾
+            <span class="pg-ew" v-if="accGest.dragging">◂ ▸</span>
+            <span class="pg-pos" v-if="accGest.posHint">{{ accGest.posHint }}</span>
+          </button>
+          <div class="accpick-menu" v-if="accOpen && !upscaleDlg.on" @click.stop>
+            <div class="accpick-item" :class="{on: !accPinned}" @click="pickExpandAcc('')">
+              {{ accPinned ? '○ ' : '● ' }}{{ accFollowLabel }}
+            </div>
+            <div class="accpick-borrowed" v-if="accBorrowed">{{ t('track.acc.borrowed') }}</div>
+            <div class="accpick-sep"></div>
+            <div v-for="a in accOptions" :key="a.id" class="accpick-item"
+                 :class="{on: accPinned && accState.current && accState.current.id===a.id}"
+                 :title="a.alive ? '' : t('track.acc.offline_tip')"
+                 @click="pickExpandAcc(a.id)">
+              <span>{{ a.engine }} · {{ a.name }}{{ a.owner_port && !a.lock_mine ? t('track.acc.held', { port: String(a.owner_port) }) : '' }}</span>
+              <span class="acc-alive">{{ a.alive ? t('track.acc.online') : t('track.acc.offline') }}</span>
+            </div>
+          </div>
+        </span>
+        <a class="xlink" href="#" @click.prevent="goExpandPrompt">{{ t('track.expand_prompts') }}</a>
+      </div>
+      <div class="banner warn" v-if="!card.on && pendingImgs.length">
+        <span>{{ t('track.pending_banner', { n: String(pendingImgs.length) }) }}</span>
+      </div>
+      <div class="banner bad" v-if="!card.on && blockedImgs.length">
+        <span>{{ t('track.refill_banner', { n: String(blockedImgs.length) }) }}</span>
+        <button class="btn sm" :disabled="busy.has('refill') || !!runningKind" @click="runJob('refill')">
+          {{ t('track.refill_btn') }}
+        </button>
+      </div>
+      <div class="banner bad" v-if="brollHits.length">
+        <span>{{ t('track.broll_banner', { n: String(brollHits.length) }) }}</span>
+      </div>
+
+      <!-- 编排参数与搜文案栏：随滚动条自然上滚 -->
+      <div class="bctl" style="padding:6px 0">
+        <span>{{ t('track.hold') }}
+          <input type="range" :min="unit==='sec'?6:1" :max="unit==='sec'?60:8"
+                 v-model.number="hold" @input="onHoldInput">
+          <b>{{ hold }}</b> {{ unit==='sec' ? t('track.hold.sec') : t('track.hold.seg') }}
+        </span>
+        <span>{{ t('track.jitter') }}
+          <select v-model.number="jitter">
+            <option :value="0">0</option>
+            <option :value="1">1</option>
+            <option :value="2">2</option>
+          </select>
+        </span>
+        <button class="btn sm tog" :class="{on: noAdj}" type="button"
+                :title="t('track.spacing_tip')" @click="toggleSpacing">{{ t('track.spacing') }}</button>
+        <span class="muted" v-if="spacingPending">{{ t('track.spacing_pending') }}</span>
+        <span>{{ t('track.unit') }}
+          <select v-model="unit" @change="onUnitChange">
+            <option value="seg">{{ t('track.unit.seg') }}</option>
+            <option value="sec">{{ t('track.unit.sec') }}</option>
+          </select>
+        </span>
+        <button class="btn sm" :title="t('track.reseed_title')" @click="reseed">{{ t('track.reseed') }}</button>
+        <button class="btn sm" :title="t('track.plan_title')" :disabled="planning" @click="planNow">{{ t('track.plan') }}</button>
+        <span class="bstat" style="margin-left:auto">{{ statsText }}</span>
+      </div>
+
+      <div class="ts-bar" style="margin-bottom:8px">
+        <input :value="ts.qLive" :placeholder="t('search.placeholder')"
+               @input="ts.setQ($event.target.value)" @keydown="ts.onBoxKey">
+        <span class="ts-count">{{ ts.countText }}</span>
+        <button type="button" class="ts-nav" :disabled="!ts.hits.length" @click="ts.prev">‹</button>
+        <button type="button" class="ts-nav" :disabled="!ts.hits.length" @click="ts.next">›</button>
+        <button type="button" class="ts-x" v-if="ts.qLive" @click="ts.clear">×</button>
+      </div>
+
       <div class="strip-hd">
         <button type="button" class="btn sm tog" :class="{on: stripView==='pool'}"
                 @click="setStripView('pool')">{{ t('track.view.pool') }}</button>
@@ -1951,6 +2453,7 @@ window.Panel_track = (() => {
         </button>
       </div>
 
+      <!-- 红色/彩色配图条：已取消 sticky，随页面一起滚动，不再遮挡下方表格 -->
       <div class="trackbar">
         <div v-for="sg in segments" :key="sg.s"
              class="tcell"
@@ -1966,263 +2469,334 @@ window.Panel_track = (() => {
         <span>s001</span><span>{{ axisN }} 段</span><span>s{{ pad3(axisN) }}</span>
       </div>
 
-      <div class="selbar" :class="{idle: !sel}">
-        <template v-if="!sel">{{ t('track.hint.pick') }}</template>
-        <template v-else>
-          <span>{{ t('track.sel', { a: String(sel[0]), b: String(sel[1]), n: String(sel[1]-sel[0]+1) }) }}</span>
-          <select v-model="pinPick" @change="onPinPick">
-            <option value="">{{ t('track.pin') }}</option>
-            <option v-for="im in images" :key="im.p" :value="fmtP(im.p)">
-              {{ fmtP(im.p) }}{{ im.status==='blocked' || im.blocked ? '（'+t('track.blocked')+'）' : (im.exists===false ? '（'+t('track.missing')+'）' : '') }}
-            </option>
-          </select>
-          <button class="btn sm" @click="setZone">{{ t('track.zone') }}</button>
-          <button class="btn sm" @click="unpin">{{ t('track.unpin') }}</button>
-          <button class="btn sm" @click="clearZone">{{ t('track.clear_zone') }}</button>
-          <button class="btn sm" @click="unselect">{{ t('track.unselect') }}</button>
-        </template>
-      </div>
-
-      <!-- 任务级总预设 & 默认 Flow 模式控制行 + 显示全部任务切换 -->
-      <div class="trk-task-preset-bar">
-        <span class="trk-tp-label">📌 任务总预设 (应用到全段):</span>
-        <input v-model="presetSearch" class="trk-tp-search" placeholder="🔍 搜预设…">
-        <select :value="curTaskPresetId" class="trk-tp-select"
-                @change="onTaskPresetChange(tid, $event.target.value)">
-          <option value="">— 选择预设应用到本任务全段 —</option>
-          <option v-for="p in filteredPresets" :key="p.id" :value="p.id">
-            {{ p.category ? '[' + p.category + '] ' : '' }}{{ p.name }}
+      <div class="selbar" v-if="sel">
+        <span>{{ t('track.sel', { a: String(sel[0]), b: String(sel[1]), n: String(sel[1]-sel[0]+1) }) }}</span>
+        <select v-model="pinPick" @change="onPinPick">
+          <option value="">{{ t('track.pin') }}</option>
+          <option v-for="im in images" :key="im.p" :value="fmtP(im.p)">
+            {{ fmtP(im.p) }}{{ im.status==='blocked' || im.blocked ? '（'+t('track.blocked')+'）' : (im.exists===false ? '（'+t('track.missing')+'）' : '') }}
           </option>
         </select>
-        <span class="trk-tp-label" style="margin-left:8px">默认 Flow 模式:</span>
-        <select :value="curTaskFlowMode" class="trk-tp-select" style="width:168px"
-                @change="onTaskFlowModeChange(tid, $event.target.value)">
-          <option value="auto">继承账号默认</option>
-          <option value="frames">🎞️ 首尾帧模式 (Frames)</option>
-          <option value="ingredients">🧩 素材模式 (Ingredients)</option>
-        </select>
-        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
-          <button type="button" class="btn sm tog" :class="{on: showAllTasks}" @click="toggleShowAllTasks">
-            📋 显示全部任务
-          </button>
-          <template v-if="showAllTasks">
-            <button type="button" class="btn sm ghost" @click="expandAllTasks(false)">▾ 全部展开</button>
-            <button type="button" class="btn sm ghost" @click="expandAllTasks(true)">▸ 全部收起</button>
-          </template>
-          <button type="button" class="btn sm ghost" @click="goDescribe" title="进入 3 提示词 同步编辑总表与预设库">
-            3 提示词总表 ↗
-          </button>
-        </span>
+        <button class="btn sm" @click="setZone">{{ t('track.zone') }}</button>
+        <button class="btn sm" @click="unpin">{{ t('track.unpin') }}</button>
+        <button class="btn sm" @click="clearZone">{{ t('track.clear_zone') }}</button>
+        <button class="btn sm" @click="unselect">{{ t('track.unselect') }}</button>
       </div>
 
-      <!-- Google Sheet 风格可编辑分段总表（支持单任务 & 全部任务折叠模式） -->
-      <table class="btable trk-sheet-table">
-        <thead><tr>
-          <th style="width:36px;text-align:center">
-            <input v-if="!showAllTasks" type="checkbox"
-                   :checked="isTaskAllSegChecked(tid, segments)"
-                   @change="toggleTaskAllSeg(tid, segments)" title="全选/取消本任务所有段">
-            <span v-else>✓</span>
-          </th>
-          <th style="width:62px">{{ t('track.col.seg') }}</th>
-          <th style="width:128px">{{ t('track.col.image') }}</th>
-          <th style="width:74px">{{ t('track.col.dur') }}</th>
-          <th style="width:136px">Flow模式</th>
-          <th style="width:108px">生成衔接方式</th>
-          <th style="width:36%">{{ t('track.col.text') }} (直接编辑 / Ctrl+V 多行粘贴)</th>
-          <th style="width:34%">指定提示词 (选独立预设 / 直接粘贴覆盖)</th>
-        </tr></thead>
-
-        <!-- 模式 A：仅显示当前任务 -->
-        <tbody v-if="!showAllTasks">
-          <tr v-for="(sg, sIdx) in segments" :key="sg.s"
-              :data-s="sg.s"
-              :title="sg.text || ''"
-              :class="{chg: rowOf(sg) && rowOf(sg).changed, lock: rowOf(sg) && rowOf(sg).locked, 'need-replan': isNowBroll(sg), 'ts-hit': ts.isHit(sg.s), 'ts-flash': ts.isFlash(sg.s), 'seq-hi': seqHi===sg.s, 'row-selected': isSegChecked(tid, sg.s)}">
-            <td class="ap-td-sel" @mousedown.prevent="startSegDrag(tid, sg.s, $event)" @mouseenter="enterSegDrag(tid, sg.s)">
-              <input type="checkbox" :checked="isSegChecked(tid, sg.s)" tabindex="-1" style="pointer-events:none">
-            </td>
-            <td class="sn">s{{ pad3(sg.s) }}<b v-if="whyMark(sg)"> {{ whyMark(sg) }}</b>
-              <span class="ts-badge" v-if="ts.isHit(sg.s)">{{ ts.hits.indexOf(sg.s) + 1 }}</span>
-            </td>
-            <td class="pp">
-              <template v-if="chainLocked(sg)">
-                <span class="muted">{{ chainFromLabel(sg) }}</span>
-              </template>
-              <template v-else>
-                <div style="display:flex;align-items:center;gap:4px">
-                  <span class="swatch" :style="{background: pcolor(cellP(sg))}"></span>
-                  <select class="dur-sel" style="flex:1;min-width:64px" :value="fmtP(cellP(sg))"
-                          @change="onSegImageChange(tid, sg, $event.target.value)">
-                    <option v-for="im in images" :key="im.p" :value="fmtP(im.p)">{{ fmtP(im.p) }}</option>
-                  </select>
-                </div>
-              </template>
-              <span class="old-img" v-if="sg.image_replaced"
-                    :title="t('track.old_img_tip')">{{ t('track.old_img') }}</span>
-            </td>
-            <td class="sn dur-cell" :class="{warn: !!sg.duration_warn}"
-                @contextmenu.prevent="openDurMenu($event, sg)">
-              <select class="dur-sel" :value="sg.duration"
-                      @click.stop @change="onDurChange(sg, $event)">
-                <option v-for="d in (sg.duration_options || durOptions)" :key="d" :value="d">{{ d }}s</option>
-              </select>
-              <span class="dur-edit" v-if="sg.duration_manual" title="手动时长">✎</span>
-              <span class="old-img" v-if="sg.duration_stale"
-                    :title="t('track.dur_stale_tip')">{{ t('track.dur_stale') }}</span>
-              <div class="dur-warn" v-if="sg.duration_warn">{{ sg.duration_warn }}</div>
-              <div class="aspect-muted" v-if="sg.aspect_label">{{ sg.aspect_label }}</div>
-            </td>
-            <td>
-              <select class="dur-sel" style="width:100%" :value="sg.flow_mode || 'auto'"
-                      @change="onSegFlowModeChange(tid, sg, $event.target.value)">
-                <option value="auto">继承账号</option>
-                <option value="frames">🎞️ 首尾帧</option>
-                <option value="ingredients">🧩 素材</option>
-              </select>
-            </td>
-            <td class="seg-mode">
-              <select class="dur-sel" style="width:100%"
-                      :value="chainLocked(sg) ? 'chain' : (sg.role==='bridge' || sg.mode==='bridge' ? 'bridge' : 'single')"
-                      @change="onSegConnModeChange(tid, sg, $event.target.value)">
-                <option value="single">首帧 (单段)</option>
-                <option value="bridge">首尾帧 (桥接)</option>
-                <option value="chain">接龙 (延续)</option>
-              </select>
-            </td>
-            <td class="txt">
-              <input class="trk-inline-input" :value="sg.text || ''"
-                     placeholder="输入或粘贴本段文案字幕…"
-                     @change="onSegFieldUpdate(tid, sg, 'text', $event.target.value)"
-                     @paste="onSegPaste(tid, segments, sIdx, 'text', $event)">
-              <div class="w" v-if="isNowBroll(sg)">{{ t('track.broll_need_replan') }}</div>
-              <div class="w" v-else-if="rowOf(sg) && (rowOf(sg).locked || rowOf(sg).warn)">
-                {{ rowOf(sg).locked || rowOf(sg).warn }}
-              </div>
-            </td>
-            <td>
-              <div class="trk-prompt-cell">
-                <select class="dur-sel trk-seg-preset-sel" :value="sg.preset_id || ''"
-                        @change="onSegFieldUpdate(tid, sg, 'preset_id', $event.target.value)">
-                  <option value="">— 继承预设 —</option>
-                  <option v-for="p in allPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
-                </select>
-                <input class="trk-inline-input" :value="sg.custom_prompt || sg.prompt_preview || ''"
-                       placeholder="直接粘贴或输入提示词覆盖…"
-                       @change="onSegFieldUpdate(tid, sg, 'custom_prompt', $event.target.value)"
-                       @paste="onSegPaste(tid, segments, sIdx, 'custom_prompt', $event)">
-              </div>
-            </td>
+      <!-- 真 Google Sheet 单元格表格：支持拖拽调整任意行高与列宽、矩形框选、Ctrl+C/V 批量复制粘贴、右下角填充柄拖拽拷贝、默认隐藏任务行并保留同组外框颜色 -->
+      <table class="gs-sheet-table btable">
+        <thead>
+          <tr>
+            <th :style="{width: colWidths.check + 'px', textAlign: 'center'}">
+              <input v-if="!showAllTasks" type="checkbox"
+                     :checked="isTaskAllSegChecked(tid, segments)"
+                     @change="toggleTaskAllSeg(tid, segments)" title="全选/取消本任务所有段">
+              <span v-else>✓</span>
+              <span class="gs-col-resizer" @mousedown="startColResize('check', $event)"></span>
+            </th>
+            <th :style="{width: colWidths.seg + 'px'}">
+              分镜
+              <span class="gs-col-resizer" @mousedown="startColResize('seg', $event)"></span>
+            </th>
+            <th :style="{width: colWidths.image + 'px'}">
+              配图 (含预览)
+              <span class="gs-col-resizer" @mousedown="startColResize('image', $event)"></span>
+            </th>
+            <th :style="{width: colWidths.dur + 'px'}">
+              时长
+              <span class="gs-col-resizer" @mousedown="startColResize('dur', $event)"></span>
+            </th>
+            <th :style="{width: colWidths.flow + 'px'}">
+              Flow模式
+              <span class="gs-col-resizer" @mousedown="startColResize('flow', $event)"></span>
+            </th>
+            <th :style="{width: colWidths.conn + 'px'}">
+              衔接
+              <span class="gs-col-resizer" @mousedown="startColResize('conn', $event)"></span>
+            </th>
+            <th :style="{width: colWidths.text + 'px'}">
+              文案 (支持框选 / Ctrl+C/V / 右下角拖拽)
+              <span class="gs-col-resizer" @mousedown="startColResize('text', $event)"></span>
+            </th>
+            <th :style="{width: colWidths.preset + 'px'}">
+              预设名称
+              <span class="gs-col-resizer" @mousedown="startColResize('preset', $event)"></span>
+            </th>
+            <th :style="{width: colWidths.prompt + 'px'}">
+              提示词覆盖
+              <span class="gs-col-resizer" @mousedown="startColResize('prompt', $event)"></span>
+            </th>
           </tr>
-        </tbody>
+        </thead>
 
-        <!-- 模式 B：📋 显示全部任务（父级任务彩色折叠行 + 点击任意行热切换上方图池） -->
-        <tbody v-else>
-          <template v-for="(tk, tIdx) in allTasksTable" :key="tk.id">
-            <tr class="trk-task-group-row" :class="{'active-task': tid===tk.id}"
-                :style="{'--task-accent': taskColor(tIdx, tk)}"
-                @click="hotSwitchTask(tk.id)">
+        <tbody>
+          <template v-for="item in sheetFlatRows" :key="item.rowKey">
+            <!-- 可选展开的“任务”汇总行（默认隐藏，点击顶部“任务行”或某组第一行的任务徽标即可展开进行批量任务级设置） -->
+            <tr v-if="item.isFirstInGroup && isTaskHeaderVisible(item.taskId)"
+                class="trk-task-group-row"
+                :class="{'active-task': tid===item.taskId}"
+                :style="{'--task-accent': item.taskColor}"
+                @click="hotSwitchTask(item.taskId)">
               <td style="text-align:center" @click.stop>
-                <input type="checkbox" :checked="isTaskAllSegChecked(tk.id, tk.segments)"
-                       @change="toggleTaskAllSeg(tk.id, tk.segments)">
+                <input type="checkbox" :checked="isTaskAllSegChecked(item.taskId, item.taskObj && item.taskObj.segments)"
+                       @change="toggleTaskAllSeg(item.taskId, item.taskObj && item.taskObj.segments)">
               </td>
               <td colspan="3">
                 <div style="display:flex;align-items:center;gap:8px">
                   <button type="button" class="btn sm ghost" style="padding:1px 6px"
-                          @click.stop="collapsedTasks[tk.id]=!collapsedTasks[tk.id]">
-                    {{ collapsedTasks[tk.id] ? '▸' : '▾' }}
+                          @click.stop="collapsedTasks[item.taskId]=!collapsedTasks[item.taskId]">
+                    {{ collapsedTasks[item.taskId] ? '▸' : '▾' }}
                   </button>
-                  <span class="trk-task-badge" :style="{background: taskColor(tIdx, tk) + '22', borderColor: taskColor(tIdx, tk), color: taskColor(tIdx, tk)}">
-                    {{ tk.id }}
+                  <span class="trk-task-badge" :style="{background: item.taskColor + '22', borderColor: item.taskColor, color: item.taskColor}">
+                    {{ item.taskId }}
                   </span>
-                  <b>{{ tk.name || tk.id }}</b>
-                  <span class="muted mono" style="font-size:12px">({{ (tk.segments || []).length }} 段 · {{ tk.image_count || 0 }} 图)</span>
-                  <span class="tag" v-if="tk.account">{{ tk.account }}</span>
+                  <b>{{ item.taskName }}</b>
+                  <span class="muted mono" style="font-size:11.5px">({{ (item.taskObj && item.taskObj.segments || []).length }}段)</span>
                 </div>
               </td>
-              <td>
-                <select class="dur-sel" style="width:100%" :value="tk.flow_mode || 'auto'"
-                        @click.stop @change="onTaskFlowModeChange(tk.id, $event.target.value)">
-                  <option value="auto">组默认: 继承</option>
+              <td colspan="2" @click.stop>
+                <select class="dur-sel" style="width:100%" :value="(item.taskObj && item.taskObj.flow_mode) || 'auto'"
+                        @change="onTaskFlowModeChange(item.taskId, $event.target.value)">
+                  <option value="auto">任务Flow: 继承</option>
                   <option value="frames">🎞️ 全任务首尾帧</option>
                   <option value="ingredients">🧩 全任务素材</option>
                 </select>
               </td>
               <td colspan="3" @click.stop>
                 <div style="display:flex;align-items:center;gap:8px">
-                  <span class="muted" style="font-size:12px">📌 任务总预设:</span>
-                  <select class="dur-sel" style="min-width:200px" :value="tk.preset_id || ''"
-                          @change="onTaskPresetChange(tk.id, $event.target.value)">
-                    <option value="">— 选择预设应用到 {{ tk.id }} 全段 —</option>
-                    <option v-for="p in allPresets" :key="p.id" :value="p.id">
-                      {{ p.category ? '[' + p.category + '] ' : '' }}{{ p.name }}
-                    </option>
+                  <span class="muted" style="font-size:11.5px">📌 任务预设:</span>
+                  <select class="dur-sel" style="min-width:180px" :value="(item.taskObj && item.taskObj.preset_id) || ''"
+                          @change="onTaskPresetChange(item.taskId, $event.target.value)">
+                    <option value="">— 选择预设应用到 {{ item.taskId }} 全段 —</option>
+                    <option v-for="p in allPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
                   </select>
-                  <span class="muted" style="font-size:11px;margin-left:auto">💡 点击任意行上方图池自动切换到该任务</span>
+                  <button type="button" class="btn sm ghost" style="margin-left:auto;padding:1px 6px"
+                          @click.stop="toggleSingleTaskHeaderRow(item.taskId, $event)">收起任务行 ▲</button>
                 </div>
               </td>
             </tr>
-            <template v-if="!collapsedTasks[tk.id]">
-              <tr v-for="(sg, sIdx) in (tk.segments || [])" :key="tk.id + '-' + sg.s"
-                  :class="{'row-selected': isSegChecked(tk.id, sg.s), 'active-task-seg': tid===tk.id}"
-                  :style="{'--task-accent': taskColor(tIdx, tk)}"
-                  @click="hotSwitchTask(tk.id)">
-                <td class="ap-td-sel" @click.stop
-                    @mousedown.prevent="startSegDrag(tk.id, sg.s, $event)"
-                    @mouseenter="enterSegDrag(tk.id, sg.s)">
-                  <input type="checkbox" :checked="isSegChecked(tk.id, sg.s)" tabindex="-1" style="pointer-events:none">
-                </td>
-                <td class="sn" style="border-left:3px solid var(--task-accent)">s{{ pad3(sg.s) }}</td>
-                <td class="pp" @click.stop>
-                  <input class="trk-inline-input mono" style="width:76px" :value="fmtP(sg.image || 'p01')"
-                         @change="onSegImageChange(tk.id, sg, $event.target.value)">
-                </td>
-                <td class="sn dur-cell" @click.stop>
-                  <select class="dur-sel" :value="sg.duration || 6"
-                          @change="onSegFieldUpdate(tk.id, sg, 'duration', Number($event.target.value))">
-                    <option v-for="d in [4,6,8,10,15]" :key="d" :value="d">{{ d }}s</option>
+
+            <!-- 标准 Google Sheet 分镜单元格行：保留同组颜色外框分区 -->
+            <tr :data-s="item.seg.s"
+                :data-rowkey="item.rowKey"
+                class="gs-group-row"
+                :class="{
+                  'gs-group-first': item.isFirstInGroup,
+                  'gs-group-last': item.isLastInGroup,
+                  'row-selected': isSegChecked(item.taskId, item.seg.s),
+                  'seq-hi': tid===item.taskId && seqHi===item.seg.s
+                }"
+                :style="{
+                  '--group-border-color': item.taskColor,
+                  height: (rowHeights[item.rowKey] ? rowHeights[item.rowKey] + 'px' : 'auto')
+                }"
+                @click="hotSwitchTask(item.taskId); floatingViewer.rowIdx = item.flatIdx">
+              <!-- 勾选列 -->
+              <td class="ap-td-sel" style="text-align:center"
+                  @mousedown.prevent="startSegDrag(item.taskId, item.seg.s, $event)"
+                  @mouseenter="enterSegDrag(item.taskId, item.seg.s)">
+                <input type="checkbox" :checked="isSegChecked(item.taskId, item.seg.s)" tabindex="-1" style="pointer-events:none">
+                <span class="gs-row-resizer" @mousedown="startRowResize(item.rowKey, $event)"></span>
+              </td>
+
+              <!-- 分镜序号列（组首行带可点击的任务徽标，用于随时展开/收起该任务的任务行） -->
+              <td class="sn">
+                <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap">
+                  <span v-if="item.isFirstInGroup"
+                        class="gs-task-mini-badge"
+                        :style="{background: item.taskColor}"
+                        :title="'点击展开/收起 ' + item.taskId + ' 任务批量操作行'"
+                        @click.stop="toggleSingleTaskHeaderRow(item.taskId, $event)">
+                    {{ item.taskId }}
+                  </span>
+                  <span>s{{ pad3(item.seg.s) }}</span>
+                </div>
+                <span class="gs-row-resizer" @mousedown="startRowResize(item.rowKey, $event)"></span>
+              </td>
+
+              <!-- Col 0: 配图 + 行内缩略图预览 -->
+              <td class="pp"
+                  :class="{
+                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 0),
+                    'gs-cell-active': isGsCellActive(item.flatIdx, 0),
+                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 0)
+                  }"
+                  @mousedown="onGsCellMouseDown(item.flatIdx, 0, $event)"
+                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 0)">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <img v-if="item.thumbUrl"
+                       :src="item.thumbUrl"
+                       class="gs-row-thumb"
+                       :alt="item.pCode"
+                       title="点击在悬浮看图器中放大查看"
+                       @click.stop="floatingViewer.rowIdx = item.flatIdx; floatingViewer.on = true"
+                       onerror="this.style.display='none'">
+                  <span class="swatch" :style="{background: pcolor(item.pCode)}"></span>
+                  <select v-if="item.taskImages && item.taskImages.length"
+                          class="dur-sel" style="flex:1;min-width:56px"
+                          :value="item.pCode"
+                          @change="onSegImageChange(item.taskId, item.seg, $event.target.value)">
+                    <option v-for="im in item.taskImages" :key="im.p" :value="fmtP(im.p)">{{ fmtP(im.p) }}</option>
                   </select>
-                </td>
-                <td @click.stop>
-                  <select class="dur-sel" style="width:100%" :value="sg.flow_mode || 'auto'"
-                          @change="onSegFlowModeChange(tk.id, sg, $event.target.value)">
-                    <option value="auto">继承账号</option>
-                    <option value="frames">🎞️ 首尾帧</option>
-                    <option value="ingredients">🧩 素材</option>
-                  </select>
-                </td>
-                <td @click.stop>
-                  <select class="dur-sel" style="width:100%" :value="sg.mode || 'single'"
-                          @change="onSegConnModeChange(tk.id, sg, $event.target.value)">
-                    <option value="single">首帧</option>
-                    <option value="bridge">首尾帧</option>
-                    <option value="chain">接龙</option>
-                  </select>
-                </td>
-                <td @click.stop>
-                  <input class="trk-inline-input" :value="sg.text || ''"
-                         placeholder="输入或粘贴本段文案…"
-                         @change="onSegFieldUpdate(tk.id, sg, 'text', $event.target.value)"
-                         @paste="onSegPaste(tk.id, tk.segments, sIdx, 'text', $event)">
-                </td>
-                <td @click.stop>
-                  <div class="trk-prompt-cell">
-                    <select class="dur-sel trk-seg-preset-sel" :value="sg.preset_id || ''"
-                            @change="onSegFieldUpdate(tk.id, sg, 'preset_id', $event.target.value)">
-                      <option value="">— 继承预设 —</option>
-                      <option v-for="p in allPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
-                    </select>
-                    <input class="trk-inline-input" :value="sg.custom_prompt || sg.prompt_preview || ''"
-                           placeholder="粘贴或输入提示词覆盖…"
-                           @change="onSegFieldUpdate(tk.id, sg, 'custom_prompt', $event.target.value)"
-                           @paste="onSegPaste(tk.id, tk.segments, sIdx, 'custom_prompt', $event)">
-                  </div>
-                </td>
-              </tr>
-            </template>
+                  <input v-else class="trk-inline-input mono" style="width:58px"
+                         :value="item.pCode"
+                         @change="onSegImageChange(item.taskId, item.seg, $event.target.value)">
+                </div>
+                <span v-if="isGsFillHandleCell(item.flatIdx, 0)" class="gs-fill-handle"
+                      title="向下或向上拖拽批量拷贝填充"
+                      @mousedown="startGsFillDrag($event)"></span>
+              </td>
+
+              <!-- Col 1: 时长 -->
+              <td class="sn dur-cell"
+                  :class="{
+                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 1),
+                    'gs-cell-active': isGsCellActive(item.flatIdx, 1),
+                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 1)
+                  }"
+                  @mousedown="onGsCellMouseDown(item.flatIdx, 1, $event)"
+                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 1)"
+                  @contextmenu.prevent="openDurMenu($event, item.seg)">
+                <select class="dur-sel" style="width:100%" :value="item.seg.duration || 6"
+                        @change="item.taskId===tid ? onDurChange(item.seg, $event) : onSegFieldUpdate(item.taskId, item.seg, 'duration', Number($event.target.value))">
+                  <option v-for="d in (item.seg.duration_options || [4,6,8,10,15])" :key="d" :value="d">{{ d }}s</option>
+                </select>
+                <span v-if="isGsFillHandleCell(item.flatIdx, 1)" class="gs-fill-handle"
+                      @mousedown="startGsFillDrag($event)"></span>
+              </td>
+
+              <!-- Col 2: Flow模式 -->
+              <td :class="{
+                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 2),
+                    'gs-cell-active': isGsCellActive(item.flatIdx, 2),
+                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 2)
+                  }"
+                  @mousedown="onGsCellMouseDown(item.flatIdx, 2, $event)"
+                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 2)">
+                <select class="dur-sel" style="width:100%" :value="item.seg.flow_mode || 'auto'"
+                        @change="onSegFlowModeChange(item.taskId, item.seg, $event.target.value)">
+                  <option value="auto">继承账号</option>
+                  <option value="frames">🎞️ 首尾帧</option>
+                  <option value="ingredients">🧩 素材</option>
+                </select>
+                <span v-if="isGsFillHandleCell(item.flatIdx, 2)" class="gs-fill-handle"
+                      @mousedown="startGsFillDrag($event)"></span>
+              </td>
+
+              <!-- Col 3: 生成衔接方式 -->
+              <td :class="{
+                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 3),
+                    'gs-cell-active': isGsCellActive(item.flatIdx, 3),
+                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 3)
+                  }"
+                  @mousedown="onGsCellMouseDown(item.flatIdx, 3, $event)"
+                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 3)">
+                <select class="dur-sel" style="width:100%"
+                        :value="item.seg.mode || (item.seg.role==='bridge' ? 'bridge' : 'single')"
+                        @change="onSegConnModeChange(item.taskId, item.seg, $event.target.value)">
+                  <option value="single">首帧</option>
+                  <option value="bridge">首尾帧</option>
+                  <option value="chain">接龙</option>
+                </select>
+                <span v-if="isGsFillHandleCell(item.flatIdx, 3)" class="gs-fill-handle"
+                      @mousedown="startGsFillDrag($event)"></span>
+              </td>
+
+              <!-- Col 4: 文案 -->
+              <td :class="{
+                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 4),
+                    'gs-cell-active': isGsCellActive(item.flatIdx, 4),
+                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 4)
+                  }"
+                  @mousedown="onGsCellMouseDown(item.flatIdx, 4, $event)"
+                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 4)">
+                <textarea class="trk-inline-input"
+                          style="width:100%;min-height:28px;height:100%;resize:none;line-height:1.4;white-space:pre-wrap"
+                          rows="1"
+                          :value="item.seg.text || ''"
+                          placeholder="输入或粘贴本段文案…"
+                          @change="onSegFieldUpdate(item.taskId, item.seg, 'text', $event.target.value)"
+                          @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'text', $event)"></textarea>
+                <span v-if="isGsFillHandleCell(item.flatIdx, 4)" class="gs-fill-handle"
+                      @mousedown="startGsFillDrag($event)"></span>
+              </td>
+
+              <!-- Col 5: 预设名称（仅显示预设名字，清晰独立一列） -->
+              <td :class="{
+                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 5),
+                    'gs-cell-active': isGsCellActive(item.flatIdx, 5),
+                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 5)
+                  }"
+                  @mousedown="onGsCellMouseDown(item.flatIdx, 5, $event)"
+                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 5)">
+                <select class="dur-sel" style="width:100%" :value="item.seg.preset_id || ''"
+                        @change="onSegFieldUpdate(item.taskId, item.seg, 'preset_id', $event.target.value)">
+                  <option value="">— 继承预设 —</option>
+                  <option v-for="p in allPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
+                </select>
+                <span v-if="isGsFillHandleCell(item.flatIdx, 5)" class="gs-fill-handle"
+                      @mousedown="startGsFillDrag($event)"></span>
+              </td>
+
+              <!-- Col 6: 提示词覆盖内容 -->
+              <td :class="{
+                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 6),
+                    'gs-cell-active': isGsCellActive(item.flatIdx, 6),
+                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 6)
+                  }"
+                  @mousedown="onGsCellMouseDown(item.flatIdx, 6, $event)"
+                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 6)">
+                <textarea class="trk-inline-input"
+                          style="width:100%;min-height:28px;height:100%;resize:none;line-height:1.4;white-space:pre-wrap"
+                          rows="1"
+                          :value="item.seg.custom_prompt || item.seg.prompt_preview || ''"
+                          placeholder="粘贴或输入提示词覆盖…"
+                          @change="onSegFieldUpdate(item.taskId, item.seg, 'custom_prompt', $event.target.value)"
+                          @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'custom_prompt', $event)"></textarea>
+                <span v-if="isGsFillHandleCell(item.flatIdx, 6)" class="gs-fill-handle"
+                      @mousedown="startGsFillDrag($event)"></span>
+              </td>
+            </tr>
           </template>
         </tbody>
       </table>
+    </div>
+
+    <!-- 外部悬浮图片阅读器窗口 (支持点击任意行实时联动预览，支持 ↑/↓/J/K/Space 切换上/下一行图片) -->
+    <div v-if="floatingViewer.on && currentFloatingRow"
+         class="gs-floating-img-viewer"
+         :style="floatingViewer.x != null ? {left: floatingViewer.x + 'px', top: floatingViewer.y + 'px', right: 'auto', bottom: 'auto'} : {}"
+         @click.stop>
+      <div class="fv-hd" @mousedown="startFloatingViewerDrag($event)">
+        <span>🖼️ 悬浮图片阅读器 · 第 {{ currentFloatingRow.flatIdx + 1 }} / {{ sheetFlatRows.length }} 行 (共 {{ sheetFlatRows.length }} 张图)</span>
+        <button type="button" class="btn sm ghost" style="padding:1px 6px" @click="floatingViewer.on = false">×</button>
+      </div>
+      <div class="fv-body">
+        <img v-if="currentFloatingRow.thumbUrl"
+             :src="currentFloatingRow.thumbUrl"
+             class="fv-img"
+             :alt="currentFloatingRow.pCode">
+        <div style="width:100%;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--ink)">
+          <span>
+            <b :style="{color: currentFloatingRow.taskColor}">{{ currentFloatingRow.taskId }}</b>
+            · s{{ pad3(currentFloatingRow.seg.s) }}
+            · <span class="mono" style="color:var(--accent)">{{ currentFloatingRow.pCode }}</span>
+          </span>
+          <span class="muted">{{ currentFloatingRow.seg.duration || 6 }}s</span>
+        </div>
+        <div class="muted" style="width:100%;font-size:11.5px;max-height:44px;overflow:hidden;text-overflow:ellipsis">
+          {{ currentFloatingRow.seg.text || '' }}
+        </div>
+      </div>
+      <div class="fv-ft">
+        <button type="button" class="btn sm" :disabled="currentFloatingRow.flatIdx <= 0" @click="stepFloatingViewer(-1)">
+          ◀ 上一行 (↑/K)
+        </button>
+        <span class="muted" style="font-size:11px">快捷键: ↑/↓ 或 J/K 切换</span>
+        <button type="button" class="btn sm" :disabled="currentFloatingRow.flatIdx >= sheetFlatRows.length - 1" @click="stepFloatingViewer(1)">
+          下一行 (↓/J) ▶
+        </button>
+      </div>
     </div>
 
     <div class="bfoot">
