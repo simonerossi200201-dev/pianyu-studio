@@ -2107,6 +2107,9 @@ window.Panel_track = (() => {
         if (!adoptPanelTid(tid, 'track') && !tid.value && readyTasks.value.length) {
           tid.value = readyTasks.value[0].id;
         }
+        if (!tid.value && allTasks.value.length) {
+          tid.value = allTasks.value[0].id;
+        }
         ui.panelTid = tid.value || '';
         ui.selectedTaskId = tid.value || '';
         if (showAllTasks.value) loadAllTasksTable(true).catch(() => {});
@@ -2238,9 +2241,9 @@ window.Panel_track = (() => {
     </span>
   </div>
 
-  <div class="empty" v-if="!tid && !allTasks.length">{{ t('track.no_task') }}</div>
+  <div class="empty" v-if="!tid && !allTasks.length && !allTasksTable.length">{{ t('track.no_task') }}</div>
 
-  <template v-else-if="tid && tidReady">
+  <template v-else>
     <!-- 主滚动工作区：扩图栏、编排控制栏、红绿镜头条与表格全部在同一个滚动容器内一起向上滚动，释放完整表格视野 -->
     <div class="bwrap">
       <div class="xcard" v-if="card.on" :class="{failed: card.failed}">

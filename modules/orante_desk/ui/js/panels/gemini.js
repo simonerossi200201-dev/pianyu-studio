@@ -2417,7 +2417,7 @@ window.Panel_gemini = (() => {
                   <td style="text-align:center;vertical-align:middle"
                       :class="{'gs-cell-selected': isPresetCellSelected(rIdx, 0)}"
                       @mousedown="onPresetCellMouseDown(rIdx, 0, row, $event)"
-                      @mouseenter="onPresetCellMouseEnter(rIdx, 0); onCellHoverEnter($event, '预设分组与颜色', (row.category ? '分组：' + row.category + '\n' : '未分组\n') + '颜色：' + (row.color || '#d4a24c'))"
+                      @mouseenter="onPresetCellMouseEnter(rIdx, 0); onCellHoverEnter($event, '预设分组与颜色', (row.category ? '分组：' + row.category + ' · ' : '未分组 · ') + '颜色：' + (row.color || '#d4a24c'))"
                       @mouseleave="onCellHoverLeave">
                     <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px">
                       <label class="gs-big-color-swatch" :style="{background: row.color || '#d4a24c'}" :title="(row.category ? '分组: ' + row.category + ' · ' : '') + '点击修改颜色'">
