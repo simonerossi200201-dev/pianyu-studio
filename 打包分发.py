@@ -89,6 +89,7 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "modules/studio_gateway",
     "studio_launcher.py",
     "install_studio.py",
+    "下载多语种对齐模型.py",
     "打包分发.py",
     "片语工作室.bat",
     "片语工作室.vbs",
