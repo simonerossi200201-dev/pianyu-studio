@@ -2199,8 +2199,65 @@ class FlowEngine(Engine):
             time.sleep(0.3)
         self._ui_step("点生成")
         match_rpcs = VIDEO_GEN_RPCS if rpc == "eb1hJf" else (rpc,)
+        # 在页面内挂一层轻量 XHR/fetch 旁路缓存，防止 Chromium 偶发回收 CDP Network 缓冲区
+        # 报 Protocol error (Network.getResponseBody): No data found for resource with given identifier
+        try:
+            page.evaluate(r"""() => {
+                window.__orante_rpc_tap = null;
+                if (window.__orante_rpc_tap_installed) return;
+                window.__orante_rpc_tap_installed = true;
+                const origOpen = XMLHttpRequest.prototype.open;
+                const origSend = XMLHttpRequest.prototype.send;
+                XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+                    this.__or_url = String(url || '');
+                    this.__or_method = String(method || '');
+                    return origOpen.call(this, method, url, ...rest);
+                };
+                XMLHttpRequest.prototype.send = function(body) {
+                    if (this.__or_url && this.__or_url.includes('batchexecute')) {
+                        const post = typeof body === 'string' ? body : '';
+                        this.addEventListener('load', () => {
+                            try {
+                                window.__orante_rpc_tap = {
+                                    url: this.__or_url,
+                                    status: this.status || 200,
+                                    text: this.responseText || '',
+                                    post: post,
+                                    at: Date.now()
+                                };
+                            } catch (e) {}
+                        });
+                    }
+                    return origSend.call(this, body);
+                };
+                if (typeof window.fetch === 'function') {
+                    const origFetch = window.fetch;
+                    window.fetch = async function(input, init) {
+                        const url = typeof input === 'string' ? input : (input && input.url) || '';
+                        const post = (init && typeof init.body === 'string') ? init.body : '';
+                        const resp = await origFetch.apply(this, arguments);
+                        if (url && url.includes('batchexecute')) {
+                            try {
+                                const clone = resp.clone();
+                                clone.text().then(txt => {
+                                    window.__orante_rpc_tap = {
+                                        url: url,
+                                        status: resp.status || 200,
+                                        text: txt || '',
+                                        post: post,
+                                        at: Date.now()
+                                    };
+                                }).catch(() => {});
+                            } catch (e) {}
+                        }
+                        return resp;
+                    };
+                }
+            }""")
+        except Exception:
+            pass
         with page.expect_response(
-            lambda r: "batchexecute" in r.url and any(
+            lambda r: r.request.method == "POST" and "batchexecute" in r.url and any(
                 f"rpcids={x}" in r.url or f"%2C{x}" in r.url or f",{x}" in r.url
                 for x in match_rpcs
             ),
@@ -2209,14 +2266,36 @@ class FlowEngine(Engine):
             btn.click(timeout=UI_CLICK_TIMEOUT)
         self._ui_step("等回包")
         resp = resp_info.value
-        out = _parse_batchexecute(resp.text(), rpc)
+        raw_text = ""
+        post = ""
+        try:
+            post = resp.request.post_data or ""
+        except Exception:
+            post = ""
+        try:
+            raw_text = resp.text()
+        except Exception:
+            # CDP 缓冲区被释放时，从页面内旁路 tap 读取响应正文
+            for _ in range(10):
+                try:
+                    tap = page.evaluate("() => window.__orante_rpc_tap")
+                    if isinstance(tap, dict) and tap.get("text"):
+                        raw_text = str(tap.get("text") or "")
+                        if not post and tap.get("post"):
+                            post = str(tap.get("post") or "")
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.15)
+            if not raw_text:
+                raise
+        out = _parse_batchexecute(raw_text, rpc)
         out["status"] = resp.status
         out["prompt_ok"] = None
         out["req_strings"] = None
         out["audio"] = None
         if prompt is not None:
             try:
-                post = resp.request.post_data or ""
                 out["prompt_ok"] = request_carries_prompt(post, prompt)
                 out["req_strings"] = _freq_strings(post)
                 out["audio"] = request_audio_flag(post)
@@ -2394,8 +2473,9 @@ class FlowEngine(Engine):
                     f"genId {gen_id[:8]}… 没记到 s{seg.get('s', 0):03d} 头上，也不会下载改名。"
                     "已经点了「生成」，这一段可能已经在 Flow 里生成了——先去 Flow 页面看一眼，别急着重交。")
             mid = model_id_for(self.model_name, duration)
+            mid_r2v = mid.replace("_i2v_", "_r2v_")
             leaves = res.get("req_strings") or []
-            if leaves and mid not in leaves:
+            if leaves and mid not in leaves and mid_r2v not in leaves:
                 got = next((x for x in leaves if x.startswith("veo_")), "?")
                 self.log(f"  ⚠ s{seg.get('s', 0):03d} 请求里的模型是 {got}，不是预期的 {mid}")
             want_audio = AUDIO_SILENT if silent else AUDIO_WITH_SOUND

@@ -23,6 +23,7 @@ def reload_runtime_modules() -> list[str]:
     reloaded: list[str] = []
     mod_names = (
         "orante.engines.flow_api",
+        "orante.services.verify",
         "orante.services.prepare",
         "orante.services.describe",
         "orante.services.simple86",

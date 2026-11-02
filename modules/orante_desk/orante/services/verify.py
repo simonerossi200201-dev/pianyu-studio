@@ -265,8 +265,7 @@ def restore_voided(m: Manifest, task_dir: Path, segs: list, log=None) -> list[in
         if not p:
             continue
         ref, kind, lab = _first_frame_ref(task_dir, m, sg)
-        if kind != "image" or ref is None:
-            continue
+        lab = lab or p
         pat = _re.compile(rf"{_re.escape(tid)}-s{sn:03d}-{_re.escape(p)}(-\d+)?\.mp4$", _re.I)
         cands = sorted((f for f in files if pat.search(f.name)), key=lambda f: f.stat().st_mtime, reverse=True)
         for f in cands:
@@ -276,16 +275,14 @@ def restore_voided(m: Manifest, task_dir: Path, segs: list, log=None) -> list[in
                 continue
             if digest in taken_sha or digest not in voided or digest in discarded:
                 continue
-            rc = struct_recheck(m, task_dir, sg, f, ref, "image", ffmpeg)
-            if not rc or not rc.get("ok"):
-                continue
+            rc = (struct_recheck(m, task_dir, sg, f, ref, kind or "image", ffmpeg) if ref else None) or {"sim": 0.0, "ok": True}
             dest = task_dir / "clips" / m.clip_name(sg)
             if dest.exists():
                 dest = dest.with_name(dest.stem + f"-{int(time.time())}.mp4")
             shutil.move(str(f), str(dest))
             st = dest.stat()
             vh = ahash_video(dest, ffmpeg)
-            ih = ahash_image(ref, ffmpeg)
+            ih = ahash_image(ref, ffmpeg) if ref else None
             d = hamming(vh, ih) if (vh is not None and ih is not None) else None
             sg["takes"] = [{
                 "file": str(dest.relative_to(task_dir)).replace("\\", "/"),
@@ -953,7 +950,7 @@ def after_download(m: Manifest, task_dir: Path, seg: dict, dest: Path,
                         _apply_void(m, task_dir, seg, dest, result, log=_log)
                     return result
 
-        # 4b 首帧对参考图。接片对上一段尾帧，其余对配图。
+        # 4b 首帧记录（不再因首帧与配图差异而作废视频：只要正常生成出视频且非损坏/重复文件就直接收片）。
         vhash = ahash_video(dest, ffmpeg) if ffmpeg else None
         if vhash is not None:
             take["frame_ahash"] = ahash_hex(vhash)
@@ -964,51 +961,16 @@ def after_download(m: Manifest, task_dir: Path, seg: dict, dest: Path,
             if ih is not None:
                 d = hamming(vhash, ih)
                 if ref_kind == "image" and d > 0:
-                    # 配图不是精确 16:9 / 9:16（比如正方形）时，交给 Flow 的是居中裁过的那一块，
-                    # 片子首帧也就是那一块。整张图压成 16×16 去比会差很远（T0122：对的片算出距 105）。
-                    # 所以再拿"裁过的那一块"比一次，取近的那个。换成别的图照样差得远，不会放错片。
                     ic = ahash_image_cropped(img)
                     if ic is not None:
                         d = min(d, hamming(vhash, ic))
                 take["frame_dist"] = d
                 result["frame_dist"] = d
-                ok_th, soft_th = _thresholds_for(seg)
                 if (seg.get("role") == "chain"
                         or getattr(m, "mode", None) == "tail_chain"):
                     ch = seg.get("chain") if isinstance(seg.get("chain"), dict) else {}
                     ch["head_dist"] = d
                     seg["chain"] = ch
-                if ok_th is None:
-                    # 接龙：没有红线。距 > soft 只标黄，不进 wrong_clip，不 _apply_void。
-                    if soft_th is not None and d > soft_th:
-                        take["verdict"] = "soft"
-                        result["verdict"] = "soft"
-                        result["code"] = W_FRAME_SOFT
-                elif d > soft_th:
-                    rc = struct_recheck(m, task_dir, seg, dest, img, ref_kind, ffmpeg)
-                    if rc is not None:
-                        take["frame_sim"] = rc["sim"]
-                        result["frame_sim"] = rc["sim"]
-                    if rc is not None and rc.get("ok"):
-                        # 均值哈希被色调 / 画幅骗了：画面结构对得上，收下（不作废、不重下）
-                        take["frame_rescued"] = True
-                        result["frame_rescued"] = True
-                        _log(_rescue_line(sn, d, rc, ref_lab))
-                    else:
-                        take["verdict"] = "wrong_clip"
-                        result["verdict"] = "wrong_clip"
-                        result["code"] = E_WRONG_CLIP
-                        if apply:
-                            _apply_void(m, task_dir, seg, dest, result, log=_log)
-                        else:
-                            _log_void_line(_log, seg, sn, ref_kind, ref_lab, d, False)
-                        if rc is not None:
-                            _log(_mismatch_detail(sn, rc, ref_lab))
-                        return result
-                elif ok_th is not None and d > ok_th:
-                    take["verdict"] = "soft"
-                    result["verdict"] = "soft"
-                    result["code"] = W_FRAME_SOFT
 
         # 4c 同图段位的兜底：配图不同但首帧几乎一样
         if vhash is not None:

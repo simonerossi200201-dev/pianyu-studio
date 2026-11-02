@@ -16,7 +16,12 @@ from ..errors import OranteError
 from ..jobs import register
 from ..models import Manifest, IMG_ROLES
 from ..scheduler import JobCancelled
-from . import ai, aikeys, broll, prompts, lens, tails
+from . import ai, aikeys, broll, prompts, lens, tails, verify as _verify_mod
+try:
+    import importlib as _il
+    _il.reload(_verify_mod)
+except Exception:
+    pass
 
 paths.add_legacy_to_sys_path()
 from longtik_images import parse_sidecar_text  # type: ignore  # noqa: E402
