@@ -25,6 +25,7 @@ def reload_runtime_modules() -> list[str]:
         "orante.services.arrange",
         "orante.jobs",
         "orante.services.generate",
+        "orante.services.refresh",
     )
     for name in mod_names:
         mod = sys.modules.get(name)

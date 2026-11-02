@@ -118,7 +118,13 @@ window.t = (k, vars) => {
   if (vars) for (const [a, b] of Object.entries(vars)) s = s.replaceAll('{' + a + '}', b);
   return s;
 };
-window.ui = Vue.reactive({ node: 'tasks', drawer: null, toasts: [], panelTid: '', selectedTaskId: '', pendingTid: '', showSetup: false });
+const _savedNode = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('orante.node')) || 'tasks';
+window.ui = Vue.reactive({ node: _savedNode, drawer: null, toasts: [], panelTid: '', selectedTaskId: '', pendingTid: '', showSetup: false });
+if (typeof Vue !== 'undefined' && Vue.watch) {
+  Vue.watch(() => window.ui.node, (nv) => {
+    try { if (typeof sessionStorage !== 'undefined' && nv) sessionStorage.setItem('orante.node', nv); } catch (e) {}
+  });
+}
 
 // 当前任务落盘：panelTid / selectedTaskId 一变就写 config，刷新 / 重启从 settings 读回。
 window.persistPanelTid = (id) => {

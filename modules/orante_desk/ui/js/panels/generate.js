@@ -95,14 +95,16 @@ window.Panel_generate = (() => {
     return (c.planned || 0) + (c.failed || 0) + (c.submitted || 0);
   }
 
+  let _liveManifests = null;
+
   // 全部生成：arranged / generating 都起；collected 只在还有 planned/failed（或 submitted 续跑）时起。
   // prepared/described 哪怕配图已齐也不起——状态还没到，让用户去 ③ 编排点「应用」。
   function missingDescN(t) {
     if (!t) return 0;
     if (String(t.preset_id || '').trim() || String(t.custom_prompt || '').trim()) return 0;
-    const m = manifests[t.id];
+    const m = _liveManifests && _liveManifests[t.id];
     const segs = (m && Array.isArray(m.segments)) ? m.segments : [];
-    const activeSegs = segs.filter(s => s && s.state !== 'collected');
+    const activeSegs = segs.filter(s => s && s.state !== 'collected' && s.status !== 'collected');
     if (activeSegs.length > 0 && activeSegs.every(s =>
       String(s.preset_id || '').trim() ||
       String(s.custom_prompt || '').trim() ||
@@ -219,6 +221,7 @@ window.Panel_generate = (() => {
       const checked = reactive({});
       const expanded = reactive({});
       const manifests = reactive({});
+      _liveManifests = manifests;
       const menu = reactive({ show: false, x: 0, y: 0, task: null });
       const menuRef = ref(null);
       const redoOn = ref(false);
