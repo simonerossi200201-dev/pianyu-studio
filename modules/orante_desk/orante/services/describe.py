@@ -172,19 +172,85 @@ def update_image(task_id: str, p: str, fields: dict) -> dict:
     return imgmod.annotate_images(d, [im])[0]
 
 
-def missing_subject_ps(m: Manifest, *, include_pending: bool = False) -> list[str]:
-    """还没有描述语的主体图编号。待审图默认不算（还没进图库）。"""
+def _seg_has_own_prompt(sg: dict, m: Manifest | None = None, task: dict | None = None) -> bool:
+    """判断分段是否已具备独立提示词（预设、提示词覆盖或已合成成品词），无需依赖图片级 desc。"""
+    if not isinstance(sg, dict):
+        return False
+    if (
+        str(sg.get("preset_id") or "").strip()
+        or str(sg.get("custom_prompt") or "").strip()
+        or str(sg.get("prompt_final") or "").strip()
+        or sg.get("prompt_locked")
+        or sg.get("prompt_manual")
+    ):
+        return True
+    snap = getattr(m, "prompts_snapshot", None) if m is not None else None
+    if isinstance(snap, dict) and (
+        str(snap.get("preset_id") or "").strip()
+        or str(snap.get("custom_prompt") or "").strip()
+    ):
+        return True
+    if isinstance(task, dict):
+        t_meta = task.get("meta") if isinstance(task.get("meta"), dict) else {}
+        if (
+            str(task.get("preset_id") or "").strip()
+            or str(t_meta.get("preset_id") or "").strip()
+            or str(t_meta.get("custom_prompt") or "").strip()
+        ):
+            return True
+    return False
+
+
+def missing_subject_ps(
+    m: Manifest,
+    *,
+    include_pending: bool = False,
+    task: dict | None = None,
+) -> list[str]:
+    """还没有描述语的主体图编号。待审图默认不算（还没进图库）。
+
+    当用于生成前校验或任务状态统计（include_pending=False）时：
+    - 若任务所有未完成分段均已配置了预设（preset_id）、提示词覆盖（custom_prompt）或成品提示词（prompt_final），
+      则提示词已完全就绪，不再要求图片具备图片级 desc，直接返回 []；
+    - 若分段已完成配图，则仅检查「尚未配置独立提示词的分段」实际使用的主体图，被排除或未使用的图不拦生成。
+    """
+    needed_ps: set[str] | None = None
+    if not include_pending and m is not None:
+        segs = list(getattr(m, "segments", None) or [])
+        if segs:
+            segs_needing_desc = [
+                sg for sg in segs
+                if (sg.get("status") or "") != "collected"
+                and not _seg_has_own_prompt(sg, m, task)
+            ]
+            if not segs_needing_desc:
+                return []
+            any_imaged = any(str(sg.get("image") or "").strip() for sg in segs)
+            if any_imaged:
+                needed_ps = {
+                    str(sg.get("image") or "").strip()
+                    for sg in segs_needing_desc
+                    if str(sg.get("image") or "").strip()
+                }
+                if not needed_ps:
+                    return []
+
     out = []
-    for im in m.images or []:
+    for im in (m.images if m is not None else None) or []:
         if im.get("role") != "主体":
+            continue
+        if im.get("excluded") and not include_pending:
             continue
         st = im.get("status") or ""
         if st == "missing":
             continue
         if st == "pending_review" and not include_pending:
             continue
+        p_code = str(im.get("p") or "?")
+        if needed_ps is not None and p_code not in needed_ps:
+            continue
         if not str(im.get("desc") or "").strip():
-            out.append(str(im.get("p") or "?"))
+            out.append(p_code)
     return out
 
 

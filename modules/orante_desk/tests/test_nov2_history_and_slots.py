@@ -173,6 +173,20 @@ class TestNov2HistoryAndVariableSlots(unittest.TestCase):
         self.assertEqual(s1_redone["custom_prompt"], new_tpl)
         self.assertEqual(s1_redone["preset_id"], "")
 
+    def test_arranged_segments_with_presets_do_not_block_on_missing_desc(self):
+        from orante import models, tasks as taskmod
+        from orante.services import describe, simple86
+
+        d = self._create_sample_task("T0199")
+        m = models.Manifest.load(d)
+        # Remove custom_prompt from s002 so s001..s003 rely on preset_id / custom_prompt while p01/p07 have desc=""
+        self.assertEqual(describe.missing_subject_ps(m), [])
+        self.assertEqual(describe.missing_subject_ps(m, include_pending=True), ["p01", "p07"])
+
+        t = next(x for x in taskmod.list_all() if x["id"] == "T0199")
+        self.assertEqual(t["counts"]["desc_missing"], 0)
+        self.assertEqual(simple86.missing_desc_for_no_copy(t, m), [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

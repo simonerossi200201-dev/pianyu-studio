@@ -245,8 +245,13 @@ window.Panel_track = (() => {
       const readyTasks = computed(() =>
         allTasks.value.filter(x => atLeastPrepared(x.status) && x.status !== 'trash'));
       const needDesc = computed(() => {
-        const st = selectedTask.value && selectedTask.value.status;
+        const tsk = selectedTask.value;
+        const st = tsk && tsk.status;
         if (!st) return false;
+        if (tsk && tsk.counts && Number(tsk.counts.desc_missing) === 0) return false;
+        if (segments.value && segments.value.length && segments.value.every(s => s.preset_id || s.custom_prompt || s.prompt_preview || s.prompt_final)) {
+          return false;
+        }
         return ST_ORDER.indexOf(st) >= 0 && ST_ORDER.indexOf(st) < ST_ORDER.indexOf('described');
       });
       const selectedTask = computed(() => allTasks.value.find(x => x.id === tid.value) || null);

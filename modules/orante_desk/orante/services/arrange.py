@@ -542,6 +542,7 @@ def arrange(job, track=None):
             except Exception as e:  # noqa: BLE001
                 job.log("  · s%03d 换图后重算跨度失败：%s" % (s, str(e)[:120]))
     m.save(d)
+    taskmod.publish_counts(job.task_id, d, m)
     taskmod.set_status(job.task_id, "arranged")
     events.emit("tasks.changed")
     sm = dict(res["summary"] or {})
@@ -961,9 +962,18 @@ def batch_update_segments(
             updated_segments += 1
 
         if changed:
+            prompt_presets.sanitize_task_manifest_prompts(m, d=d, task=t)
             m.save(d)
+            if (
+                t.get("status") in ("prepared", "described")
+                and m.segments
+                and all(str(sg.get("image") or "").strip() for sg in m.segments)
+            ):
+                taskmod.set_status(tid, "arranged")
+            taskmod.publish_counts(tid, d, m)
             updated_tasks += 1
             events.emit("arrange.changed", task_id=tid)
+            events.emit("tasks.changed")
 
     return {
         "ok": True,
@@ -1130,8 +1140,17 @@ def batch_apply_preset(
                 sg["final_prompt"] = sg["prompt_final"]
                 applied_segments += 1
 
+        prompt_presets.sanitize_task_manifest_prompts(m, d=d, task=t)
         m.save(d)
+        if (
+            t.get("status") in ("prepared", "described")
+            and m.segments
+            and all(str(sg.get("image") or "").strip() for sg in m.segments)
+        ):
+            taskmod.set_status(tid, "arranged")
+        taskmod.publish_counts(tid, d, m)
         events.emit("arrange.changed", task_id=tid)
+        events.emit("tasks.changed")
 
     return {
         "ok": True,

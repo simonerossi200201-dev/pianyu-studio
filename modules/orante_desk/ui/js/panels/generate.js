@@ -98,6 +98,19 @@ window.Panel_generate = (() => {
   // 全部生成：arranged / generating 都起；collected 只在还有 planned/failed（或 submitted 续跑）时起。
   // prepared/described 哪怕配图已齐也不起——状态还没到，让用户去 ③ 编排点「应用」。
   function missingDescN(t) {
+    if (!t) return 0;
+    if (String(t.preset_id || '').trim() || String(t.custom_prompt || '').trim()) return 0;
+    const m = manifests[t.id];
+    const segs = (m && Array.isArray(m.segments)) ? m.segments : [];
+    const activeSegs = segs.filter(s => s && s.state !== 'collected');
+    if (activeSegs.length > 0 && activeSegs.every(s =>
+      String(s.preset_id || '').trim() ||
+      String(s.custom_prompt || '').trim() ||
+      String(s.prompt_final || '').trim() ||
+      String(s.prompt_preview || '').trim()
+    )) {
+      return 0;
+    }
     const c = countsOf(t);
     const n = Number(c && c.desc_missing);
     return Number.isFinite(n) && n > 0 ? n : 0;

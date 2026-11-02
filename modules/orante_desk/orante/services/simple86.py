@@ -209,9 +209,33 @@ def use_current_track(task_id: str, *, start_generate: bool = True) -> dict:
 def missing_desc_for_no_copy(task, manifest) -> list[str]:
     if has_copy(task) or has_copy(manifest):
         return []
-    from . import split as splitmod
+    from . import describe as descmod, split as splitmod
+    t_dict = task if isinstance(task, dict) else None
+    segs = list(getattr(manifest, "segments", None) or [])
+    needed_ps: set[str] | None = None
+    if segs:
+        segs_needing_desc = [
+            sg for sg in segs
+            if (sg.get("status") or "") != "collected"
+            and not descmod._seg_has_own_prompt(sg, manifest, t_dict)
+        ]
+        if not segs_needing_desc:
+            return []
+        if any(str(sg.get("image") or "").strip() for sg in segs):
+            needed_ps = {
+                str(sg.get("image") or "").strip()
+                for sg in segs_needing_desc
+                if str(sg.get("image") or "").strip()
+            }
+            if not needed_ps:
+                return []
     bad = []
     for im in splitmod.clip_images(manifest):
+        if im.get("excluded"):
+            continue
+        p_code = im.get("p") or "?"
+        if needed_ps is not None and p_code not in needed_ps:
+            continue
         if not str(im.get("desc") or "").strip():
-            bad.append(im.get("p") or "?")
+            bad.append(p_code)
     return bad

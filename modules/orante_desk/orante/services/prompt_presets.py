@@ -146,9 +146,31 @@ def sanitize_task_manifest_prompts(m, d: Path | None = None, task: dict | None =
         except Exception:
             pass
 
+    # 若所有分段均已配置了预设或提示词覆盖，为尚无 desc 的图片同步写入兜底描述标记，
+    # 确保即使在未重启的旧进程或直接读取 manifest.images[i].desc 的地方也绝不会误报“缺描述语”
+    fallback_desc = ""
+    for sg in (m.segments or []):
+        s_pid = str(sg.get("preset_id") or "").strip()
+        cp = str(sg.get("custom_prompt") or "").strip()
+        if cp:
+            fallback_desc = cp
+            break
+        if s_pid:
+            pr = get_preset(s_pid)
+            if pr and pr.get("template"):
+                fallback_desc = str(pr["template"]).strip()
+                break
+    if fallback_desc:
+        for im in (getattr(m, "images", None) or []):
+            if isinstance(im, dict) and not str(im.get("desc") or "").strip():
+                im["desc"] = fallback_desc
+                changed = True
+
     if changed and d is not None and Path(d).is_dir():
         try:
             m.save(Path(d))
+            from .. import tasks as taskmod
+            taskmod.publish_counts(str((task or {}).get("id") or ""), Path(d), m)
         except Exception:
             pass
     return changed
