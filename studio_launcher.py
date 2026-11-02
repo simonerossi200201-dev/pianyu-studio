@@ -59,8 +59,8 @@ INFO = "#8FA89B"        # 青铜绿（标语点缀）
 OK = "#7D9B6A"          # 橄榄绿（在线状态）
 WARN = "#C8913A"        # 赭金
 
-WIN_W = 540
-WIN_H = 960
+WIN_W = 315
+WIN_H = 560
 
 
 def _python_exe(gui: bool = False) -> str:
@@ -327,7 +327,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._symbol = symbol
             self._is_close = is_close
             self._hover_t = 0.0
-            self.setFixedSize(26, 26)
+            self.setFixedSize(22, 22)
             self.setCursor(Qt.CursorShape.PointingHandCursor)
 
             self._anim = QVariantAnimation(self)
@@ -521,7 +521,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 p.drawText(rect, Qt.AlignmentFlag.AlignCenter, self._text)
             p.end()
 
-    # ─────────────────────── 海报级软件模块卡片 ───────────────────────
+    # ─────────────────────── 海报级软件模块卡片（精炼版：仅保留图标与启动入口） ───────────────────────
     class PosterModuleCard(QWidget):
         def __init__(
             self,
@@ -535,7 +535,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
         ) -> None:
             super().__init__(parent)
             self._index_str = index_str
-            self._pixmap = load_smooth_pixmap(icon_path, 58)
+            self._pixmap = load_smooth_pixmap(icon_path, 54)
             self._title = title
             self._badge_text = badge_text
             self._orig_badge_text = badge_text
@@ -544,7 +544,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._hover_t = 0.0
             self._primary_callback = actions[-1][2] if actions else None
 
-            self.setFixedHeight(104)
+            self.setFixedHeight(86)
             self.setCursor(Qt.CursorShape.PointingHandCursor)
 
             self._anim = QVariantAnimation(self)
@@ -552,10 +552,10 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
             self._anim.valueChanged.connect(self._on_anim)
 
-            # 右下角动作按钮组
+            # 右下角启动入口按钮
             self._buttons: list[AnimatedGoldButton] = []
             btn_row = QHBoxLayout(self)
-            btn_row.setContentsMargins(92, 64, 14, 10)
+            btn_row.setContentsMargins(74, 44, 14, 10)
             btn_row.setSpacing(6)
             btn_row.addStretch(1)
             for label, is_prim, cb in actions:
@@ -618,12 +618,12 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
             lift = self._hover_t * 1.5
             rect = QRectF(self.rect()).adjusted(1.5, 2.0 - lift, -1.5, -1.5 - lift)
-            radius = 13.0
+            radius = 12.0
 
             # 卡片玄武岩半透明渐变底色
             bg_grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
-            c0 = blend_color(QColor(30, 25, 21, 212), QColor(48, 39, 30, 238), self._hover_t)
-            c1 = blend_color(QColor(22, 19, 16, 224), QColor(34, 28, 22, 244), self._hover_t)
+            c0 = blend_color(QColor(30, 25, 21, 216), QColor(48, 39, 30, 240), self._hover_t)
+            c1 = blend_color(QColor(22, 19, 16, 228), QColor(34, 28, 22, 245), self._hover_t)
             bg_grad.setColorAt(0.0, c0)
             bg_grad.setColorAt(1.0, c1)
 
@@ -632,10 +632,10 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p.fillPath(path, bg_grad)
 
             # 悬停时软件图标背后的暖金柔光晕
-            icon_cx = rect.left() + 43.0
+            icon_cx = rect.left() + 39.0
             icon_cy = rect.center().y()
             if self._hover_t > 0.01:
-                glow = QRadialGradient(QPointF(icon_cx, icon_cy), 56.0)
+                glow = QRadialGradient(QPointF(icon_cx, icon_cy), 50.0)
                 glow.setColorAt(0.0, QColor(224, 190, 104, int(72 * self._hover_t)))
                 glow.setColorAt(1.0, QColor(224, 190, 104, 0))
                 p.save()
@@ -652,12 +652,12 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p.setPen(QPen(border_grad, 1.2 + 0.4 * self._hover_t))
             p.drawPath(path)
 
-            # 右上角古典序号暗纹 (01 / 02 / 03 / 04)
-            p.setFont(make_font(11, QFont.Weight.Bold, mono=True, letter_spacing=1.2))
-            idx_col = blend_color(QColor(146, 137, 127, 110), QColor(224, 190, 104, 215), self._hover_t)
+            # 右上角古典序号暗纹 (01 / 02 / 03)
+            p.setFont(make_font(10, QFont.Weight.Bold, mono=True, letter_spacing=1.0))
+            idx_col = blend_color(QColor(146, 137, 127, 105), QColor(224, 190, 104, 215), self._hover_t)
             p.setPen(idx_col)
             p.drawText(
-                QRectF(rect.right() - 52, rect.top() + 10, 38, 16),
+                QRectF(rect.right() - 44, rect.top() + 12, 30, 16),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 self._index_str,
             )
@@ -665,44 +665,19 @@ def run_gui(screenshot_path: str | None = None) -> None:
             # 绘制对应软件的真实高清徽章图标（带轻微悬停缩放）
             if not self._pixmap.isNull():
                 scale = 1.0 + 0.05 * self._hover_t
-                draw_sz = 58.0 * scale
                 p.save()
                 p.translate(icon_cx, icon_cy)
                 p.scale(scale, scale)
-                p.drawPixmap(int(-29), int(-29), self._pixmap)
+                p.drawPixmap(int(-27), int(-27), self._pixmap)
                 p.restore()
 
-            # 标题 + 胶囊标签
-            text_x = rect.left() + 84.0
-            title_font = make_font(14, QFont.Weight.Bold)
+            # 模块主名称（精炼无冗余说明）
+            text_x = rect.left() + 76.0
+            title_font = make_font(14, QFont.Weight.Bold, letter_spacing=0.4)
             p.setFont(title_font)
             title_col = blend_color(QColor(FG0), QColor("#FFF7E8"), self._hover_t)
             p.setPen(title_col)
-            fm_t = p.fontMetrics()
-            tw = fm_t.horizontalAdvance(self._title)
-            p.drawText(QPointF(text_x, rect.top() + 25), self._title)
-
-            # 金色职能胶囊标签
-            badge_f = make_font(10, QFont.Weight.Medium)
-            p.setFont(badge_f)
-            fm_b = p.fontMetrics()
-            bw = fm_b.horizontalAdvance(self._badge_text) + 14
-            badge_rect = QRectF(text_x + tw + 8, rect.top() + 10.5, bw, 18)
-            p.setBrush(QColor(200, 162, 74, int(28 + 24 * self._hover_t)))
-            p.setPen(QPen(QColor(200, 162, 74, int(95 + 65 * self._hover_t)), 0.9))
-            p.drawRoundedRect(badge_rect, 5.0, 5.0)
-            p.setPen(QColor("#E0BE68"))
-            p.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, self._badge_text)
-
-            # 功能描述
-            p.setFont(make_font(11, QFont.Weight.Normal))
-            p.setPen(blend_color(QColor(FG1), QColor("#D6C9B8"), self._hover_t))
-            desc_rect = QRectF(text_x, rect.top() + 33, rect.width() - 98, 32)
-            p.drawText(
-                desc_rect,
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap,
-                self._desc,
-            )
+            p.drawText(QPointF(text_x, rect.top() + 29), self._title)
             p.end()
 
     # ─────────────────────── 底部工作室状态与内存卫士总控卡 ───────────────────────
@@ -867,8 +842,8 @@ def run_gui(screenshot_path: str | None = None) -> None:
             super().__init__(parent)
             self._text = ""
             self._opacity = 0.0
-            self.setFixedSize(WIN_W - 56, 38)
-            self.move(28, 52)
+            self.setFixedSize(WIN_W - 24, 34)
+            self.move(12, 38)
             self.hide()
 
             self._anim = QVariantAnimation(self)
@@ -910,15 +885,17 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p.setOpacity(self._opacity)
             r = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
             p.setBrush(QColor(36, 30, 23, 245))
-            p.setPen(QPen(QColor(ACCENT_HI), 1.3))
-            p.drawRoundedRect(r, 10.0, 10.0)
+            p.setPen(QPen(QColor(ACCENT_HI), 1.2))
+            p.drawRoundedRect(r, 9.0, 9.0)
 
-            p.setFont(make_font(12, QFont.Weight.DemiBold))
+            p.setFont(make_font(10, QFont.Weight.DemiBold))
             p.setPen(QColor(FG0))
-            p.drawText(r, Qt.AlignmentFlag.AlignCenter, f"◆  {self._text}")
+            fm = p.fontMetrics()
+            elided = fm.elidedText(f"◆ {self._text}", Qt.TextElideMode.ElideRight, int(r.width() - 16))
+            p.drawText(r.adjusted(8, 0, -8, 0), Qt.AlignmentFlag.AlignCenter, elided)
             p.end()
 
-    # ─────────────────────── 9:16 竖屏海报主窗口 ───────────────────────
+    # ─────────────────────── 9:16 竖屏海报主窗口（精炼版 315×560） ───────────────────────
     class PosterLauncherWindow(QWidget):
         def __init__(self) -> None:
             super().__init__()
@@ -936,7 +913,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
             brand_dir = LTX_ROOT / "resources" / "brand"
             self._bg_pm = QPixmap(str(brand_dir / "poster_bg_9x16.png"))
-            self._hero_pm = load_smooth_pixmap(brand_dir / "app.png", 86)
+            self._hero_pm = load_smooth_pixmap(brand_dir / "app.png", 62)
 
             guard = get_hardware_guard()
             self._profile = guard.probe_system()
@@ -960,13 +937,13 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
         def _build_ui(self, brand_dir: Path) -> None:
             root = QVBoxLayout(self)
-            root.setContentsMargins(22, 14, 22, 18)
+            root.setContentsMargins(16, 10, 16, 16)
             root.setSpacing(0)
 
             # 1. 顶部栏（最小化 / 关闭按钮）
             top_bar = QHBoxLayout()
             top_bar.setContentsMargins(4, 0, 0, 0)
-            top_bar.setSpacing(6)
+            top_bar.setSpacing(5)
             top_bar.addStretch(1)
 
             btn_min = WindowControlBtn("—", is_close=False, parent=self)
@@ -977,24 +954,23 @@ def run_gui(screenshot_path: str | None = None) -> None:
             top_bar.addWidget(btn_close)
             root.addLayout(top_bar)
 
-            # 2. 预留顶部海报主视觉区高度 (Hero Poster Header 由 paintEvent 精绘)
-            root.addSpacing(212)
+            # 2. 预留顶部海报主视觉区高度 (Hero Poster Header + 硬件配置条 由 paintEvent 精绘)
+            root.addSpacing(154)
 
-            # 3. 四大软件与核心算力内嵌卡片区
+            # 3. 三大核心软件内嵌卡片区（仅保留图片与启动入口，保留防误触限制）
             cards_layout = QVBoxLayout()
             cards_layout.setContentsMargins(0, 0, 0, 0)
-            cards_layout.setSpacing(10)
+            cards_layout.setSpacing(12)
 
             self._accepted_clicks: set[str] = set()
 
             self._card_orante = PosterModuleCard(
                 index_str="01",
                 icon_path=brand_dir / "orante_medallion.png",
-                title="Orante 2.0 制片台",
-                badge_text="排片 · 制图 · 生片 · 审片",
-                desc="内置 AI 制图工坊(批量生图/署名排版/局部重绘/扩图/抠图) + Grok/Flow/LTX-2.5 生片",
+                title="制片台 Orante",
+                badge_text="",
+                desc="",
                 actions=[
-                    ("🎨 制图工坊", False, lambda: self._on_open_orante("imgstudio")),
                     ("启动制片台  ▸", True, lambda: self._on_open_orante("")),
                 ],
                 parent=self,
@@ -1003,12 +979,10 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._card_cutora = PosterModuleCard(
                 index_str="02",
                 icon_path=brand_dir / "cutora_me.png",
-                title="片语 Studio · CUTORA",
-                badge_text="剪辑 · 拼接 · AI 工坊",
-                desc="直读 Orante 任务表免粘贴智能拼接，内置去人物、音频深修与人像提亮",
+                title="片语剪辑 Cutora",
+                badge_text="",
+                desc="",
                 actions=[
-                    ("智能拼接", False, lambda: self._on_open_cutora("stitch")),
-                    ("✦ AI 工坊", False, lambda: self._on_open_cutora("ai_studio")),
                     ("进入剪辑台  ▸", True, lambda: self._on_open_cutora("")),
                 ],
                 parent=self,
@@ -1018,47 +992,53 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 index_str="03",
                 icon_path=brand_dir / "table_tool_me.png",
                 title="右键表格工具",
-                badge_text="同色折叠 · 自动(1)(2)",
-                desc="网盘同夹素材默认同色折叠，填前缀 v01 即自动编为 v01(1)(2) 下载与上传",
+                badge_text="",
+                desc="",
                 actions=[
                     ("打开表格工具  ▸", True, self._on_open_table),
                 ],
                 parent=self,
             )
 
+            # 本地算力网关 (7870) 通道与实例在底层完整保留，不在首页展示
             self._card_gateway = PosterModuleCard(
                 index_str="04",
                 icon_path=brand_dir / "ltx_gateway_me.png",
                 title="本地算力网关 · 7870",
-                badge_text="离线推理 · 乐高插件",
-                desc="LTX-2.5 22B · 七大 IC-LoRA · FLUX.2 · Simone v6h · 乐高模型包按需拼装",
+                badge_text="",
+                desc="",
                 actions=[
                     ("🧩 扩展包", False, self._on_open_pack_manager),
                     ("唤醒算力网关  ▸", True, self._on_open_gateway),
                 ],
                 parent=self,
             )
+            self._card_gateway.hide()
 
             cards_layout.addWidget(self._card_orante)
             cards_layout.addWidget(self._card_cutora)
             cards_layout.addWidget(self._card_table)
-            cards_layout.addWidget(self._card_gateway)
             root.addLayout(cards_layout)
 
             if is_cutora_running():
                 self._accepted_clicks.add("cutora")
                 self._card_cutora.set_locked(True, "✓ 已在运行 · 再次点击无效")
 
-            root.addSpacing(12)
-
-            # 4. 底部工作室状态与内存卫士总控卡
-            self._footer_card = SpineFooterCard(brand_dir / "app.png", parent=self)
-            self._footer_card.guide_requested.connect(self._on_purge_system_memory)
-            self._footer_card.patrol_requested.connect(self._on_run_patrol)
-            self._footer_card.shortcut_requested.connect(self._on_create_shortcut)
-            self._footer_card.refresh_requested.connect(lambda: self.refresh_status(silent=False))
-            root.addWidget(self._footer_card)
             root.addStretch(1)
+
+            # 4. 底部小按钮：释放系统内存
+            bottom_bar = QHBoxLayout()
+            bottom_bar.setContentsMargins(0, 8, 0, 0)
+            bottom_bar.addStretch(1)
+            self._btn_purge_mem = AnimatedGoldButton("🧹 释放系统内存", primary=False, compact=True, parent=self)
+            self._btn_purge_mem.clicked.connect(self._on_purge_system_memory)
+            bottom_bar.addWidget(self._btn_purge_mem)
+            bottom_bar.addStretch(1)
+            root.addLayout(bottom_bar)
+
+            # 保留后台状态总控卡实例供内部信号更新调用（不挂载到首页视图）
+            self._footer_card = SpineFooterCard(brand_dir / "app.png", parent=self)
+            self._footer_card.hide()
 
         def _sync_module_locks(self) -> None:
             """同步模块运行与防误触状态：正在启动或运行中保持锁定，关闭或退出后自动恢复可点击。"""
@@ -1091,7 +1071,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
             if self._pulse_ticks % 20 == 0:
                 self._sync_module_locks()
             # 仅重绘顶部英雄区光环
-            self.update(0, 0, WIN_W, 255)
+            self.update(0, 0, WIN_W, 195)
 
         def _on_purge_system_memory(self) -> None:
             import gc
@@ -1347,73 +1327,69 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p.restore()
 
             # 2. 顶部题头纪年铭文
-            p.setFont(make_font(10, QFont.Weight.DemiBold, mono=True, letter_spacing=2.6))
+            p.setFont(make_font(9, QFont.Weight.DemiBold, mono=True, letter_spacing=1.8))
             p.setPen(QColor(ACCENT))
             p.drawText(
-                QRectF(26, 18, 360, 20),
+                QRectF(18, 12, 230, 18),
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                "◆  CUTORA · ORANTE · TABLE · LTX",
+                "◆  ORANTE · CUTORA · TABLE",
             )
 
             # 3. 英雄区主徽章呼吸金环与《片语工作室》海报排版
             cx = WIN_W / 2.0
-            cy = 92.0
+            cy = 72.0
             pulse = 0.5 + 0.5 * math.sin(self._pulse_phase)
 
             # 呼吸光晕
-            halo = QRadialGradient(QPointF(cx, cy), 68.0)
+            halo = QRadialGradient(QPointF(cx, cy), 48.0)
             halo.setColorAt(0.0, QColor(224, 190, 104, int(55 + 30 * pulse)))
             halo.setColorAt(0.65, QColor(200, 162, 74, int(20 + 14 * pulse)))
             halo.setColorAt(1.0, QColor(200, 162, 74, 0))
             p.setBrush(halo)
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QPointF(cx, cy), 68.0, 68.0)
+            p.drawEllipse(QPointF(cx, cy), 48.0, 48.0)
 
             # 外侧古典细金环与两侧金线
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(QColor(224, 190, 104, int(90 + 55 * pulse)), 1.1))
-            p.drawEllipse(QPointF(cx, cy), 48.0 + 1.5 * pulse, 48.0 + 1.5 * pulse)
+            p.setPen(QPen(QColor(224, 190, 104, int(90 + 55 * pulse)), 1.0))
+            p.drawEllipse(QPointF(cx, cy), 35.0 + 1.2 * pulse, 35.0 + 1.2 * pulse)
 
-            line_Grad_l = QLinearGradient(44, cy, cx - 58, cy)
+            line_Grad_l = QLinearGradient(28, cy, cx - 44, cy)
             line_Grad_l.setColorAt(0.0, QColor(200, 162, 74, 0))
             line_Grad_l.setColorAt(1.0, QColor(200, 162, 74, 130))
             p.setPen(QPen(line_Grad_l, 1.0))
-            p.drawLine(QPointF(44, cy), QPointF(cx - 58, cy))
+            p.drawLine(QPointF(28, cy), QPointF(cx - 44, cy))
 
-            line_Grad_r = QLinearGradient(cx + 58, cy, WIN_W - 44, cy)
+            line_Grad_r = QLinearGradient(cx + 44, cy, WIN_W - 28, cy)
             line_Grad_r.setColorAt(0.0, QColor(200, 162, 74, 130))
             line_Grad_r.setColorAt(1.0, QColor(200, 162, 74, 0))
             p.setPen(QPen(line_Grad_r, 1.0))
-            p.drawLine(QPointF(cx + 58, cy), QPointF(WIN_W - 44, cy))
+            p.drawLine(QPointF(cx + 44, cy), QPointF(WIN_W - 28, cy))
 
             if not self._hero_pm.isNull():
-                p.drawPixmap(int(cx - 43), int(cy - 43), self._hero_pm)
+                p.drawPixmap(int(cx - 31), int(cy - 31), self._hero_pm)
 
             # 海报主标题：片 语 工 作 室
-            p.setFont(make_font(23, QFont.Weight.Bold, letter_spacing=4.5))
+            p.setFont(make_font(19, QFont.Weight.Bold, letter_spacing=3.5))
             p.setPen(QColor(0, 0, 0, 160))
-            p.drawText(QRectF(0, 145, WIN_W, 30), Qt.AlignmentFlag.AlignCenter, "片语工作室")
+            p.drawText(QRectF(0, 113, WIN_W, 26), Qt.AlignmentFlag.AlignCenter, "片语工作室")
             p.setPen(QColor(FG0))
-            p.drawText(QRectF(0, 144, WIN_W, 30), Qt.AlignmentFlag.AlignCenter, "片语工作室")
+            p.drawText(QRectF(0, 112, WIN_W, 26), Qt.AlignmentFlag.AlignCenter, "片语工作室")
 
-            # CUTORA 经典标语
-            p.setFont(make_font(12, QFont.Weight.Medium, letter_spacing=1.2))
-            p.setPen(QColor(INFO))
-            p.drawText(QRectF(0, 175, WIN_W, 20), Qt.AlignmentFlag.AlignCenter, "让每一句话，找到它的位置。")
-
-            # 硬件自适应状态胶囊条
+            # 顶部硬件自适应状态胶囊条（完整保留检测到的配置信息）
             prof = self._profile
             gpu_short = (prof.gpu_name or "CPU 模式").replace("NVIDIA GeForce ", "")
             vram_gb = int(round(prof.gpu_vram_total_gb))
             ram_gb = int(round(prof.ram_total_gb))
             tier_cn = "旗舰工作站" if vram_gb >= 12 else ("主流独显档" if vram_gb >= 6 else "高内存 CPU 档")
-            hw_text = f"✦  {tier_cn}   ·   {gpu_short} ({vram_gb}GB)   ·   {prof.cpu_cores}核 CPU   ·   {ram_gb}GB 内存"
-            hw_rect = QRectF(36, 202, WIN_W - 72, 24)
+            hw_text = f"✦ {tier_cn} · {gpu_short} ({vram_gb}GB) · {prof.cpu_cores}核 CPU · {ram_gb}GB 内存"
+            hw_rect = QRectF(16, 146, WIN_W - 32, 22)
             p.setBrush(QColor(28, 24, 21, 195))
             p.setPen(QPen(QColor(200, 162, 74, 95), 1.0))
-            p.drawRoundedRect(hw_rect, 12.0, 12.0)
+            p.drawRoundedRect(hw_rect, 11.0, 11.0)
 
-            p.setFont(make_font(10, QFont.Weight.Medium))
+            hw_font = make_font(9, QFont.Weight.Medium)
+            p.setFont(hw_font)
             p.setPen(QColor("#D8CBB8"))
             p.drawText(hw_rect, Qt.AlignmentFlag.AlignCenter, hw_text)
 
