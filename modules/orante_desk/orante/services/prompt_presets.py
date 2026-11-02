@@ -259,7 +259,12 @@ def ensure_presets_seeded() -> int:
 
 def _decorate_preset(row: dict) -> dict:
     d = dict(row)
-    d["meta"] = db.unj(d.get("meta"), {}) or {}
+    meta = db.unj(d.get("meta"), {}) or {}
+    d["meta"] = meta
+    if meta.get("color") and not d.get("color"):
+        d["color"] = meta["color"]
+    if meta.get("flow_mode") and not d.get("flow_mode"):
+        d["flow_mode"] = meta["flow_mode"]
     d["builtin"] = bool(int(d.get("builtin") or 0))
     d["speech_gap_newlines"] = int(d.get("speech_gap_newlines") or 0)
     return d
@@ -319,6 +324,10 @@ def save_preset(payload: dict) -> dict:
         meta = db.unj(existing.get("meta"), {}) or {}
         if isinstance(payload.get("meta"), dict):
             meta.update(payload["meta"])
+        if payload.get("color"):
+            meta["color"] = str(payload["color"])
+        if payload.get("flow_mode"):
+            meta["flow_mode"] = str(payload["flow_mode"])
         db.run(
             """UPDATE prompt_presets
                   SET name=?, category=?, role=?, template=?, speech_gap_newlines=?,
@@ -328,13 +337,19 @@ def save_preset(payload: dict) -> dict:
         )
         out = get_preset(pid) or {}
         out["inspection"] = insp
+        if not payload.get("_skip_sync"):
+            _sync_presets_to_tasks({pid})
         return out
 
     if not pid:
         pid = db.next_id("prompt_preset", "PR_", 4)
     cnt = (db.one("SELECT COUNT(*) n FROM prompt_presets") or {}).get("n") or 0
     sort_order = int(payload.get("sort_order") if payload.get("sort_order") is not None else (cnt + 1))
-    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    meta = dict(payload.get("meta") if isinstance(payload.get("meta"), dict) else {})
+    if payload.get("color"):
+        meta["color"] = str(payload["color"])
+    if payload.get("flow_mode"):
+        meta["flow_mode"] = str(payload["flow_mode"])
     db.run(
         """INSERT INTO prompt_presets(
              id, name, category, role, template, speech_gap_newlines,
@@ -344,15 +359,86 @@ def save_preset(payload: dict) -> dict:
     )
     out = get_preset(pid) or {}
     out["inspection"] = insp
+    if not payload.get("_skip_sync"):
+        _sync_presets_to_tasks({pid})
     return out
+
+
+def _sync_presets_to_tasks(preset_ids: set[str] | None = None) -> int:
+    """当预设被修改保存时，实时重算并同步所有引用该预设的任务分段提示词。"""
+    try:
+        from .. import events, tasks as taskmod
+        from ..models import Manifest
+        from . import prompts as pr_mod
+    except Exception:
+        return 0
+
+    synced_tasks = 0
+    try:
+        raw_tasks = taskmod.list_all(include_finished=False)
+    except Exception:
+        raw_tasks = []
+
+    for t in raw_tasks:
+        tid = t.get("id") or ""
+        d_str = t.get("dir") or ""
+        if not tid or not d_str or t.get("status") == "trash":
+            continue
+        d = Path(d_str)
+        if not d.is_dir():
+            continue
+        try:
+            m = Manifest.load(d)
+        except Exception:
+            continue
+        t_pid = str(t.get("preset_id") or "").strip()
+        changed = False
+        for sg in (m.segments or []):
+            s_pid = str(sg.get("preset_id") or "").strip()
+            active_pid = s_pid or t_pid
+            if not active_pid:
+                continue
+            if preset_ids and active_pid not in preset_ids:
+                continue
+            # 若该段绑定了预设（二选一），确保不会残留旧预设生成的 custom_prompt 阻碍最新预设生效
+            if s_pid and sg.get("custom_prompt"):
+                sg["custom_prompt"] = ""
+            try:
+                new_final = pr_mod.build_final_prompt(m, sg, task=t)
+                if sg.get("prompt_final") != new_final:
+                    sg["prompt_final"] = new_final
+                    sg["final_prompt"] = new_final
+                changed = True
+            except Exception:
+                pass
+        if changed:
+            try:
+                m.save(d)
+                synced_tasks += 1
+                events.emit("arrange.changed", task_id=tid)
+            except Exception:
+                pass
+    try:
+        from .. import events as _ev
+        _ev.emit("tasks.changed")
+    except Exception:
+        pass
+    return synced_tasks
 
 
 def batch_save_presets(items: list[dict]) -> dict:
     saved = []
+    pids: set[str] = set()
     for it in (items or []):
         if isinstance(it, dict) and it.get("name") and it.get("template"):
-            saved.append(save_preset(it))
-    return {"ok": True, "saved_count": len(saved), "presets": saved}
+            it_copy = dict(it)
+            it_copy["_skip_sync"] = True
+            res = save_preset(it_copy)
+            saved.append(res)
+            if res.get("id"):
+                pids.add(res["id"])
+    synced_tasks = _sync_presets_to_tasks(pids if pids else None)
+    return {"ok": True, "saved_count": len(saved), "synced_tasks": synced_tasks, "presets": saved}
 
 
 def delete_preset(preset_id: str) -> dict:

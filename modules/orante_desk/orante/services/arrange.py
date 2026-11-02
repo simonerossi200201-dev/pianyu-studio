@@ -429,8 +429,11 @@ def _seg_clip(task_dir: Path, m, sg: dict) -> dict:
 
 def get_track(task_id: str) -> dict:
     """GET /api/tasks/{tid}/track → {images, segments, track}。"""
-    from . import broll, expand as expandmod
+    from . import broll, expand as expandmod, prompt_presets
     d, m, sync_log = broll.load_synced(task_id)
+    t = taskmod.get(task_id) or {}
+    presets_info = prompt_presets.list_presets()
+    presets_by_id = {p["id"]: p for p in presets_info.get("presets", [])}
     images = _annotate_images(m, d)
     tr = _norm_track(m.track, m)
     usable = trackmod.subject_pool(images)
@@ -444,6 +447,15 @@ def get_track(task_id: str) -> dict:
     for sg in m.segments:
         item = _duredit.enrich_seg(d, m, sg)
         item.update(_seg_clip(d, m, sg))
+        # 二选一规范：若该段绑定了 preset_id，则 custom_prompt 视为未单独覆盖，动态取最新预设预览
+        if item.get("preset_id"):
+            item["custom_prompt"] = ""
+        sg_for_prev = dict(sg)
+        if sg_for_prev.get("preset_id"):
+            sg_for_prev["custom_prompt"] = ""
+        pname, preview = _resolve_seg_prompt_preview(m, sg_for_prev, t, presets_by_id)
+        item["preset_name"] = pname
+        item["prompt_preview"] = preview
         segs.append(item)
     from . import pipeline
     return {
@@ -786,7 +798,10 @@ def get_all_tasks_segments_table(
                 s_num = int(sg.get("s") or 0)
                 p_code = sg.get("image") or ""
                 im_info = img_map.get(p_code, {})
-                pname, preview = _resolve_seg_prompt_preview(m, sg, t, presets_by_id)
+                sg_for_prev = dict(sg)
+                if sg_for_prev.get("preset_id"):
+                    sg_for_prev["custom_prompt"] = ""
+                pname, preview = _resolve_seg_prompt_preview(m, sg_for_prev, t, presets_by_id)
                 extra_cols = sg.get("extra_prompts") if isinstance(sg.get("extra_prompts"), list) else []
                 row = {
                     "task_id": tid,
@@ -805,7 +820,7 @@ def get_all_tasks_segments_table(
                     "task_flow_mode": t.get("flow_mode") or "auto",
                     "preset_id": sg.get("preset_id") or "",
                     "preset_name": pname,
-                    "custom_prompt": sg.get("custom_prompt") or "",
+                    "custom_prompt": "" if sg.get("preset_id") else (sg.get("custom_prompt") or ""),
                     "extra_prompts": extra_cols,
                     "prompt_preview": preview,
                     "status": sg.get("status") or "planned",
@@ -895,15 +910,14 @@ def batch_update_segments(
             if "preset_id" in it and it["preset_id"] is not None:
                 pid = str(it["preset_id"]).strip()
                 seg["preset_id"] = pid
-                if pid and "custom_prompt" not in it:
-                    pr = prompt_presets.get_preset(pid)
-                    if pr and pr.get("template"):
-                        seg["custom_prompt"] = prompt_presets.insert_speech_at_max_newlines(
-                            pr["template"], seg.get("text") or ""
-                        )
+                if "custom_prompt" not in it:
+                    seg["custom_prompt"] = ""
                 changed = True
             if "custom_prompt" in it and it["custom_prompt"] is not None:
-                seg["custom_prompt"] = str(it["custom_prompt"])
+                cp = str(it["custom_prompt"])
+                seg["custom_prompt"] = cp
+                if cp.strip() and not str(it.get("preset_id") or "").strip():
+                    seg["preset_id"] = ""
                 changed = True
             if "extra_prompts" in it and isinstance(it["extra_prompts"], list):
                 seg["extra_prompts"] = [str(x) for x in it["extra_prompts"]]
@@ -1000,9 +1014,7 @@ def batch_apply_preset(
 
             if mode_clean == "single" and single_pr:
                 sg["preset_id"] = single_pr["id"]
-                sg["custom_prompt"] = prompt_presets.insert_speech_at_max_newlines(
-                    single_pr["template"], sg.get("text") or ""
-                )
+                sg["custom_prompt"] = ""
                 sg["prompt_final"] = pr_mod.build_final_prompt(m, sg, task=t)
                 sg["final_prompt"] = sg["prompt_final"]
                 applied_segments += 1
@@ -1010,9 +1022,7 @@ def batch_apply_preset(
             elif mode_clean == "random_group" and group_pool:
                 chosen = random.choice(group_pool)
                 sg["preset_id"] = chosen["id"]
-                sg["custom_prompt"] = prompt_presets.insert_speech_at_max_newlines(
-                    chosen["template"], sg.get("text") or ""
-                )
+                sg["custom_prompt"] = ""
                 sg["prompt_final"] = pr_mod.build_final_prompt(m, sg, task=t)
                 sg["final_prompt"] = sg["prompt_final"]
                 applied_segments += 1

@@ -2625,7 +2625,7 @@ async def prompt_presets_save(req: Request):
     d = await body(req) or {}
     if isinstance(d.get("presets"), list):
         saved = prompt_presets.batch_save_presets(d["presets"])
-        return ok(**{k: v for k, v in saved.items() if k != "ok"}, **prompt_presets.list_presets())
+        return ok(**{k: v for k, v in saved.items() if k not in ("ok", "presets", "categories")}, **prompt_presets.list_presets())
     item = prompt_presets.save_preset(d)
     return ok(preset=item, **prompt_presets.list_presets())
 

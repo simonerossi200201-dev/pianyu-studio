@@ -52,8 +52,8 @@ window.TrackShotLogic = (() => {
     return s.endsWith('.mp4') || s.endsWith('.webm') || s.endsWith('.mov');
   }
 
-  // rows 非空用预演 p_new；空则读 manifest.segments[].image（生成时那份）。
-  function shotCells(segments, rows, images) {
+  // rows 非空用预演 p_new；空则读 pins 或 manifest.segments[].image（生成时那份）。
+  function shotCells(segments, rows, images, pins) {
     const segs = segments || [];
     const byS = {};
     (rows || []).forEach(r => { if (r && r.s != null) byS[r.s] = r; });
@@ -61,9 +61,11 @@ window.TrackShotLogic = (() => {
     const imgs = images || [];
     const byP = {};
     imgs.forEach(im => { if (im && im.p) byP[fmtP(im.p)] = im; });
+    const fallbackP = (imgs[0] && imgs[0].p) ? fmtP(imgs[0].p) : '';
     return segs.map((sg, i) => {
       const r = byS[sg.s];
-      const p = fmtP(r ? r.p_new : sg.image);
+      const pinned = pins && pins[sg.s] ? fmtP(pins[sg.s]) : '';
+      const p = fmtP(pinned || (r && r.p_new) || sg.image || fallbackP || '');
       const im = byP[p] || null;
       const prev = i > 0 ? segs[i - 1] : null;
       const role = sg.role || '';
@@ -81,7 +83,7 @@ window.TrackShotLogic = (() => {
         edge: shotEdge(sg),
         changed: !!(preview && r && r.changed),
         preview,
-        file: useClip ? relClip : ((im && im.file) || ''),
+        file: useClip ? relClip : ((im && im.file) || (p ? ('images/' + p + '.jpg') : '')),
         mtime: useClip ? (sg.clip_mtime || (lastTake(sg) && lastTake(sg).mtime) || 0)
           : ((im && im.mtime) || 0),
         clipVideo: useClip && (sg.clip_video || isVideoRel(relClip)),
@@ -391,9 +393,11 @@ window.Panel_track = (() => {
         const p = fmtP(im.p);
         const review = im.status === 'pending_review';
         const dead = im.role === '空镜' || im.status === 'blocked' || im.blocked || im.exists === false;
+        const inpool = pool.value.includes(p);
         return {
           th: true,
-          inpool: pool.value.includes(p),
+          inpool,
+          excluded: !inpool && !dead && !review,
           dead: dead && !review,
           review,
         };
@@ -488,7 +492,13 @@ window.Panel_track = (() => {
             m: String((r.segments || []).length),
           });
           statsText.value = t('track.hint.plan');
-          Vue.nextTick(() => { skipWatch = false; });
+          Vue.nextTick(() => {
+            skipWatch = false;
+            // 若当前任务已有图片但存在未分配配图的分段，自动预演排轨，确保镜头序列与轴条实时显示图片
+            if (images.value.length > 0 && segments.value.length > 0 && segments.value.some(sg => !sg.image && !pins[sg.s])) {
+              planNow();
+            }
+          });
           loadAccState().catch(() => {});
         } finally {
           loading.value = false;
@@ -569,7 +579,7 @@ window.Panel_track = (() => {
         planNow();
       }
 
-      function clickThumb(im) {
+      async function clickThumb(im) {
         if (im.status === 'pending_review') return;
         if (im.status === 'blocked' || im.blocked) {
           toast(fmtP(im.p) + ' ' + t('track.dead.blocked'), '', 'bad');
@@ -588,11 +598,39 @@ window.Panel_track = (() => {
         if (i >= 0) {
           if (pool.value.length === 1) { toast(t('track.pool_min'), '', 'bad'); return; }
           pool.value.splice(i, 1);
+          // 排除该图：清除钉住与限定区间中的该图，并将所有正在使用该图的分段立即重分配给可用图池
+          for (const [k, v] of Object.entries(pins)) {
+            if (fmtP(v) === p) delete pins[k];
+          }
+          zones.value.forEach(z => {
+            if (Array.isArray(z.images)) {
+              z.images = z.images.filter(x => fmtP(x) !== p);
+            }
+          });
+          const avail = pool.value.slice();
+          if (avail.length && tid.value) {
+            const updates = [];
+            (segments.value || []).forEach((sg, idx) => {
+              if (fmtP(sg.image) === p || fmtP(cellP(sg)) === p) {
+                const replacement = avail[idx % avail.length];
+                sg.image = replacement;
+                syncLocalSegImage(tid.value, sg.s, replacement);
+                delete pins[sg.s];
+                updates.push({ task_id: tid.value, s: sg.s, image: replacement });
+              }
+            });
+            if (updates.length) {
+              saveBatchSegUpdates(updates);
+            }
+          }
+          toast(`🚫 已将 ${p} 标记为「不使用」，已从所有分段排除`, '图片保留在图池中，可随时右键或点击恢复使用', 'ok');
         } else {
           pool.value.push(p);
           pool.value.sort((a, b) => pNum(a) - pNum(b));
+          toast(`✅ 已恢复使用图片 ${p}`, '', 'ok');
         }
-        schedulePlan();
+        saveSettings();
+        await planNow();
       }
 
       async function keepImg(im, ev) {
@@ -623,6 +661,9 @@ window.Panel_track = (() => {
 
       function onDocClick(ev) {
         if (menu.show && menuRef.value && !menuRef.value.contains(ev.target)) closeImgMenu();
+        if (gsCellMenu.show && !(ev.target && ev.target.closest && ev.target.closest('.gs-context-menu'))) {
+          gsCellMenu.show = false;
+        }
         if (accOpen.value && !(ev.target && ev.target.closest && ev.target.closest('.accpick-host'))) {
           accOpen.value = false;
         }
@@ -631,6 +672,7 @@ window.Panel_track = (() => {
       function onMenuKey(ev) {
         if (upscaleDlg.on && ev.key === 'Escape') { closeUpscaleDlg(); return; }
         if (accOpen.value && ev.key === 'Escape') { accOpen.value = false; return; }
+        if (gsCellMenu.show && ev.key === 'Escape') { gsCellMenu.show = false; return; }
         if (menu.show) {
           if (ev.key === 'Escape') closeImgMenu();
           return;
@@ -1396,7 +1438,7 @@ window.Panel_track = (() => {
 
       const Lshot = window.TrackShotLogic;
       const shotCells = computed(() =>
-        Lshot.shotCells(segments.value, rows.value, images.value));
+        Lshot.shotCells(segments.value, rows.value, images.value, pins));
       const shotStats = computed(() => Lshot.shotStats(shotCells.value));
       const shotStatsText = computed(() => {
         const st = shotStats.value;
@@ -1515,61 +1557,98 @@ window.Panel_track = (() => {
         window.addEventListener('mouseup', onUp);
       }
 
-      // 扁平化可见数据行列表（用于 Google Sheet 2D 单元格选区、右下角拖拽填充与悬浮图片阅读器）
-      const sheetFlatRows = computed(() => {
-        const out = [];
+      // 按任务分组构建表格数据：支持「收起全部任务组」时保留任务组汇总行并隐藏所有段行
+      const sheetTaskGroups = computed(() => {
+        const groups = [];
+        let flatCounter = 0;
         if (!showAllTasks.value) {
           const list = segments.value || [];
           const tColor = taskColor(0, selectedTask.value);
-          list.forEach((sg, idx) => {
-            const p = fmtP(cellP(sg) || sg.image || 'p01');
-            const im = (images.value || []).find(x => fmtP(x.p) === p);
-            const thumbUrl = im && im.file ? mediaUrl(tid.value, im.file, im.mtime) : (tid.value ? `/api/tasks/${encodeURIComponent(tid.value)}/file/images/${p}.jpg` : '');
-            out.push({
-              flatIdx: out.length,
-              rowKey: `${tid.value}:${sg.s}`,
+          const isCollapsed = !!collapsedTasks[tid.value];
+          const grpRows = [];
+          if (!isCollapsed) {
+            list.forEach((sg, idx) => {
+              const p = fmtP(cellP(sg) || sg.image || 'p01');
+              const im = (images.value || []).find(x => fmtP(x.p) === p);
+              const thumbUrl = im && im.file ? mediaUrl(tid.value, im.file, im.mtime) : (tid.value ? `/api/tasks/${encodeURIComponent(tid.value)}/file/images/${p}.jpg` : '');
+              grpRows.push({
+                flatIdx: flatCounter++,
+                rowKey: `${tid.value}:${sg.s}`,
+                taskId: tid.value,
+                taskName: (selectedTask.value && selectedTask.value.name) || tid.value,
+                taskColor: tColor,
+                taskObj: selectedTask.value,
+                taskImages: images.value || [],
+                seg: sg,
+                sIdx: idx,
+                isFirstInGroup: idx === 0,
+                isLastInGroup: idx === list.length - 1,
+                thumbUrl,
+                pCode: p,
+              });
+            });
+          }
+          if (tid.value) {
+            groups.push({
               taskId: tid.value,
               taskName: (selectedTask.value && selectedTask.value.name) || tid.value,
               taskColor: tColor,
               taskObj: selectedTask.value,
-              taskImages: images.value || [],
-              seg: sg,
-              sIdx: idx,
-              isFirstInGroup: idx === 0,
-              isLastInGroup: idx === list.length - 1,
-              thumbUrl,
-              pCode: p,
+              segList: list,
+              segCount: list.length,
+              rows: grpRows,
             });
-          });
-          return out;
+          }
+          return groups;
         }
         (allTasksTable.value || []).forEach((tk, tIdx) => {
-          if (collapsedTasks[tk.id]) return;
           const list = tk.segments || [];
           const tColor = taskColor(tIdx, tk);
           const tkImgs = (tk.images && tk.images.length) ? tk.images : (tid.value === tk.id ? images.value : []);
-          list.forEach((sg, idx) => {
-            const p = fmtP(sg.image || 'p01');
-            const im = (tkImgs || []).find(x => fmtP(x.p) === p);
-            const relFile = (im && im.file) || sg.image_file || `images/${p}.jpg`;
-            const thumbUrl = mediaUrl(tk.id, relFile, (im && im.mtime) || 0);
-            out.push({
-              flatIdx: out.length,
-              rowKey: `${tk.id}:${sg.s}`,
-              taskId: tk.id,
-              taskName: tk.name || tk.id,
-              taskColor: tColor,
-              taskObj: tk,
-              taskImages: tkImgs,
-              seg: sg,
-              sIdx: idx,
-              isFirstInGroup: idx === 0,
-              isLastInGroup: idx === list.length - 1,
-              thumbUrl,
-              pCode: p,
+          const isCollapsed = !!collapsedTasks[tk.id];
+          const grpRows = [];
+          if (!isCollapsed) {
+            list.forEach((sg, idx) => {
+              const p = fmtP((tid.value === tk.id ? cellP(sg) : sg.image) || sg.image || 'p01');
+              const im = (tkImgs || []).find(x => fmtP(x.p) === p);
+              const relFile = (im && im.file) || sg.image_file || `images/${p}.jpg`;
+              const thumbUrl = mediaUrl(tk.id, relFile, (im && im.mtime) || 0);
+              grpRows.push({
+                flatIdx: flatCounter++,
+                rowKey: `${tk.id}:${sg.s}`,
+                taskId: tk.id,
+                taskName: tk.name || tk.id,
+                taskColor: tColor,
+                taskObj: tk,
+                taskImages: tkImgs,
+                seg: sg,
+                sIdx: idx,
+                isFirstInGroup: idx === 0,
+                isLastInGroup: idx === list.length - 1,
+                thumbUrl,
+                pCode: p,
+              });
             });
+          }
+          groups.push({
+            taskId: tk.id,
+            taskName: tk.name || tk.id,
+            taskColor: tColor,
+            taskObj: tk,
+            segList: list,
+            segCount: list.length,
+            rows: grpRows,
           });
         });
+        return groups;
+      });
+
+      // 扁平化可见数据行列表（用于 Google Sheet 2D 单元格选区、右下角拖拽填充与悬浮图片阅读器）
+      const sheetFlatRows = computed(() => {
+        const out = [];
+        for (const grp of sheetTaskGroups.value) {
+          for (const r of grp.rows) out.push(r);
+        }
         return out;
       });
 
@@ -1659,6 +1738,32 @@ window.Panel_track = (() => {
         gsSel.fillTargetR = rg.maxR;
       }
 
+      function composePresetPreview(presetId, speechText) {
+        if (!presetId) return '';
+        const list = store.promptPresets || [];
+        const pr = list.find(p => p && (p.id === presetId || p.name === presetId));
+        if (!pr || !pr.template) return '';
+        if (window.PresetSlotLogic && typeof window.PresetSlotLogic.composeSpeech === 'function') {
+          return window.PresetSlotLogic.composeSpeech(pr.template, speechText || '');
+        }
+        return pr.template;
+      }
+
+      function presetNameOf(presetId) {
+        if (!presetId) return '';
+        const list = store.promptPresets || [];
+        const pr = list.find(p => p && (p.id === presetId || p.name === presetId));
+        return pr ? pr.name : presetId;
+      }
+
+      function getSegPromptDisplay(sg) {
+        if (!sg) return '';
+        if (sg.preset_id) {
+          return composePresetPreview(sg.preset_id, sg.text) || sg.prompt_preview || '';
+        }
+        return sg.custom_prompt || '';
+      }
+
       function getCellVal(rowItem, colIdx) {
         if (!rowItem || !rowItem.seg) return '';
         const sg = rowItem.seg;
@@ -1669,8 +1774,25 @@ window.Panel_track = (() => {
         if (field === 'mode') return sg.mode || (sg.role === 'bridge' ? 'bridge' : 'single');
         if (field === 'text') return sg.text || '';
         if (field === 'preset_id') return sg.preset_id || '';
-        if (field === 'custom_prompt') return sg.custom_prompt || sg.prompt_preview || '';
+        if (field === 'custom_prompt') return getSegPromptDisplay(sg);
         return '';
+      }
+
+      function syncLocalSegImage(taskId, sNum, pCode) {
+        if (taskId === tid.value) {
+          pins[sNum] = pCode;
+          const s0 = (segments.value || []).find(x => x.s === sNum);
+          if (s0) s0.image = pCode;
+          if (rows.value && Array.isArray(rows.value)) {
+            const r0 = rows.value.find(x => x && x.s === sNum);
+            if (r0) r0.p_new = pCode;
+          }
+        }
+        const atk = (allTasksTable.value || []).find(x => x && x.id === taskId);
+        if (atk && Array.isArray(atk.segments)) {
+          const s1 = atk.segments.find(x => x && x.s === sNum);
+          if (s1) s1.image = pCode;
+        }
       }
 
       function applyCellValToRow(rowItem, colIdx, rawVal, updatesOut) {
@@ -1683,7 +1805,7 @@ window.Panel_track = (() => {
           const p = fmtP(val || 'p01');
           sg.image = p;
           u.image = p;
-          if (rowItem.taskId === tid.value) pins[sg.s] = p;
+          syncLocalSegImage(rowItem.taskId, sg.s, p);
         } else if (field === 'duration') {
           const d = parseInt(val.replace(/s$/i, ''), 10) || 6;
           sg.duration = d;
@@ -1700,15 +1822,26 @@ window.Panel_track = (() => {
           sg.text = String(rawVal == null ? '' : rawVal);
           u.text = sg.text;
         } else if (field === 'preset_id') {
-          // 支持填入预设 ID 或预设名称
+          // 支持填入预设 ID 或预设名称；二选一：指定或清空预设时清空 custom_prompt
           let pid = val;
           const byName = allPresets.value.find(p => p && (p.id === val || p.name === val));
           if (byName) pid = byName.id;
           sg.preset_id = pid;
+          sg.custom_prompt = '';
           u.preset_id = pid;
+          u.custom_prompt = '';
         } else if (field === 'custom_prompt') {
-          sg.custom_prompt = String(rawVal == null ? '' : rawVal);
-          u.custom_prompt = sg.custom_prompt;
+          const cp = String(rawVal == null ? '' : rawVal);
+          sg.custom_prompt = cp;
+          u.custom_prompt = cp;
+          // 二选一：只要手动添加/粘贴了提示词覆盖，前面的预设自动清空
+          if (cp.trim()) {
+            sg.preset_id = '';
+            u.preset_id = '';
+          } else {
+            sg.preset_id = '';
+            u.preset_id = '';
+          }
         }
         updatesOut.push(u);
       }
@@ -1770,7 +1903,14 @@ window.Panel_track = (() => {
 
         if (!rg) return;
         const isMultiCell = rg.minR !== rg.maxR || rg.minC !== rg.maxC;
-        if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c' && (!inInput || isMultiCell)) {
+        const isTextEditing = tag === 'input' || tag === 'textarea';
+        // 支持按 Delete / Backspace 直接清空选中的预设名称、提示词覆盖或文案单元格
+        if ((ev.key === 'Delete' || ev.key === 'Backspace') && (!isTextEditing || isMultiCell)) {
+          ev.preventDefault();
+          await clearSelectedGsCells();
+          return;
+        }
+        if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c' && (!isTextEditing || isMultiCell)) {
           ev.preventDefault();
           const flat = sheetFlatRows.value;
           const lines = [];
@@ -1880,7 +2020,7 @@ window.Panel_track = (() => {
       }
 
       function isTaskHeaderVisible(taskId) {
-        return !!showTaskHeaderRows.value || !!expandedTaskRows[taskId];
+        return !!showTaskHeaderRows.value || !!expandedTaskRows[taskId] || !!collapsedTasks[taskId];
       }
 
       const allPresets = computed(() => store.promptPresets || []);
@@ -1936,8 +2076,12 @@ window.Panel_track = (() => {
       }
 
       function expandAllTasks(collapse) {
+        if (tid.value) collapsedTasks[tid.value] = !!collapse;
+        for (const tk of allTasks.value) {
+          if (tk && tk.id) collapsedTasks[tk.id] = !!collapse;
+        }
         for (const tk of allTasksTable.value) {
-          collapsedTasks[tk.id] = !!collapse;
+          if (tk && tk.id) collapsedTasks[tk.id] = !!collapse;
         }
       }
 
@@ -2036,8 +2180,8 @@ window.Panel_track = (() => {
         const tId = taskId || tid.value;
         const p = fmtP(newP);
         sg.image = p;
+        syncLocalSegImage(tId, sg.s, p);
         if (tId === tid.value) {
-          pins[sg.s] = p;
           saveSettings();
         }
         await saveBatchSegUpdates([{ task_id: tId, s: sg.s, image: p }], `s${pad3(sg.s)} 配图已设为 ${p}`);
@@ -2071,9 +2215,55 @@ window.Panel_track = (() => {
         await saveBatchSegUpdates([patch]);
       }
 
+      // 预设名称变更（二选一：选择或清空预设时，同时清空手动提示词覆盖）
+      async function onSegPresetChange(taskId, sg, presetId) {
+        const tId = taskId || tid.value;
+        const pid = String(presetId || '').trim();
+        sg.preset_id = pid;
+        sg.custom_prompt = '';
+        await saveBatchSegUpdates(
+          [{ task_id: tId, s: sg.s, preset_id: pid, custom_prompt: '' }],
+          pid ? `s${pad3(sg.s)} 已应用预设「${presetNameOf(pid)}」` : `s${pad3(sg.s)} 已清空预设`
+        );
+      }
+
+      // 提示词覆盖输入/修改（二选一：只要手动添加/修改了提示词，前面的预设自动清空，并实时自动保存）
+      const segPromptTimers = {};
+      function onSegCustomPromptInput(taskId, sg, val, immediate = false) {
+        const tId = taskId || tid.value;
+        const cp = String(val == null ? '' : val);
+        sg.custom_prompt = cp;
+        sg.preset_id = '';
+        const key = `${tId}:${sg.s}`;
+        if (segPromptTimers[key]) {
+          clearTimeout(segPromptTimers[key]);
+          delete segPromptTimers[key];
+        }
+        const commit = () => {
+          saveBatchSegUpdates([{ task_id: tId, s: sg.s, custom_prompt: cp, preset_id: '' }]);
+        };
+        if (immediate) {
+          commit();
+        } else {
+          segPromptTimers[key] = setTimeout(commit, 320);
+        }
+      }
+
       async function onSegPaste(taskId, segList, startIdx, field, ev) {
         const text = ev.clipboardData && ev.clipboardData.getData('text/plain');
-        if (!text || (!text.includes('\n') && !text.includes('\t'))) return;
+        if (!text) return;
+        const isMulti = text.includes('\n') || text.includes('\t');
+        if (!isMulti && field !== 'custom_prompt') return;
+        if (!isMulti && field === 'custom_prompt') {
+          // 单行粘贴到提示词覆盖：同样触发二选一自动清空预设
+          setTimeout(() => {
+            const sg = segList[startIdx];
+            if (sg && ev.target) {
+              onSegCustomPromptInput(taskId, sg, ev.target.value, true);
+            }
+          }, 0);
+          return;
+        }
         ev.preventDefault();
         const tId = taskId || tid.value;
         const rowsText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
@@ -2089,8 +2279,15 @@ window.Panel_track = (() => {
             u.text = cols[0];
             if (cols[1] !== undefined) {
               targetSeg.custom_prompt = cols[1];
+              targetSeg.preset_id = '';
               u.custom_prompt = cols[1];
+              u.preset_id = '';
             }
+          } else if (field === 'custom_prompt') {
+            targetSeg.custom_prompt = cols[0];
+            targetSeg.preset_id = '';
+            u.custom_prompt = cols[0];
+            u.preset_id = '';
           } else {
             targetSeg[field] = cols[0];
             u[field] = cols[0];
@@ -2100,6 +2297,249 @@ window.Panel_track = (() => {
         if (updates.length) {
           await saveBatchSegUpdates(updates, `已粘贴 ${updates.length} 段数据`);
         }
+      }
+
+      // ─── 表格单元格右键上下文菜单：同图统一提示词、全段拷贝预设、定位编辑预设、清空单元格 ───
+      const gsCellMenu = reactive({
+        show: false,
+        x: 0,
+        y: 0,
+        item: null,
+        colIdx: -1,
+      });
+
+      function openGsCellMenu(item, colIdx, ev) {
+        if (!item) return;
+        hotSwitchTask(item.taskId);
+        if (!isGsCellInRange(item.flatIdx, colIdx)) {
+          gsSel.r0 = item.flatIdx;
+          gsSel.c0 = colIdx;
+          gsSel.r1 = item.flatIdx;
+          gsSel.c1 = colIdx;
+          gsSel.activeR = item.flatIdx;
+          gsSel.activeC = colIdx;
+        }
+        gsCellMenu.item = item;
+        gsCellMenu.colIdx = colIdx;
+        gsCellMenu.x = Math.max(12, Math.min(window.innerWidth - 280, ev.clientX));
+        gsCellMenu.y = Math.max(12, Math.min(window.innerHeight - 260, ev.clientY));
+        gsCellMenu.show = true;
+      }
+
+      function closeGsCellMenu() {
+        gsCellMenu.show = false;
+      }
+
+      function getTaskSegListForItem(item) {
+        if (!item) return segments.value || [];
+        if (item.taskObj && Array.isArray(item.taskObj.segments) && item.taskObj.segments.length) {
+          return item.taskObj.segments;
+        }
+        return segments.value || [];
+      }
+
+      function getEffectiveSegImgP(taskId, sg) {
+        if (!sg) return 'p01';
+        if (taskId === tid.value) return fmtP(cellP(sg) || sg.image || 'p01');
+        return fmtP(sg.image || 'p01');
+      }
+
+      function sameImageSegCount(item) {
+        if (!item || !item.seg) return 0;
+        const targetP = getEffectiveSegImgP(item.taskId, item.seg);
+        const list = getTaskSegListForItem(item);
+        return list.filter(sg => getEffectiveSegImgP(item.taskId, sg) === targetP).length;
+      }
+
+      // 将选中单元格的提示词（或预设）统一应用给使用“同一张图片”的所有段
+      async function applyPromptToSameImageSegs() {
+        const rg = gsNormRange();
+        const flat = sheetFlatRows.value;
+        const sourceItems = [];
+        if (rg) {
+          for (let r = rg.minR; r <= rg.maxR; r++) {
+            if (flat[r]) sourceItems.push(flat[r]);
+          }
+        }
+        if (!sourceItems.length && gsCellMenu.item) {
+          sourceItems.push(gsCellMenu.item);
+        }
+        closeGsCellMenu();
+        if (!sourceItems.length) return;
+
+        const updates = [];
+        const touchedImages = [];
+        const processedTaskImg = new Set();
+
+        for (const src of sourceItems) {
+          const tId = src.taskId || tid.value;
+          const imgP = getEffectiveSegImgP(tId, src.seg);
+          const dedupKey = `${tId}:${imgP}`;
+          if (processedTaskImg.has(dedupKey)) continue;
+
+          const hasPreset = !!(src.seg.preset_id && String(src.seg.preset_id).trim());
+          const manualPrompt = String(src.seg.custom_prompt || '').trim();
+          const displayPrompt = String(getSegPromptDisplay(src.seg) || '').trim();
+          if (!hasPreset && !manualPrompt && !displayPrompt) continue;
+
+          processedTaskImg.add(dedupKey);
+          touchedImages.push(imgP);
+
+          const allSegsInTask = getTaskSegListForItem(src);
+          for (const sg of allSegsInTask) {
+            if (getEffectiveSegImgP(tId, sg) !== imgP) continue;
+            if (hasPreset && gsCellMenu.colIdx === 5) {
+              sg.preset_id = src.seg.preset_id;
+              sg.custom_prompt = '';
+              updates.push({ task_id: tId, s: sg.s, preset_id: sg.preset_id, custom_prompt: '' });
+            } else if (manualPrompt || displayPrompt) {
+              const finalPromptText = manualPrompt || displayPrompt;
+              sg.custom_prompt = finalPromptText;
+              sg.preset_id = '';
+              updates.push({ task_id: tId, s: sg.s, custom_prompt: finalPromptText, preset_id: '' });
+            } else if (hasPreset) {
+              sg.preset_id = src.seg.preset_id;
+              sg.custom_prompt = '';
+              updates.push({ task_id: tId, s: sg.s, preset_id: sg.preset_id, custom_prompt: '' });
+            }
+          }
+        }
+
+        if (!updates.length) {
+          toast('当前选中行还没有填写提示词或预设，请先输入提示词或选择预设', '', 'warn');
+          return;
+        }
+        await saveBatchSegUpdates(
+          updates,
+          `🖼️ 已将提示词统一应用给同图（${touchedImages.join('、')}）的共 ${updates.length} 个分段`
+        );
+      }
+
+      // 将当前选中单元格的预设（或提示词）快捷拷贝给全部段落
+      async function applyCellPresetToAllSegs() {
+        const item = gsCellMenu.item || (gsSel.activeR >= 0 ? sheetFlatRows.value[gsSel.activeR] : null);
+        closeGsCellMenu();
+        if (!item || !item.seg) return;
+        const tId = item.taskId || tid.value;
+        const pid = String(item.seg.preset_id || '').trim();
+        const manualPrompt = String(item.seg.custom_prompt || '').trim();
+        const allSegs = getTaskSegListForItem(item);
+        if (!allSegs.length) return;
+
+        if (pid) {
+          const updates = allSegs.map(sg => {
+            sg.preset_id = pid;
+            sg.custom_prompt = '';
+            return { task_id: tId, s: sg.s, preset_id: pid, custom_prompt: '' };
+          });
+          await saveBatchSegUpdates(updates, `📌 已将预设「${presetNameOf(pid)}」拷贝应用给全部 ${updates.length} 个段落`);
+        } else if (manualPrompt) {
+          const updates = allSegs.map(sg => {
+            sg.custom_prompt = manualPrompt;
+            sg.preset_id = '';
+            return { task_id: tId, s: sg.s, custom_prompt: manualPrompt, preset_id: '' };
+          });
+          await saveBatchSegUpdates(updates, `📌 已将当前提示词覆盖拷贝应用给全部 ${updates.length} 个段落`);
+        } else {
+          toast('当前单元格尚未选择预设或填写提示词', '', 'warn');
+        }
+      }
+
+      // 右键“编辑修改选中的预设” -> 直接跳转到 3 提示词 -> 预设管理并定位高亮该预设单元格
+      function jumpToEditPreset(itemOverride) {
+        const item = itemOverride || gsCellMenu.item || (gsSel.activeR >= 0 ? sheetFlatRows.value[gsSel.activeR] : null);
+        closeGsCellMenu();
+        const pid = (item && item.seg && item.seg.preset_id) || curTaskPresetId.value || '';
+        ui.focusPresetId = pid;
+        ui.focusPresetSeq = (Number(ui.focusPresetSeq || 0) + 1);
+        ui.node = 'gemini';
+      }
+
+      // 清空选中单元格的预设名称 / 提示词覆盖 / 文案
+      async function clearSelectedGsCells() {
+        closeGsCellMenu();
+        const rg = gsNormRange();
+        if (!rg) return;
+        const flat = sheetFlatRows.value;
+        const updates = [];
+        for (let r = rg.minR; r <= rg.maxR; r++) {
+          const dst = flat[r];
+          if (!dst || !dst.seg) continue;
+          const u = { task_id: dst.taskId, s: dst.seg.s };
+          let touched = false;
+          for (let c = rg.minC; c <= rg.maxC; c++) {
+            const field = GS_COLS[c];
+            if (field === 'preset_id') {
+              dst.seg.preset_id = '';
+              dst.seg.custom_prompt = '';
+              u.preset_id = '';
+              u.custom_prompt = '';
+              touched = true;
+            } else if (field === 'custom_prompt') {
+              dst.seg.custom_prompt = '';
+              dst.seg.preset_id = '';
+              u.custom_prompt = '';
+              u.preset_id = '';
+              touched = true;
+            } else if (field === 'text') {
+              dst.seg.text = '';
+              u.text = '';
+              touched = true;
+            }
+          }
+          if (touched) updates.push(u);
+        }
+        if (updates.length) {
+          await saveBatchSegUpdates(updates, `🧹 已清空 ${updates.length} 行的选中单元格内容`);
+        }
+      }
+
+      function copySelectedGsCells() {
+        closeGsCellMenu();
+        const rg = gsNormRange();
+        if (!rg) return;
+        const flat = sheetFlatRows.value;
+        const lines = [];
+        for (let r = rg.minR; r <= rg.maxR; r++) {
+          const rowItem = flat[r];
+          if (!rowItem) continue;
+          const cols = [];
+          for (let c = rg.minC; c <= rg.maxC; c++) {
+            cols.push(String(getCellVal(rowItem, c)).replace(/\r?\n/g, ' '));
+          }
+          lines.push(cols.join('\t'));
+        }
+        if (navigator.clipboard && lines.length) {
+          navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
+          toast(`已复制 ${rg.maxR - rg.minR + 1} 行 × ${rg.maxC - rg.minC + 1} 列单元格`, '', 'ok');
+        }
+      }
+
+      async function pasteSelectedGsCells() {
+        closeGsCellMenu();
+        const rg = gsNormRange();
+        if (!rg || !navigator.clipboard || !navigator.clipboard.readText) return;
+        try {
+          const text = await navigator.clipboard.readText();
+          if (!text) return;
+          const flat = sheetFlatRows.value;
+          const rowsText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+          while (rowsText.length && rowsText[rowsText.length - 1] === '') rowsText.pop();
+          const updates = [];
+          for (let i = 0; i < rowsText.length; i++) {
+            const dst = flat[rg.minR + i];
+            if (!dst) break;
+            const cols = rowsText[i].split('\t');
+            for (let j = 0; j < cols.length; j++) {
+              const cIdx = rg.minC + j;
+              if (cIdx >= GS_COLS.length) break;
+              applyCellValToRow(dst, cIdx, cols[j], updates);
+            }
+          }
+          if (updates.length) {
+            await saveBatchSegUpdates(updates, `已批量粘贴 ${updates.length} 个单元格`);
+          }
+        } catch (e) { /* ignore */ }
       }
 
       function stopAllMouseUp() {
@@ -2156,19 +2596,23 @@ window.Panel_track = (() => {
         onPinPick, setZone, unpin, clearZone, unselect,
         planNow, reseed, onHoldInput, onUnitChange, toggleSpacing, applyTrack, runJob,
         cancelExpand, toggleLog, goExpandPrompt, canBeRef, toggleRef, itemClass, itemTitle,
-        rowOf, whyMark, isNowBroll, txtOpen, toggleTxt, openImgMenu, onImgMenu, imgMenuOff, quickImgAct,
-        expandPresetId, presetSearch, hoveredImgP, activePoolImg, showAllTasks, showTaskHeaderRows, expandedTaskRows, batchMenuOpen,
+        rowOf, whyMark, isNowBroll, txtOpen, toggleTxt, openImgMenu, closeImgMenu, onImgMenu, imgMenuOff, quickImgAct,
+        expandAcc, expandPresetId, presetSearch, hoveredImgP, activePoolImg, showAllTasks, showTaskHeaderRows, expandedTaskRows, batchMenuOpen,
         allTasksTable, collapsedTasks, segChecked,
         colWidths, rowHeights, startColResize, startRowResize,
-        sheetFlatRows, gsSel, isGsCellInRange, isGsCellActive, isGsFillHandleCell, isGsCellFillPreview,
+        sheetTaskGroups, sheetFlatRows, gsSel, isGsCellInRange, isGsCellActive, isGsFillHandleCell, isGsCellFillPreview,
         onGsCellMouseDown, onGsCellMouseEnter, startGsFillDrag,
         floatingViewer, currentFloatingRow, toggleFloatingViewer, stepFloatingViewer, startFloatingViewerDrag,
         toggleSingleTaskHeaderRow, isTaskHeaderVisible,
         allPresets, expandPresets, filteredPresets, curTaskFlowMode, curTaskPresetId,
+        composePresetPreview, presetNameOf, getSegPromptDisplay,
         taskColor, toggleShowAllTasks, expandAllTasks, hotSwitchTask,
         isSegChecked, startSegDrag, enterSegDrag, isTaskAllSegChecked, toggleTaskAllSeg,
         onTaskPresetChange, onTaskFlowModeChange, onSegImageChange, onSegFlowModeChange,
-        onSegConnModeChange, onSegFieldUpdate, onSegPaste,
+        onSegConnModeChange, onSegFieldUpdate, onSegPresetChange, onSegCustomPromptInput, onSegPaste,
+        gsCellMenu, openGsCellMenu, closeGsCellMenu, sameImageSegCount,
+        applyPromptToSameImageSegs, applyCellPresetToAllSegs, jumpToEditPreset,
+        clearSelectedGsCells, copySelectedGsCells, pasteSelectedGsCells,
       };
     },
     template: `
@@ -2411,17 +2855,8 @@ window.Panel_track = (() => {
         <button type="button" class="btn sm tog" :class="{on: stripView==='shots'}"
                 @click="setStripView('shots')">{{ t('track.view.shots') }}</button>
         <button type="button" class="btn sm" :disabled="!previewOn" @click="revertPreview">{{ t('track.revert') }}</button>
-        <!-- 图片快捷工具条：移至图池上方独立工具栏区域，完全避开缩略图，绝不遮挡图片点击（同时支持右键图片菜单） -->
-        <span v-if="stripView==='pool' && activePoolImg" class="ps-dock-bar"
-              style="margin-left:8px;display:inline-flex;align-items:center;gap:5px;padding:3px 8px;background:var(--panel-2);border:1px solid var(--rule-2);border-radius:6px">
-          <span class="mono" style="font-size:11.5px;color:var(--accent);font-weight:600">{{ fmtP(activePoolImg.p) }} 快捷操作:</span>
-          <i class="ps-hb-btn" title="✨ 设为参考并扩图" @click.stop="quickImgAct(activePoolImg, 'expand', $event)">✨扩图</i>
-          <i class="ps-hb-btn" title="🔍 提升画质 / 超分重绘" @click.stop="quickImgAct(activePoolImg, 'upscale', $event)">🔍超分</i>
-          <i class="ps-hb-btn" title="↔ 水平镜像翻转" @click.stop="quickImgAct(activePoolImg, 'flip', $event)">↔翻转</i>
-          <i class="ps-hb-btn" title="✂ 裁切构图" @click.stop="quickImgAct(activePoolImg, 'crop', $event)">✂裁切</i>
-          <i class="ps-hb-btn ps-hb-eng" :class="{studio: expandAcc && expandAcc.id==='STUDIO'}"
-             :title="'点击切换生图引擎（当前：' + ((expandAcc && expandAcc.id==='STUDIO') ? '本地 AI · FLUX.2 (可选项)' : '优先付费 Flow/Grok (默认)') + '）'"
-             @click.stop="quickImgAct(activePoolImg, 'engine', $event)">{{ (expandAcc && expandAcc.id==='STUDIO') ? '🖥️本地' : '⚡付费' }}</i>
+        <span class="muted" style="font-size:11.5px;margin-left:8px" v-if="stripView==='pool'">
+          💡 点击图片可切换「使用 / 🚫不使用（斜线排除）」· 鼠标右键点击图片可打开扩图/超分/翻转/裁切菜单
         </span>
       </div>
       <div class="seq-bar warn" v-if="stripView==='shots' && previewOn">{{ t('track.preview_bar') }}</div>
@@ -2435,11 +2870,15 @@ window.Panel_track = (() => {
       <div class="strip" v-if="stripView==='pool'">
         <button v-for="im in images" :key="im.p" :class="[thClass(im), { 'th-active-target': activePoolImg && fmtP(activePoolImg.p)===fmtP(im.p) }]"
                 :style="{borderColor: pool.includes(fmtP(im.p)) ? pcolor(im.p) : ''}"
-                :title="im.status==='pending_review' ? t('track.review') : (t('track.th_in') + '（右键或上方工具栏可扩图/超分/裁切）')"
+                :title="im.status==='pending_review' ? t('track.review') : (pool.includes(fmtP(im.p)) ? '点击标记为「不使用」排除此图 · 右键打开功能菜单' : '已标记为「不使用」（已排除）· 点击恢复使用 · 右键打开菜单')"
                 @mouseenter="hoveredImgP = fmtP(im.p)"
                 @click="hoveredImgP = fmtP(im.p); clickThumb(im)"
                 @contextmenu.prevent="hoveredImgP = fmtP(im.p); openImgMenu($event, im)">
           <img :alt="fmtP(im.p)" :src="mediaUrl(tid, im.file, im.mtime)">
+          <!-- 标记为「不使用」时的斜线排除遮罩 -->
+          <span v-if="!pool.includes(fmtP(im.p)) && !isDead(im)" class="th-excluded-slash">
+            <span>🚫 不使用</span>
+          </span>
           <span class="refmark" v-if="canBeRef(im)" :class="{on: !!im.expand_ref}"
                 :title="t('track.ref_mark')" @click="toggleRef(im, $event)">{{ im.expand_ref ? '✓' : '' }}</span>
           <span class="tag">{{ fmtP(im.p) }}</span>
@@ -2547,33 +2986,33 @@ window.Panel_track = (() => {
         </thead>
 
         <tbody>
-          <template v-for="item in sheetFlatRows" :key="item.rowKey">
-            <!-- 可选展开的“任务”汇总行（默认隐藏，点击顶部“任务行”或某组第一行的任务徽标即可展开进行批量任务级设置） -->
-            <tr v-if="item.isFirstInGroup && isTaskHeaderVisible(item.taskId)"
+          <template v-for="grp in sheetTaskGroups" :key="'grp-' + grp.taskId">
+            <!-- 任务组行：当开启“任务行”、单独展开该任务、或该任务被收起（收起全部任务组）时始终可见 -->
+            <tr v-if="isTaskHeaderVisible(grp.taskId)"
                 class="trk-task-group-row"
-                :class="{'active-task': tid===item.taskId}"
-                :style="{'--task-accent': item.taskColor}"
-                @click="hotSwitchTask(item.taskId)">
+                :class="{'active-task': tid===grp.taskId}"
+                :style="{'--task-accent': grp.taskColor}"
+                @click="hotSwitchTask(grp.taskId)">
               <td style="text-align:center" @click.stop>
-                <input type="checkbox" :checked="isTaskAllSegChecked(item.taskId, item.taskObj && item.taskObj.segments)"
-                       @change="toggleTaskAllSeg(item.taskId, item.taskObj && item.taskObj.segments)">
+                <input type="checkbox" :checked="isTaskAllSegChecked(grp.taskId, grp.taskObj && grp.taskObj.segments)"
+                       @change="toggleTaskAllSeg(grp.taskId, grp.taskObj && grp.taskObj.segments)">
               </td>
               <td colspan="3">
                 <div style="display:flex;align-items:center;gap:8px">
                   <button type="button" class="btn sm ghost" style="padding:1px 6px"
-                          @click.stop="collapsedTasks[item.taskId]=!collapsedTasks[item.taskId]">
-                    {{ collapsedTasks[item.taskId] ? '▸' : '▾' }}
+                          @click.stop="collapsedTasks[grp.taskId]=!collapsedTasks[grp.taskId]">
+                    {{ collapsedTasks[grp.taskId] ? '▸ 展开' : '▾ 收起' }}
                   </button>
-                  <span class="trk-task-badge" :style="{background: item.taskColor + '22', borderColor: item.taskColor, color: item.taskColor}">
-                    {{ item.taskId }}
+                  <span class="trk-task-badge" :style="{background: grp.taskColor + '22', borderColor: grp.taskColor, color: grp.taskColor}">
+                    {{ grp.taskId }}
                   </span>
-                  <b>{{ item.taskName }}</b>
-                  <span class="muted mono" style="font-size:11.5px">({{ (item.taskObj && item.taskObj.segments || []).length }}段)</span>
+                  <b>{{ grp.taskName }}</b>
+                  <span class="muted mono" style="font-size:11.5px">({{ grp.segCount }}段)</span>
                 </div>
               </td>
               <td colspan="2" @click.stop>
-                <select class="dur-sel" style="width:100%" :value="(item.taskObj && item.taskObj.flow_mode) || 'auto'"
-                        @change="onTaskFlowModeChange(item.taskId, $event.target.value)">
+                <select class="dur-sel" style="width:100%" :value="(grp.taskObj && grp.taskObj.flow_mode) || 'auto'"
+                        @change="onTaskFlowModeChange(grp.taskId, $event.target.value)">
                   <option value="auto">任务Flow: 继承</option>
                   <option value="frames">🎞️ 全任务首尾帧</option>
                   <option value="ingredients">🧩 全任务素材</option>
@@ -2582,201 +3021,240 @@ window.Panel_track = (() => {
               <td colspan="3" @click.stop>
                 <div style="display:flex;align-items:center;gap:8px">
                   <span class="muted" style="font-size:11.5px">📌 任务预设:</span>
-                  <select class="dur-sel" style="min-width:180px" :value="(item.taskObj && item.taskObj.preset_id) || ''"
-                          @change="onTaskPresetChange(item.taskId, $event.target.value)">
-                    <option value="">— 选择预设应用到 {{ item.taskId }} 全段 —</option>
+                  <select class="dur-sel" style="min-width:180px" :value="(grp.taskObj && grp.taskObj.preset_id) || ''"
+                          @change="onTaskPresetChange(grp.taskId, $event.target.value)">
+                    <option value="">— 选择预设应用到 {{ grp.taskId }} 全段 —</option>
                     <option v-for="p in allPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
                   </select>
-                  <button type="button" class="btn sm ghost" style="margin-left:auto;padding:1px 6px"
-                          @click.stop="toggleSingleTaskHeaderRow(item.taskId, $event)">收起任务行 ▲</button>
+                  <button v-if="!collapsedTasks[grp.taskId]" type="button" class="btn sm ghost" style="margin-left:auto;padding:1px 6px"
+                          @click.stop="toggleSingleTaskHeaderRow(grp.taskId, $event)">隐藏任务行 ▲</button>
+                  <button v-else type="button" class="btn sm ghost" style="margin-left:auto;padding:1px 6px"
+                          @click.stop="collapsedTasks[grp.taskId]=false">展开段落 ▾</button>
                 </div>
               </td>
             </tr>
 
-            <!-- 标准 Google Sheet 分镜单元格行：保留同组颜色外框分区 -->
-            <tr :data-s="item.seg.s"
-                :data-rowkey="item.rowKey"
-                class="gs-group-row"
-                :class="{
-                  'gs-group-first': item.isFirstInGroup,
-                  'gs-group-last': item.isLastInGroup,
-                  'row-selected': isSegChecked(item.taskId, item.seg.s),
-                  'seq-hi': tid===item.taskId && seqHi===item.seg.s
-                }"
-                :style="{
-                  '--group-border-color': item.taskColor,
-                  height: (rowHeights[item.rowKey] ? rowHeights[item.rowKey] + 'px' : 'auto')
-                }"
-                @click="hotSwitchTask(item.taskId); floatingViewer.rowIdx = item.flatIdx">
-              <!-- 勾选列 -->
-              <td class="ap-td-sel" style="text-align:center"
-                  @mousedown.prevent="startSegDrag(item.taskId, item.seg.s, $event)"
-                  @mouseenter="enterSegDrag(item.taskId, item.seg.s)">
-                <input type="checkbox" :checked="isSegChecked(item.taskId, item.seg.s)" tabindex="-1" style="pointer-events:none">
-                <span class="gs-row-resizer" @mousedown="startRowResize(item.rowKey, $event)"></span>
-              </td>
-
-              <!-- 分镜序号列（组首行带可点击的任务徽标，用于随时展开/收起该任务的任务行） -->
-              <td class="sn">
-                <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap">
-                  <span v-if="item.isFirstInGroup"
-                        class="gs-task-mini-badge"
-                        :style="{background: item.taskColor}"
-                        :title="'点击展开/收起 ' + item.taskId + ' 任务批量操作行'"
-                        @click.stop="toggleSingleTaskHeaderRow(item.taskId, $event)">
-                    {{ item.taskId }}
-                  </span>
-                  <span>s{{ pad3(item.seg.s) }}</span>
-                </div>
-                <span class="gs-row-resizer" @mousedown="startRowResize(item.rowKey, $event)"></span>
-              </td>
-
-              <!-- Col 0: 配图 + 行内缩略图预览 -->
-              <td class="pp"
+            <!-- 标准 Google Sheet 分镜单元格行：当该任务未收起时显示，保留同组颜色外框分区 -->
+            <template v-if="!collapsedTasks[grp.taskId]">
+              <tr v-for="item in grp.rows" :key="item.rowKey"
+                  :data-s="item.seg.s"
+                  :data-rowkey="item.rowKey"
+                  class="gs-group-row"
                   :class="{
-                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 0),
-                    'gs-cell-active': isGsCellActive(item.flatIdx, 0),
-                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 0)
+                    'gs-group-first': item.isFirstInGroup,
+                    'gs-group-last': item.isLastInGroup,
+                    'row-selected': isSegChecked(item.taskId, item.seg.s),
+                    'seq-hi': tid===item.taskId && seqHi===item.seg.s
                   }"
-                  @mousedown="onGsCellMouseDown(item.flatIdx, 0, $event)"
-                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 0)">
-                <div style="display:flex;align-items:center;gap:6px">
-                  <img v-if="item.thumbUrl"
-                       :src="item.thumbUrl"
-                       class="gs-row-thumb"
-                       :alt="item.pCode"
-                       title="点击在悬浮看图器中放大查看"
-                       @click.stop="floatingViewer.rowIdx = item.flatIdx; floatingViewer.on = true"
-                       onerror="this.style.display='none'">
-                  <span class="swatch" :style="{background: pcolor(item.pCode)}"></span>
-                  <select v-if="item.taskImages && item.taskImages.length"
-                          class="dur-sel gs-img-select" style="flex:1;min-width:0"
-                          :value="item.pCode"
-                          @change="onSegImageChange(item.taskId, item.seg, $event.target.value)">
-                    <option v-for="im in item.taskImages" :key="im.p" :value="fmtP(im.p)">{{ fmtP(im.p) }}</option>
+                  :style="{
+                    '--group-border-color': item.taskColor,
+                    height: (rowHeights[item.rowKey] ? rowHeights[item.rowKey] + 'px' : 'auto')
+                  }"
+                  @click="hotSwitchTask(item.taskId); floatingViewer.rowIdx = item.flatIdx">
+                <!-- 勾选列 -->
+                <td class="ap-td-sel" style="text-align:center"
+                    @mousedown.prevent="startSegDrag(item.taskId, item.seg.s, $event)"
+                    @mouseenter="enterSegDrag(item.taskId, item.seg.s)"
+                    @contextmenu.prevent="openGsCellMenu(item, 0, $event)">
+                  <input type="checkbox" :checked="isSegChecked(item.taskId, item.seg.s)" tabindex="-1" style="pointer-events:none">
+                  <span class="gs-row-resizer" @mousedown="startRowResize(item.rowKey, $event)"></span>
+                </td>
+
+                <!-- 分镜序号列（组首行带可点击的任务徽标，用于随时展开/收起该任务的任务行） -->
+                <td class="sn" @contextmenu.prevent="openGsCellMenu(item, 0, $event)">
+                  <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap">
+                    <span v-if="item.isFirstInGroup"
+                          class="gs-task-mini-badge"
+                          :style="{background: item.taskColor}"
+                          :title="'点击展开/收起 ' + item.taskId + ' 任务批量操作行'"
+                          @click.stop="toggleSingleTaskHeaderRow(item.taskId, $event)">
+                      {{ item.taskId }}
+                    </span>
+                    <span>s{{ pad3(item.seg.s) }}</span>
+                  </div>
+                  <span class="gs-row-resizer" @mousedown="startRowResize(item.rowKey, $event)"></span>
+                </td>
+
+                <!-- Col 0: 配图 + 行内缩略图预览 -->
+                <td class="pp"
+                    :class="{
+                      'gs-cell-in-range': isGsCellInRange(item.flatIdx, 0),
+                      'gs-cell-active': isGsCellActive(item.flatIdx, 0),
+                      'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 0)
+                    }"
+                    @mousedown="onGsCellMouseDown(item.flatIdx, 0, $event)"
+                    @mouseenter="onGsCellMouseEnter(item.flatIdx, 0)"
+                    @contextmenu.prevent="openGsCellMenu(item, 0, $event)">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <img v-if="item.thumbUrl"
+                         :src="item.thumbUrl"
+                         class="gs-row-thumb"
+                         :alt="item.pCode"
+                         title="点击在悬浮看图器中放大查看"
+                         @click.stop="floatingViewer.rowIdx = item.flatIdx; floatingViewer.on = true"
+                         onerror="this.style.display='none'">
+                    <span class="swatch" :style="{background: pcolor(item.pCode)}"></span>
+                    <select v-if="item.taskImages && item.taskImages.length"
+                            class="dur-sel gs-img-select" style="flex:1;min-width:0"
+                            :value="item.pCode"
+                            @change="onSegImageChange(item.taskId, item.seg, $event.target.value)">
+                      <option v-for="im in item.taskImages" :key="im.p" :value="fmtP(im.p)">{{ fmtP(im.p) }}</option>
+                    </select>
+                    <input v-else class="trk-inline-input mono gs-img-select" style="flex:1;min-width:0"
+                           :value="item.pCode"
+                           @change="onSegImageChange(item.taskId, item.seg, $event.target.value)">
+                  </div>
+                  <span v-if="isGsFillHandleCell(item.flatIdx, 0)" class="gs-fill-handle"
+                        title="向下或向上拖拽批量拷贝填充"
+                        @mousedown="startGsFillDrag($event)"></span>
+                </td>
+
+                <!-- Col 1: 时长 -->
+                <td class="sn dur-cell"
+                    :class="{
+                      'gs-cell-in-range': isGsCellInRange(item.flatIdx, 1),
+                      'gs-cell-active': isGsCellActive(item.flatIdx, 1),
+                      'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 1)
+                    }"
+                    @mousedown="onGsCellMouseDown(item.flatIdx, 1, $event)"
+                    @mouseenter="onGsCellMouseEnter(item.flatIdx, 1)"
+                    @contextmenu.prevent="openDurMenu($event, item.seg)">
+                  <select class="dur-sel" style="width:100%" :value="item.seg.duration || 6"
+                          @change="item.taskId===tid ? onDurChange(item.seg, $event) : onSegFieldUpdate(item.taskId, item.seg, 'duration', Number($event.target.value))">
+                    <option v-for="d in (item.seg.duration_options || [4,6,8,10,15])" :key="d" :value="d">{{ d }}s</option>
                   </select>
-                  <input v-else class="trk-inline-input mono gs-img-select" style="flex:1;min-width:0"
-                         :value="item.pCode"
-                         @change="onSegImageChange(item.taskId, item.seg, $event.target.value)">
-                </div>
-                <span v-if="isGsFillHandleCell(item.flatIdx, 0)" class="gs-fill-handle"
-                      title="向下或向上拖拽批量拷贝填充"
-                      @mousedown="startGsFillDrag($event)"></span>
-              </td>
+                  <span v-if="isGsFillHandleCell(item.flatIdx, 1)" class="gs-fill-handle"
+                        @mousedown="startGsFillDrag($event)"></span>
+                </td>
 
-              <!-- Col 1: 时长 -->
-              <td class="sn dur-cell"
-                  :class="{
-                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 1),
-                    'gs-cell-active': isGsCellActive(item.flatIdx, 1),
-                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 1)
-                  }"
-                  @mousedown="onGsCellMouseDown(item.flatIdx, 1, $event)"
-                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 1)"
-                  @contextmenu.prevent="openDurMenu($event, item.seg)">
-                <select class="dur-sel" style="width:100%" :value="item.seg.duration || 6"
-                        @change="item.taskId===tid ? onDurChange(item.seg, $event) : onSegFieldUpdate(item.taskId, item.seg, 'duration', Number($event.target.value))">
-                  <option v-for="d in (item.seg.duration_options || [4,6,8,10,15])" :key="d" :value="d">{{ d }}s</option>
-                </select>
-                <span v-if="isGsFillHandleCell(item.flatIdx, 1)" class="gs-fill-handle"
-                      @mousedown="startGsFillDrag($event)"></span>
-              </td>
+                <!-- Col 2: Flow模式 -->
+                <td :class="{
+                      'gs-cell-in-range': isGsCellInRange(item.flatIdx, 2),
+                      'gs-cell-active': isGsCellActive(item.flatIdx, 2),
+                      'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 2)
+                    }"
+                    @mousedown="onGsCellMouseDown(item.flatIdx, 2, $event)"
+                    @mouseenter="onGsCellMouseEnter(item.flatIdx, 2)"
+                    @contextmenu.prevent="openGsCellMenu(item, 2, $event)">
+                  <select class="dur-sel" style="width:100%" :value="item.seg.flow_mode || 'auto'"
+                          @change="onSegFlowModeChange(item.taskId, item.seg, $event.target.value)">
+                    <option value="auto">继承账号</option>
+                    <option value="frames">🎞️ 首尾帧</option>
+                    <option value="ingredients">🧩 素材</option>
+                  </select>
+                  <span v-if="isGsFillHandleCell(item.flatIdx, 2)" class="gs-fill-handle"
+                        @mousedown="startGsFillDrag($event)"></span>
+                </td>
 
-              <!-- Col 2: Flow模式 -->
-              <td :class="{
-                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 2),
-                    'gs-cell-active': isGsCellActive(item.flatIdx, 2),
-                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 2)
-                  }"
-                  @mousedown="onGsCellMouseDown(item.flatIdx, 2, $event)"
-                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 2)">
-                <select class="dur-sel" style="width:100%" :value="item.seg.flow_mode || 'auto'"
-                        @change="onSegFlowModeChange(item.taskId, item.seg, $event.target.value)">
-                  <option value="auto">继承账号</option>
-                  <option value="frames">🎞️ 首尾帧</option>
-                  <option value="ingredients">🧩 素材</option>
-                </select>
-                <span v-if="isGsFillHandleCell(item.flatIdx, 2)" class="gs-fill-handle"
-                      @mousedown="startGsFillDrag($event)"></span>
-              </td>
+                <!-- Col 3: 生成衔接方式 -->
+                <td :class="{
+                      'gs-cell-in-range': isGsCellInRange(item.flatIdx, 3),
+                      'gs-cell-active': isGsCellActive(item.flatIdx, 3),
+                      'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 3)
+                    }"
+                    @mousedown="onGsCellMouseDown(item.flatIdx, 3, $event)"
+                    @mouseenter="onGsCellMouseEnter(item.flatIdx, 3)"
+                    @contextmenu.prevent="openGsCellMenu(item, 3, $event)">
+                  <select class="dur-sel" style="width:100%"
+                          :value="item.seg.mode || (item.seg.role==='bridge' ? 'bridge' : 'single')"
+                          @change="onSegConnModeChange(item.taskId, item.seg, $event.target.value)">
+                    <option value="single">首帧</option>
+                    <option value="bridge">首尾帧</option>
+                    <option value="chain">接龙</option>
+                  </select>
+                  <span v-if="isGsFillHandleCell(item.flatIdx, 3)" class="gs-fill-handle"
+                        @mousedown="startGsFillDrag($event)"></span>
+                </td>
 
-              <!-- Col 3: 生成衔接方式 -->
-              <td :class="{
-                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 3),
-                    'gs-cell-active': isGsCellActive(item.flatIdx, 3),
-                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 3)
-                  }"
-                  @mousedown="onGsCellMouseDown(item.flatIdx, 3, $event)"
-                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 3)">
-                <select class="dur-sel" style="width:100%"
-                        :value="item.seg.mode || (item.seg.role==='bridge' ? 'bridge' : 'single')"
-                        @change="onSegConnModeChange(item.taskId, item.seg, $event.target.value)">
-                  <option value="single">首帧</option>
-                  <option value="bridge">首尾帧</option>
-                  <option value="chain">接龙</option>
-                </select>
-                <span v-if="isGsFillHandleCell(item.flatIdx, 3)" class="gs-fill-handle"
-                      @mousedown="startGsFillDrag($event)"></span>
-              </td>
+                <!-- Col 4: 文案 -->
+                <td :class="{
+                      'gs-cell-in-range': isGsCellInRange(item.flatIdx, 4),
+                      'gs-cell-active': isGsCellActive(item.flatIdx, 4),
+                      'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 4)
+                    }"
+                    @mousedown="onGsCellMouseDown(item.flatIdx, 4, $event)"
+                    @mouseenter="onGsCellMouseEnter(item.flatIdx, 4)"
+                    @contextmenu.prevent="openGsCellMenu(item, 4, $event)">
+                  <textarea class="trk-inline-input"
+                            style="width:100%;min-height:28px;height:100%;resize:none;line-height:1.4;white-space:pre-wrap"
+                            rows="1"
+                            :value="item.seg.text || ''"
+                            placeholder="输入或粘贴本段文案…"
+                            @change="onSegFieldUpdate(item.taskId, item.seg, 'text', $event.target.value)"
+                            @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'text', $event)"></textarea>
+                  <span v-if="isGsFillHandleCell(item.flatIdx, 4)" class="gs-fill-handle"
+                        @mousedown="startGsFillDrag($event)"></span>
+                </td>
 
-              <!-- Col 4: 文案 -->
-              <td :class="{
-                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 4),
-                    'gs-cell-active': isGsCellActive(item.flatIdx, 4),
-                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 4)
-                  }"
-                  @mousedown="onGsCellMouseDown(item.flatIdx, 4, $event)"
-                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 4)">
-                <textarea class="trk-inline-input"
-                          style="width:100%;min-height:28px;height:100%;resize:none;line-height:1.4;white-space:pre-wrap"
-                          rows="1"
-                          :value="item.seg.text || ''"
-                          placeholder="输入或粘贴本段文案…"
-                          @change="onSegFieldUpdate(item.taskId, item.seg, 'text', $event.target.value)"
-                          @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'text', $event)"></textarea>
-                <span v-if="isGsFillHandleCell(item.flatIdx, 4)" class="gs-fill-handle"
-                      @mousedown="startGsFillDrag($event)"></span>
-              </td>
+                <!-- Col 5: 预设名称（仅显示预设名字，清晰独立一列，支持 Delete 清空与二选一联动） -->
+                <td :class="{
+                      'gs-cell-in-range': isGsCellInRange(item.flatIdx, 5),
+                      'gs-cell-active': isGsCellActive(item.flatIdx, 5),
+                      'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 5)
+                    }"
+                    @mousedown="onGsCellMouseDown(item.flatIdx, 5, $event)"
+                    @mouseenter="onGsCellMouseEnter(item.flatIdx, 5)"
+                    @contextmenu.prevent="openGsCellMenu(item, 5, $event)">
+                  <select class="dur-sel" style="width:100%" :value="item.seg.preset_id || ''"
+                          @change="onSegPresetChange(item.taskId, item.seg, $event.target.value)">
+                    <option value="">— 无预设 (清空) —</option>
+                    <option v-for="p in allPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
+                  </select>
+                  <span v-if="isGsFillHandleCell(item.flatIdx, 5)" class="gs-fill-handle"
+                        @mousedown="startGsFillDrag($event)"></span>
+                </td>
 
-              <!-- Col 5: 预设名称（仅显示预设名字，清晰独立一列） -->
-              <td :class="{
-                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 5),
-                    'gs-cell-active': isGsCellActive(item.flatIdx, 5),
-                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 5)
-                  }"
-                  @mousedown="onGsCellMouseDown(item.flatIdx, 5, $event)"
-                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 5)">
-                <select class="dur-sel" style="width:100%" :value="item.seg.preset_id || ''"
-                        @change="onSegFieldUpdate(item.taskId, item.seg, 'preset_id', $event.target.value)">
-                  <option value="">— 继承预设 —</option>
-                  <option v-for="p in allPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
-                </select>
-                <span v-if="isGsFillHandleCell(item.flatIdx, 5)" class="gs-fill-handle"
-                      @mousedown="startGsFillDrag($event)"></span>
-              </td>
-
-              <!-- Col 6: 提示词覆盖内容 -->
-              <td :class="{
-                    'gs-cell-in-range': isGsCellInRange(item.flatIdx, 6),
-                    'gs-cell-active': isGsCellActive(item.flatIdx, 6),
-                    'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 6)
-                  }"
-                  @mousedown="onGsCellMouseDown(item.flatIdx, 6, $event)"
-                  @mouseenter="onGsCellMouseEnter(item.flatIdx, 6)">
-                <textarea class="trk-inline-input"
-                          style="width:100%;min-height:28px;height:100%;resize:none;line-height:1.4;white-space:pre-wrap"
-                          rows="1"
-                          :value="item.seg.custom_prompt || item.seg.prompt_preview || ''"
-                          placeholder="粘贴或输入提示词覆盖…"
-                          @change="onSegFieldUpdate(item.taskId, item.seg, 'custom_prompt', $event.target.value)"
-                          @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'custom_prompt', $event)"></textarea>
-                <span v-if="isGsFillHandleCell(item.flatIdx, 6)" class="gs-fill-handle"
-                      @mousedown="startGsFillDrag($event)"></span>
-              </td>
-            </tr>
+                <!-- Col 6: 提示词覆盖内容（手动输入后自动清空前面预设，与预设二选一） -->
+                <td :class="{
+                      'gs-cell-in-range': isGsCellInRange(item.flatIdx, 6),
+                      'gs-cell-active': isGsCellActive(item.flatIdx, 6),
+                      'gs-cell-fill-preview': isGsCellFillPreview(item.flatIdx, 6)
+                    }"
+                    @mousedown="onGsCellMouseDown(item.flatIdx, 6, $event)"
+                    @mouseenter="onGsCellMouseEnter(item.flatIdx, 6)"
+                    @contextmenu.prevent="openGsCellMenu(item, 6, $event)">
+                  <textarea class="trk-inline-input"
+                            style="width:100%;min-height:28px;height:100%;resize:none;line-height:1.4;white-space:pre-wrap"
+                            rows="1"
+                            :value="getSegPromptDisplay(item.seg)"
+                            placeholder="手动输入提示词（自动清空预设）…"
+                            @input="onSegCustomPromptInput(item.taskId, item.seg, $event.target.value, false)"
+                            @change="onSegCustomPromptInput(item.taskId, item.seg, $event.target.value, true)"
+                            @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'custom_prompt', $event)"></textarea>
+                  <span v-if="isGsFillHandleCell(item.flatIdx, 6)" class="gs-fill-handle"
+                        @mousedown="startGsFillDrag($event)"></span>
+                </td>
+              </tr>
+            </template>
           </template>
         </tbody>
       </table>
+    </div>
+
+    <!-- 单元格鼠标右键菜单：支持同图同步提示词、拷贝预设到全部段落、跳转定位编辑预设、清空/复制/粘贴 -->
+    <div v-if="gsCellMenu.show"
+         class="gs-context-menu"
+         :style="{left: gsCellMenu.x + 'px', top: gsCellMenu.y + 'px'}"
+         @click.stop>
+      <div class="ctx-item" @click="applyPromptToSameImageSegs">
+        🖼️ 将选中单元格提示词应用给同图「{{ gsCellMenu.item ? gsCellMenu.item.pCode : '' }}」的所有段 (共 {{ sameImageSegCount(gsCellMenu.item) }} 段)
+      </div>
+      <div class="ctx-item" @click="applyCellPresetToAllSegs">
+        📌 将当前选中单元格的预设拷贝给所有全部段落
+      </div>
+      <div class="ctx-item" @click="jumpToEditPreset(gsCellMenu.item)">
+        ✏️ 编辑修改选中的预设{{ gsCellMenu.item && gsCellMenu.item.seg && gsCellMenu.item.seg.preset_id ? '「' + presetNameOf(gsCellMenu.item.seg.preset_id) + '」' : '' }}
+      </div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" @click="clearSelectedGsCells">
+        🧹 清空选中单元格预设 / 提示词 (Delete)
+      </div>
+      <div class="ctx-item" @click="copySelectedGsCells">
+        📋 复制选中单元格 (Ctrl+C)
+      </div>
+      <div class="ctx-item" @click="pasteSelectedGsCells">
+        📥 粘贴到选中单元格 (Ctrl+V)
+      </div>
     </div>
 
     <!-- 外部悬浮图片阅读器窗口 (支持点击任意行实时联动预览，支持 ↑/↓/J/K/Space 切换上/下一行图片) -->
@@ -2826,6 +3304,10 @@ window.Panel_track = (() => {
   <ul v-if="menu.show && menu.im" class="ctx" ref="menuRef"
       :style="{left: menu.x + 'px', top: menu.y + 'px'}"
       @click.stop>
+    <li @click="clickThumb(menu.im); closeImgMenu()">
+      {{ pool.includes(fmtP(menu.im.p)) ? '🚫 标记为「不使用」（排除此图）' : '✅ 恢复使用此图（加入图池）' }}
+    </li>
+    <li class="sep"></li>
     <li @click="quickImgAct(menu.im, 'expand', $event); menu.show = false">✨ 设为参考并扩图 ({{ fmtP(menu.im.p) }})</li>
     <li :class="{off: imgMenuOff(menu.im, 'upscale')}" @click="onImgMenu('upscale')">🔍 {{ t('track.ctx.upscale') }}</li>
     <li :class="{off: imgMenuOff(menu.im, 'flip')}" @click="onImgMenu('flip')">↔ {{ t('track.ctx.flip') }}</li>

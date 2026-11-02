@@ -840,8 +840,8 @@ window.Panel_gemini = (() => {
 
       // Default hide parent task rows, keeping colored outer border per task group
       const showTaskHeaderRows = ref(false);
-      // Default wrap text inside cells; toggleable to 'clip' (overflow hidden/ellipsis)
-      const textWrapMode = ref('wrap'); // 'wrap' | 'clip'
+      // 默认使用“溢出截断”方式显示，使表格空间紧凑整齐；可随时切换自动换行
+      const textWrapMode = ref('clip'); // 'clip' | 'wrap'
 
       // Task Prompt Table column widths & row heights
       const tableColWidths = reactive({
@@ -867,14 +867,25 @@ window.Panel_gemini = (() => {
         fillEndRow: -1,
       });
 
-      // Floating cell hover preview popover (shared across both tables)
-      const hoverPopover = reactive({
-        visible: false,
-        x: 0,
-        y: 0,
+      // 悬浮大号单元格文本编辑器（替代旧悬停预览框：可自由拖拽位置、可手动调整窗口大小、可随时关闭/开启、点击任意单元格自动载入内容并实时保存同步全软件）
+      const cellEditor = reactive({
+        open: true,
+        x: null,
+        y: null,
+        w: 540,
+        h: 260,
+        kind: '',        // 'preset' | 'segment'
         title: '',
-        content: '',
+        subTitle: '',
+        rowUid: '',      // for preset row
+        presetField: 'template', // 'name' | 'template'
+        taskId: '',      // for segment row
+        s: 0,
+        colId: 'main',   // 'text' | 'main' | extra col_id
+        saving: false,
+        savedAt: 0,
       });
+      const highlightedPresetUid = ref('');
 
       // Column context menu (right-click to insert left/right, rename, delete)
       const colMenu = reactive({
@@ -1105,6 +1116,74 @@ window.Panel_gemini = (() => {
         if (!presetRows.value.length) addPresetRows(1);
       }
 
+      let _presetAutoSaveTimer = null;
+      let _segAutoSaveTimers = {};
+
+      // Sync local tasksTable segments immediately when a preset template changes
+      function syncPresetToLocalSegments(presetId, newTemplate) {
+        if (!presetId) return;
+        for (const tk of (tasksTable.value || [])) {
+          for (const sg of (tk.segments || [])) {
+            if (sg.preset_id === presetId || (!sg.preset_id && tk.preset_id === presetId)) {
+              sg.custom_prompt = '';
+              sg.prompt_preview = PresetSlotLogic.composeSpeech(newTemplate, sg.text);
+            }
+          }
+        }
+      }
+
+      async function autoSavePresetsNow(silent = true) {
+        if (_presetAutoSaveTimer) {
+          clearTimeout(_presetAutoSaveTimer);
+          _presetAutoSaveTimer = null;
+        }
+        const nonEmpty = [];
+        for (let i = 0; i < presetRows.value.length; i++) {
+          const r = presetRows.value[i];
+          if (!r) continue;
+          const name = String(r.name || '').trim();
+          const tpl = String(r.template || '').trim();
+          if (!name && !tpl) continue;
+          if (!r.id) r.id = 'preset_' + (i + 1) + '_' + Date.now().toString(36);
+          nonEmpty.push({
+            id: r.id,
+            name: name || ('未命名预设 ' + (i + 1)),
+            category: String(r.category || '默认分组').trim(),
+            role: r.role || 'main',
+            color: r.color || '#d4a24c',
+            flow_mode: r.flow_mode || 'auto',
+            template: r.template || '',
+            sort_order: i,
+          });
+        }
+        if (!nonEmpty.length) return;
+        cellEditor.saving = true;
+        try {
+          const res = await API.post('/api/prompt-presets/batch-save', { presets: nonEmpty }, { silent: true });
+          if (res && Array.isArray(res.presets)) {
+            store.promptPresets = res.presets;
+          } else {
+            store.promptPresets = nonEmpty;
+          }
+          cellEditor.savedAt = Date.now();
+          if (!silent) {
+            toast(`🚀 已保存 ${nonEmpty.length} 条预设，已实时同步至全软件`, '', 'ok');
+          }
+        } catch (e) {
+          if (!silent) { /* API toast */ }
+        } finally {
+          cellEditor.saving = false;
+        }
+      }
+
+      function scheduleAutoSavePresets(ms = 260) {
+        if (_presetAutoSaveTimer) clearTimeout(_presetAutoSaveTimer);
+        _presetAutoSaveTimer = setTimeout(() => {
+          _presetAutoSaveTimer = null;
+          autoSavePresetsNow(true);
+        }, ms);
+      }
+
       async function publishPresets() {
         const nonEmpty = [];
         for (let i = 0; i < presetRows.value.length; i++) {
@@ -1115,12 +1194,9 @@ window.Panel_gemini = (() => {
             toast(`第 ${i + 1} 行校验未通过：${v.error}`, '请补全红框高亮的必填单元格后再发布', 'bad');
             return;
           }
-          if (v.noNewlineWarn) {
-            toast(`第 ${i + 1} 行【${r.name}】：请在要填写内容的地方添加换行`, '主提示词需要通过换行位置标识【人物说的话】插入点', 'bad');
-            return;
-          }
+          if (!r.id) r.id = 'preset_' + (i + 1) + '_' + Date.now().toString(36);
           nonEmpty.push({
-            id: r.id || ('preset_' + (i + 1) + '_' + Date.now().toString(36)),
+            id: r.id,
             name: String(r.name).trim(),
             category: String(r.category || '默认分组').trim(),
             role: r.role || 'main',
@@ -1138,32 +1214,181 @@ window.Panel_gemini = (() => {
           } else {
             store.promptPresets = nonEmpty;
           }
+          cellEditor.savedAt = Date.now();
           toast(`🚀 已保存 ${nonEmpty.length} 条预设，已同步至 2 排镜头 与预设库`, '', 'ok');
           await loadPresets(true);
+          await loadTasksSegmentsTable(true);
         } catch (e) { /* API toast */ } finally {
           presetSaving.value = false;
         }
       }
 
-      // ─── Hover Cell Content Preview Popover (Shared across Preset Table & Task Prompt Table) ───
-      function onCellHoverEnter(ev, title, content) {
-        const txt = String(content == null ? '' : content).trim();
-        if (!txt) {
-          hoverPopover.visible = false;
-          return;
-        }
-        const rect = ev.currentTarget && ev.currentTarget.getBoundingClientRect
-          ? ev.currentTarget.getBoundingClientRect()
-          : { left: ev.clientX, bottom: ev.clientY + 14 };
-        hoverPopover.title = title || '';
-        hoverPopover.content = txt;
-        hoverPopover.x = Math.max(12, Math.min(window.innerWidth - 440, rect.left));
-        hoverPopover.y = Math.max(12, Math.min(window.innerHeight - 220, rect.bottom + 6));
-        hoverPopover.visible = true;
+      // ─── 悬浮大号单元格文本编辑器 (Movable + Resizable + Real-Time Sync) ───
+      function bindCellEditorToPreset(row, cIdx) {
+        if (!row) return;
+        const field = (cIdx === 1) ? 'name' : 'template';
+        cellEditor.kind = 'preset';
+        cellEditor.rowUid = row._uid;
+        cellEditor.presetField = field;
+        cellEditor.title = `📚 预设 · ${row.name || '未命名预设'}`;
+        cellEditor.subTitle = field === 'name' ? '正在编辑：预设名称' : '正在编辑：提示词内容（换行处自动作为【人物说的话】插槽）';
       }
 
-      function onCellHoverLeave() {
-        hoverPopover.visible = false;
+      function bindCellEditorToSegment(rowItem, cIdx) {
+        if (!rowItem || !rowItem.tk || !rowItem.sg) return;
+        const { tk, sg } = rowItem;
+        cellEditor.kind = 'segment';
+        cellEditor.taskId = tk.id;
+        cellEditor.s = sg.s;
+        if (cIdx === 3) {
+          cellEditor.colId = 'text';
+          cellEditor.title = `📝 ${tk.id} s${pad3(sg.s)} · 文案字幕`;
+          cellEditor.subTitle = `配图 ${sg.image || 'p01'} · ${sg.duration || 6}s`;
+        } else if (cIdx >= 5) {
+          const col = orderedPromptColumns.value[cIdx - 5];
+          const cid = col ? col.col_id : 'main';
+          cellEditor.colId = cid;
+          cellEditor.title = `🎯 ${tk.id} s${pad3(sg.s)} · ${col ? col.name : '主提示词列'}`;
+          cellEditor.subTitle = `文案：${(sg.text || '').slice(0, 48)}${(sg.text || '').length > 48 ? '…' : ''}`;
+        } else {
+          cellEditor.colId = 'main';
+          cellEditor.title = `🎯 ${tk.id} s${pad3(sg.s)} · 主提示词列 (同步排镜头)`;
+          cellEditor.subTitle = `文案：${(sg.text || '').slice(0, 48)}${(sg.text || '').length > 48 ? '…' : ''}`;
+        }
+      }
+
+      const cellEditorValue = computed(() => {
+        if (cellEditor.kind === 'preset' && cellEditor.rowUid) {
+          const row = presetRows.value.find(r => r && r._uid === cellEditor.rowUid);
+          if (!row) return '';
+          return row[cellEditor.presetField || 'template'] || '';
+        }
+        if (cellEditor.kind === 'segment' && cellEditor.taskId && cellEditor.s) {
+          const tk = tasksTable.value.find(t => t && t.id === cellEditor.taskId);
+          const sg = tk && (tk.segments || []).find(x => x.s === cellEditor.s);
+          if (!sg) return '';
+          if (cellEditor.colId === 'text') return sg.text || '';
+          if (cellEditor.colId === 'main') return getPromptCellValue(sg, { col_id: 'main' });
+          return (sg.extra_prompts && sg.extra_prompts[cellEditor.colId]) || '';
+        }
+        return '';
+      });
+
+      function onCellEditorInput(val) {
+        if (cellEditor.kind === 'preset' && cellEditor.rowUid) {
+          const row = presetRows.value.find(r => r && r._uid === cellEditor.rowUid);
+          if (!row) return;
+          const field = cellEditor.presetField || 'template';
+          row[field] = val;
+          if (field === 'name') {
+            cellEditor.title = `📚 预设 · ${val || '未命名预设'}`;
+          } else if (row.id) {
+            syncPresetToLocalSegments(row.id, val);
+          }
+          scheduleAutoSavePresets(250);
+          return;
+        }
+        if (cellEditor.kind === 'segment' && cellEditor.taskId && cellEditor.s) {
+          const tk = tasksTable.value.find(t => t && t.id === cellEditor.taskId);
+          const sg = tk && (tk.segments || []).find(x => x.s === cellEditor.s);
+          if (!sg) return;
+          if (cellEditor.colId === 'text') {
+            onSegmentInputRealtime(tk.id, sg, 'text', val, 'main', false);
+          } else {
+            onSegmentInputRealtime(tk.id, sg, 'custom_prompt', val, cellEditor.colId, false);
+          }
+        }
+      }
+
+      function onCellEditorBlur(val) {
+        if (cellEditor.kind === 'preset' && cellEditor.rowUid) {
+          autoSavePresetsNow(true);
+        } else if (cellEditor.kind === 'segment' && cellEditor.taskId && cellEditor.s) {
+          const tk = tasksTable.value.find(t => t && t.id === cellEditor.taskId);
+          const sg = tk && (tk.segments || []).find(x => x.s === cellEditor.s);
+          if (!sg) return;
+          if (cellEditor.colId === 'text') {
+            onSegmentInputRealtime(tk.id, sg, 'text', val, 'main', true);
+          } else {
+            onSegmentInputRealtime(tk.id, sg, 'custom_prompt', val, cellEditor.colId, true);
+          }
+        }
+      }
+
+      function startCellEditorDrag(ev) {
+        if (ev.target && ev.target.closest('button, input, select, textarea')) return;
+        ev.preventDefault();
+        const box = ev.currentTarget.closest('.gm3-floating-cell-editor');
+        if (!box) return;
+        const rect = box.getBoundingClientRect();
+        const offX = ev.clientX - rect.left;
+        const offY = ev.clientY - rect.top;
+        const onMove = (e) => {
+          cellEditor.x = Math.max(8, Math.min(window.innerWidth - 180, e.clientX - offX));
+          cellEditor.y = Math.max(8, Math.min(window.innerHeight - 80, e.clientY - offY));
+        };
+        const onUp = () => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      }
+
+      function startCellEditorResize(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const box = ev.currentTarget.closest('.gm3-floating-cell-editor');
+        if (!box) return;
+        const rect = box.getBoundingClientRect();
+        const startX = ev.clientX;
+        const startY = ev.clientY;
+        const startW = rect.width;
+        const startH = rect.height;
+        if (cellEditor.x == null || cellEditor.y == null) {
+          cellEditor.x = rect.left;
+          cellEditor.y = rect.top;
+        }
+        const onMove = (e) => {
+          cellEditor.w = Math.max(300, Math.min(window.innerWidth - 24, Math.round(startW + (e.clientX - startX))));
+          cellEditor.h = Math.max(150, Math.min(window.innerHeight - 24, Math.round(startH + (e.clientY - startY))));
+        };
+        const onUp = () => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      }
+
+      // Jump to & locate a specific preset from 2 排镜头 ("编辑修改选中的预设")
+      function focusPresetById(presetId) {
+        if (!presetId) return;
+        if (viewMode.value === 'table') viewMode.value = 'split';
+        presetFilterCat.value = 'all';
+        presetSearch.value = '';
+        const targetIdx = filteredPresetRows.value.findIndex(r => r && (r.id === presetId || r.name === presetId || r._uid === presetId));
+        if (targetIdx >= 0) {
+          const row = filteredPresetRows.value[targetIdx];
+          presetSelected.clear();
+          presetSelected.add(row._uid);
+          presetGridSel.startRow = targetIdx;
+          presetGridSel.endRow = targetIdx;
+          presetGridSel.startCol = 2;
+          presetGridSel.endCol = 2;
+          highlightedPresetUid.value = row._uid;
+          cellEditor.open = true;
+          bindCellEditorToPreset(row, 2);
+          setTimeout(() => {
+            const el = document.querySelector(`tr[data-preset-uid="${row._uid}"]`);
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const ta = document.querySelector('.gm3-floating-cell-editor textarea');
+            if (ta && ta.focus) ta.focus();
+          }, 80);
+          setTimeout(() => {
+            if (highlightedPresetUid.value === row._uid) highlightedPresetUid.value = '';
+          }, 3500);
+        }
       }
 
       // ─── Column & Row Resizers (Google Sheet Style) ───
@@ -1184,9 +1409,9 @@ window.Panel_gemini = (() => {
       function startRowResize(heightMap, rowKey, ev) {
         const tr = ev.target.closest('tr');
         const startY = ev.clientY;
-        const startH = heightMap[rowKey] || (tr ? tr.getBoundingClientRect().height : 38);
+        const startH = heightMap[rowKey] || (tr ? tr.getBoundingClientRect().height : 36);
         const onMove = (e) => {
-          heightMap[rowKey] = Math.max(28, Math.round(startH + (e.clientY - startY)));
+          heightMap[rowKey] = Math.max(26, Math.round(startH + (e.clientY - startY)));
         };
         const onUp = () => {
           window.removeEventListener('mousemove', onMove);
@@ -1263,6 +1488,7 @@ window.Panel_gemini = (() => {
 
       function onPresetCellMouseDown(rIdx, cIdx, row, ev) {
         if (ev.button !== 0) return;
+        bindCellEditorToPreset(row, cIdx);
         const tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toLowerCase() : '';
         if (['input', 'textarea', 'select', 'button'].includes(tag)) return;
         if (ev.shiftKey && presetGridSel.startRow >= 0) {
@@ -1311,11 +1537,23 @@ window.Panel_gemini = (() => {
       function startEditPresetCell(rIdx, cIdx) {
         presetEditingCell.rIdx = rIdx;
         presetEditingCell.cIdx = cIdx;
+        const row = filteredPresetRows.value[rIdx];
+        if (row) bindCellEditorToPreset(row, cIdx);
       }
 
       function stopEditPresetCell() {
         presetEditingCell.rIdx = -1;
         presetEditingCell.cIdx = -1;
+        scheduleAutoSavePresets(120);
+      }
+
+      function onPresetFieldInput(row, field, val) {
+        if (!row) return;
+        row[field] = val;
+        if (field === 'template' && row.id) {
+          syncPresetToLocalSegments(row.id, val);
+        }
+        scheduleAutoSavePresets(250);
       }
 
       function getSelectedPresetUids() {
@@ -1332,6 +1570,7 @@ window.Panel_gemini = (() => {
 
       function openPresetContextMenu(rIdx, row, ev) {
         ev.preventDefault();
+        if (row) bindCellEditorToPreset(row, 2);
         if (row && !presetSelected.has(row._uid)) {
           const b = presetSelBounds();
           const inBounds = b && rIdx >= b.r1 && rIdx <= b.r2;
@@ -1375,8 +1614,8 @@ window.Panel_gemini = (() => {
             count++;
           }
         }
-        // Sort grouped rows together so their shared outer border forms a clean contiguous block
         sortPresetsByGroup();
+        scheduleAutoSavePresets(120);
         toast(`🎨 已创建分组【${gName}】（共 ${count} 行，已应用同色外框）`, '', 'ok');
       }
 
@@ -1394,6 +1633,7 @@ window.Panel_gemini = (() => {
           }
         }
         sortPresetsByGroup();
+        scheduleAutoSavePresets(120);
         toast(`📂 已将 ${count} 行加入分组【${groupName}】`, '', 'ok');
       }
 
@@ -1408,6 +1648,7 @@ window.Panel_gemini = (() => {
             count++;
           }
         }
+        scheduleAutoSavePresets(120);
         toast(`📤 已将 ${count} 行从分组中移出`, '', 'ok');
       }
 
@@ -1442,6 +1683,7 @@ window.Panel_gemini = (() => {
             if (r.category === cat) r.color = newColor;
           }
         }
+        scheduleAutoSavePresets(200);
       }
 
       // Multi-row paste into Preset 3-column table (Ctrl+V from Excel / Google Sheet)
@@ -1471,6 +1713,7 @@ window.Panel_gemini = (() => {
             }
           }
         }
+        scheduleAutoSavePresets(150);
         toast(`已批量粘贴 ${rows.length} 行预设数据`, '', 'ok');
       }
 
@@ -1500,28 +1743,50 @@ window.Panel_gemini = (() => {
         return found ? found.name : presetId;
       }
 
-      // Flat rows for 2D Google Sheet selection/copy/paste/fill in Task Prompt Table
-      const flatTableRows = computed(() => {
-        const list = [];
+      // Group structure so task headers stay visible when collapsedTasks[tk.id] is true
+      const tableTaskGroups = computed(() => {
+        const groups = [];
+        let flatCounter = 0;
         const tasks = visibleTasksInTable.value;
         for (let tIdx = 0; tIdx < tasks.length; tIdx++) {
           const tk = tasks[tIdx];
-          if (collapsedTasks[tk.id]) continue;
+          if (!tk) continue;
+          const isCollapsed = !!collapsedTasks[tk.id];
           const segs = tk.segments || [];
           const color = taskColor(tIdx, tk);
-          for (let sIdx = 0; sIdx < segs.length; sIdx++) {
-            list.push({
-              flatIdx: list.length,
-              tk,
-              tIdx,
-              sg: segs[sIdx],
-              sIdx,
-              rowKey: `${tk.id}:${segs[sIdx].s}`,
-              groupColor: color,
-              isFirstInTask: sIdx === 0,
-              isLastInTask: sIdx === segs.length - 1,
-            });
+          const groupRows = [];
+          if (!isCollapsed) {
+            for (let sIdx = 0; sIdx < segs.length; sIdx++) {
+              groupRows.push({
+                flatIdx: flatCounter++,
+                tk,
+                tIdx,
+                sg: segs[sIdx],
+                sIdx,
+                rowKey: `${tk.id}:${segs[sIdx].s}`,
+                groupColor: color,
+                isFirstInTask: sIdx === 0,
+                isLastInTask: sIdx === segs.length - 1,
+              });
+            }
           }
+          groups.push({
+            tk,
+            tIdx,
+            groupColor: color,
+            isCollapsed,
+            segCount: segs.length,
+            rows: groupRows,
+          });
+        }
+        return groups;
+      });
+
+      // Flat rows for 2D Google Sheet selection/copy/paste/fill in Task Prompt Table
+      const flatTableRows = computed(() => {
+        const list = [];
+        for (const grp of tableTaskGroups.value) {
+          for (const r of grp.rows) list.push(r);
         }
         return list;
       });
@@ -1550,6 +1815,8 @@ window.Panel_gemini = (() => {
 
       function onTableCellMouseDown(flatIdx, cIdx, ev) {
         if (ev.button !== 0) return;
+        const rowItem = flatTableRows.value[flatIdx];
+        if (rowItem) bindCellEditorToSegment(rowItem, cIdx);
         const tag = (ev.target && ev.target.tagName) ? ev.target.tagName.toLowerCase() : '';
         if (['input', 'textarea', 'select', 'button'].includes(tag)) return;
         if (ev.shiftKey && tableGridSel.startRow >= 0) {
@@ -1584,6 +1851,8 @@ window.Panel_gemini = (() => {
         tableEditingCell.rIdx = flatIdx;
         tableEditingCell.cIdx = cIdx;
         tableEditingCell.key = key || `${flatIdx}:${cIdx}`;
+        const rowItem = flatTableRows.value[flatIdx];
+        if (rowItem) bindCellEditorToSegment(rowItem, cIdx);
       }
 
       function stopEditTableCell() {
@@ -1624,18 +1893,29 @@ window.Panel_gemini = (() => {
           sg.text = val;
           batchUpdates.push({ task_id: tk.id, s: sg.s, text: val });
         } else if (cIdx === 4) {
-          const p = validPublishedPresets.value.find(x => x.name === val.trim() || x.id === val.trim());
-          if (p) {
-            sg.preset_id = p.id;
-            sg.custom_prompt = PresetSlotLogic.composeSpeech(p.template, sg.text);
-            batchUpdates.push({ task_id: tk.id, s: sg.s, preset_id: p.id, custom_prompt: sg.custom_prompt });
+          const trimmed = val.trim();
+          if (!trimmed) {
+            sg.preset_id = '';
+            sg.custom_prompt = '';
+            sg.prompt_preview = '';
+            batchUpdates.push({ task_id: tk.id, s: sg.s, preset_id: '', custom_prompt: '' });
+          } else {
+            const p = validPublishedPresets.value.find(x => x.name === trimmed || x.id === trimmed);
+            if (p) {
+              sg.preset_id = p.id;
+              sg.custom_prompt = '';
+              sg.prompt_preview = PresetSlotLogic.composeSpeech(p.template, sg.text);
+              batchUpdates.push({ task_id: tk.id, s: sg.s, preset_id: p.id, custom_prompt: '' });
+            }
           }
         } else if (cIdx >= 5) {
           const col = orderedPromptColumns.value[cIdx - 5];
           if (!col) return;
           if (col.col_id === 'main') {
+            sg.preset_id = '';
             sg.custom_prompt = val;
-            batchUpdates.push({ task_id: tk.id, s: sg.s, custom_prompt: val });
+            sg.prompt_preview = val;
+            batchUpdates.push({ task_id: tk.id, s: sg.s, preset_id: '', custom_prompt: val });
           } else {
             if (!sg.extra_prompts) sg.extra_prompts = {};
             sg.extra_prompts[col.col_id] = val;
@@ -1686,6 +1966,7 @@ window.Panel_gemini = (() => {
               }
             }
             presetGridSel.endRow = targetEnd;
+            scheduleAutoSavePresets(150);
             toast(`已向下拖拽填充 ${targetEnd - b.r2} 行预设单元格`, '', 'ok');
           }
         }
@@ -1932,25 +2213,77 @@ window.Panel_gemini = (() => {
 
       // Cell value getter/setter & multi-row paste
       function getPromptCellValue(sg, col) {
-        if (col.col_id === 'main') {
-          return sg.custom_prompt || sg.prompt_preview || '';
+        if (!sg) return '';
+        if (!col || col.col_id === 'main') {
+          if (sg.custom_prompt && String(sg.custom_prompt).trim()) {
+            return String(sg.custom_prompt);
+          }
+          if (sg.preset_id) {
+            const p = validPublishedPresets.value.find(x => x.id === sg.preset_id || x.name === sg.preset_id);
+            if (p && p.template) {
+              return PresetSlotLogic.composeSpeech(p.template, sg.text);
+            }
+          }
+          return sg.prompt_preview || '';
         }
         return (sg.extra_prompts && sg.extra_prompts[col.col_id]) || '';
       }
 
-      async function updateSegmentField(taskId, sg, field, val, extraColId) {
+      async function flushSegmentUpdate(taskId, sg, u) {
+        cellEditor.saving = true;
+        try {
+          await API.post('/api/tasks/batch-update-segments', { updates: [u] }, { silent: true });
+          cellEditor.savedAt = Date.now();
+        } catch (e) { /* ignore */ } finally {
+          cellEditor.saving = false;
+        }
+      }
+
+      function onSegmentInputRealtime(taskId, sg, field, val, extraColId, immediate = false) {
+        if (!taskId || !sg) return;
         const u = { task_id: taskId, s: sg.s };
         if (extraColId && extraColId !== 'main') {
           if (!sg.extra_prompts) sg.extra_prompts = {};
           sg.extra_prompts[extraColId] = val;
           u.extra_prompts = Object.assign({}, sg.extra_prompts);
+        } else if (field === 'custom_prompt') {
+          // 二选一：手动编辑提示词覆盖时，自动清空预设名称
+          sg.preset_id = '';
+          sg.custom_prompt = val;
+          sg.prompt_preview = val;
+          u.preset_id = '';
+          u.custom_prompt = val;
+        } else if (field === 'text') {
+          sg.text = val;
+          u.text = val;
+          if (sg.preset_id && !sg.custom_prompt) {
+            const p = validPublishedPresets.value.find(x => x.id === sg.preset_id || x.name === sg.preset_id);
+            if (p && p.template) {
+              sg.prompt_preview = PresetSlotLogic.composeSpeech(p.template, val);
+            }
+          }
         } else {
           sg[field] = val;
           u[field] = val;
         }
-        try {
-          await API.post('/api/tasks/batch-update-segments', { updates: [u] });
-        } catch (e) { /* API toast */ }
+
+        const tKey = `${taskId}:${sg.s}:${extraColId || field}`;
+        if (_segAutoSaveTimers[tKey]) {
+          clearTimeout(_segAutoSaveTimers[tKey]);
+          delete _segAutoSaveTimers[tKey];
+        }
+        if (immediate) {
+          flushSegmentUpdate(taskId, sg, u);
+        } else {
+          _segAutoSaveTimers[tKey] = setTimeout(() => {
+            delete _segAutoSaveTimers[tKey];
+            flushSegmentUpdate(taskId, sg, u);
+          }, 220);
+        }
+      }
+
+      async function updateSegmentField(taskId, sg, field, val, extraColId) {
+        onSegmentInputRealtime(taskId, sg, field, val, extraColId, true);
       }
 
       async function onTableCellPaste(tk, startIdx, colId, ev) {
@@ -1969,8 +2302,10 @@ window.Panel_gemini = (() => {
             sg.text = val;
             updates.push({ task_id: tk.id, s: sg.s, text: val });
           } else if (colId === 'main') {
+            sg.preset_id = '';
             sg.custom_prompt = val;
-            updates.push({ task_id: tk.id, s: sg.s, custom_prompt: val });
+            sg.prompt_preview = val;
+            updates.push({ task_id: tk.id, s: sg.s, preset_id: '', custom_prompt: val });
           } else {
             if (!sg.extra_prompts) sg.extra_prompts = {};
             sg.extra_prompts[colId] = val;
@@ -1993,13 +2328,26 @@ window.Panel_gemini = (() => {
       }
 
       async function applyPresetToSegment(tk, sg, colId, preset) {
-        if (!preset || !sg) return;
+        if (!sg || !tk) return;
+        if (!preset) {
+          // 清空预设
+          sg.preset_id = '';
+          sg.custom_prompt = '';
+          sg.prompt_preview = '';
+          await API.post('/api/tasks/batch-update-segments', {
+            updates: [{ task_id: tk.id, s: sg.s, preset_id: '', custom_prompt: '' }],
+          });
+          toast(`🧹 已清空 ${tk.id} s${pad3(sg.s)} 的预设`, '', 'ok');
+          return;
+        }
         const composed = PresetSlotLogic.composeSpeech(preset.template, sg.text);
         if (!colId || colId === 'main') {
           sg.preset_id = preset.id;
-          sg.custom_prompt = composed;
-          await updateSegmentField(tk.id, sg, 'custom_prompt', composed, 'main');
-          await updateSegmentField(tk.id, sg, 'preset_id', preset.id, 'main');
+          sg.custom_prompt = '';
+          sg.prompt_preview = composed;
+          await API.post('/api/tasks/batch-update-segments', {
+            updates: [{ task_id: tk.id, s: sg.s, preset_id: preset.id, custom_prompt: '' }],
+          });
         } else {
           await updateSegmentField(tk.id, sg, 'extra_prompts', composed, colId);
         }
@@ -2022,22 +2370,21 @@ window.Panel_gemini = (() => {
 
       async function applyPresetToTask(tk, presetId) {
         const p = validPublishedPresets.value.find(x => x.id === presetId);
-        tk.preset_id = presetId;
-        const updates = [{ task_id: tk.id, task_preset_id: presetId }];
-        if (p) {
-          for (const sg of (tk.segments || [])) {
-            sg.preset_id = p.id;
-            sg.custom_prompt = PresetSlotLogic.composeSpeech(p.template, sg.text);
-            updates.push({
-              task_id: tk.id,
-              s: sg.s,
-              preset_id: p.id,
-              custom_prompt: sg.custom_prompt,
-            });
-          }
+        tk.preset_id = presetId || '';
+        const updates = [{ task_id: tk.id, task_preset_id: presetId || '' }];
+        for (const sg of (tk.segments || [])) {
+          sg.preset_id = p ? p.id : '';
+          sg.custom_prompt = '';
+          sg.prompt_preview = p ? PresetSlotLogic.composeSpeech(p.template, sg.text) : '';
+          updates.push({
+            task_id: tk.id,
+            s: sg.s,
+            preset_id: sg.preset_id,
+            custom_prompt: '',
+          });
         }
         await API.post('/api/tasks/batch-update-segments', { updates });
-        toast(`已将预设应用到任务 ${tk.id} 全段`, '', 'ok');
+        toast(p ? `已将预设【${p.name}】应用到任务 ${tk.id} 全段` : `已清空任务 ${tk.id} 全段预设`, '', 'ok');
       }
 
       async function applyCardToChecked(preset) {
@@ -2052,12 +2399,13 @@ window.Panel_gemini = (() => {
           const { task_id, s, seg } = item;
           const composed = PresetSlotLogic.composeSpeech(preset.template, seg.text);
           seg.preset_id = preset.id;
-          seg.custom_prompt = composed;
+          seg.custom_prompt = '';
+          seg.prompt_preview = composed;
           updates.push({
             task_id,
             s,
             preset_id: preset.id,
-            custom_prompt: composed,
+            custom_prompt: '',
           });
         }
         await API.post('/api/tasks/batch-update-segments', { updates });
@@ -2090,7 +2438,8 @@ window.Panel_gemini = (() => {
               r.name = r.name.split(f).join(rep);
             }
           }
-          toast(`已在 ${count} 条预设中完成替换`, '', 'ok');
+          scheduleAutoSavePresets(120);
+          toast(`已在 ${count} 条预设中完成替换并实时保存`, '', 'ok');
         } else {
           const updates = [];
           for (const tk of visibleTasksInTable.value) {
@@ -2216,6 +2565,7 @@ window.Panel_gemini = (() => {
               if (k) dst[k] = cols[c];
             }
           }
+          scheduleAutoSavePresets(150);
           toast(`📋 已粘贴 ${lines.length} 行预设数据`, '', 'ok');
           return;
         }
@@ -2261,6 +2611,26 @@ window.Panel_gemini = (() => {
             return;
           }
         }
+        if (!isEditingInput && (ev.key === 'Delete' || ev.key === 'Backspace')) {
+          const b = tableSelBounds();
+          if (b) {
+            ev.preventDefault();
+            const rows = flatTableRows.value;
+            const updates = [];
+            for (let r = b.r1; r <= b.r2; r++) {
+              const dst = rows[r];
+              if (!dst) continue;
+              for (let c = b.c1; c <= b.c2; c++) {
+                if (c >= 3) setTableCellTextByColIdx(dst, c, '', updates);
+              }
+            }
+            if (updates.length) {
+              API.post('/api/tasks/batch-update-segments', { updates }).catch(() => {});
+              toast('🧹 已清空选中单元格', '', 'ok');
+            }
+            return;
+          }
+        }
         if (ev.key === 'Escape') {
           colMenu.open = false;
           presetCtxMenu.open = false;
@@ -2274,9 +2644,18 @@ window.Panel_gemini = (() => {
         if (presetCtxMenu.open) presetCtxMenu.open = false;
       }
 
-      onMounted(() => {
-        loadPresets(false);
-        loadTasksSegmentsTable(false);
+      onMounted(async () => {
+        await loadPresets(false);
+        await loadTasksSegmentsTable(false);
+        if (ui.focusPresetId) {
+          const pid = ui.focusPresetId;
+          ui.focusPresetId = '';
+          focusPresetById(pid);
+        } else if (flatTableRows.value.length) {
+          bindCellEditorToSegment(flatTableRows.value[0], 5);
+        } else if (filteredPresetRows.value.length) {
+          bindCellEditorToPreset(filteredPresetRows.value[0], 2);
+        }
         window.addEventListener('mouseup', stopAllDrags);
         window.addEventListener('keydown', onGlobalKeyDown);
         window.addEventListener('paste', onGlobalPaste);
@@ -2284,10 +2663,11 @@ window.Panel_gemini = (() => {
       });
 
       onBeforeUnmount(() => {
+        if (_presetAutoSaveTimer) autoSavePresetsNow(true);
         window.removeEventListener('mouseup', stopAllDrags);
         window.removeEventListener('keydown', onGlobalKeyDown);
         window.removeEventListener('paste', onGlobalPaste);
-        document.removeEventListener('click', onGlobalClick);
+        document.addEventListener('click', onGlobalClick);
       });
 
       watch(() => store.refreshSeq, () => {
@@ -2295,16 +2675,26 @@ window.Panel_gemini = (() => {
         loadTasksSegmentsTable(true);
       });
 
+      watch(() => ui.focusPresetSeq, () => {
+        if (ui.focusPresetId) {
+          const pid = ui.focusPresetId;
+          ui.focusPresetId = '';
+          focusPresetById(pid);
+        }
+      });
+
       return {
         ui, store, t, pad3,
         viewMode,
-        hoverPopover, onCellHoverEnter, onCellHoverLeave,
+        cellEditor, cellEditorValue, highlightedPresetUid,
+        bindCellEditorToPreset, bindCellEditorToSegment, onCellEditorInput, onCellEditorBlur,
+        startCellEditorDrag, startCellEditorResize, focusPresetById,
         startColResize, startRowResize,
         // Part A: Presets (3-column Google Sheet + Right-Click Grouping)
         presetRows, presetFilterCat, presetSearch, presetSelected, presetSaving,
         presetColWidths, presetRowHeights, presetEditingCell, presetGridSel, presetCtxMenu,
         presetCategories, presetGroupsSummary, validPublishedPresets, filteredPresetRows, invalidPresetCount,
-        validateRow, addPresetRows, deleteSelectedPresets, publishPresets,
+        validateRow, addPresetRows, deleteSelectedPresets, publishPresets, onPresetFieldInput,
         presetGroupBorderColor, isPresetGroupFirst, isPresetGroupLast,
         isPresetCellSelected, isPresetFillCorner, onPresetCellMouseDown, onPresetCellMouseEnter,
         startPresetFillHandle, startEditPresetCell, stopEditPresetCell,
@@ -2316,7 +2706,7 @@ window.Panel_gemini = (() => {
         dockSearch, dockCat, dockOpen, tableSearch, onlyCurrentTask,
         showTaskHeaderRows, textWrapMode,
         tableColWidths, tableRowHeights, tableEditingCell, tableGridSel,
-        visibleTasksInTable, flatTableRows, checkedTargets, dockPresets, orderedPromptColumns,
+        visibleTasksInTable, tableTaskGroups, flatTableRows, checkedTargets, dockPresets, orderedPromptColumns,
         colMenu, findReplaceModal, geminiCfgModal,
         taskColor, presetNameById,
         isTableCellSelected, isTableFillCorner, onTableCellMouseDown, onTableCellMouseEnter,
@@ -2325,7 +2715,7 @@ window.Panel_gemini = (() => {
         isTaskAllChecked, toggleTaskCheck, selectAllTableSegs, invertTableSegs, expandAllTasks,
         openColContextMenu, insertPromptColumn, renamePromptColumn, deletePromptColumn,
         setColHeaderMode, setColHeaderSecondVal, runColumnBatchAction,
-        getPromptCellValue, updateSegmentField, onTableCellPaste,
+        getPromptCellValue, updateSegmentField, onSegmentInputRealtime, onTableCellPaste,
         onDragStartPreset, onDropPresetOnCell, onDropPresetOnTask, applyPresetToSegment, applyPresetToTask, applyCardToChecked,
         openFindReplace, executeFindReplace, openGeminiCfg, saveGeminiCfg,
       };
@@ -2347,9 +2737,14 @@ window.Panel_gemini = (() => {
           </button>
         </div>
         <span class="spacer" style="flex:1"></span>
+        <button type="button" class="btn sm tog" :class="{on: cellEditor.open}"
+                @click="cellEditor.open = !cellEditor.open"
+                title="显示/关闭可自由移动与缩放的大号单元格文本编辑器（点中任意单元格即可直接查看并实时编辑保存）">
+          📝 文本编辑器
+        </button>
         <button type="button" class="btn sm tog" :class="{on: textWrapMode==='wrap'}"
                 @click="textWrapMode = textWrapMode==='wrap' ? 'clip' : 'wrap'"
-                title="切换单元格文字自动换行 / 溢出截断">
+                title="默认使用溢出截断让表格更紧凑整齐；点击可切换自动换行">
           {{ textWrapMode==='wrap' ? '↩ 自动换行' : '✂️ 溢出截断' }}
         </button>
         <button type="button" class="btn sm ghost" @click="openFindReplace()">🔍 查找替换</button>
@@ -2376,7 +2771,7 @@ window.Panel_gemini = (() => {
               📂 当前筛选组: {{ presetFilterCat }} ✕
             </span>
             <span class="muted" style="font-size:11px;margin-left:6px">
-              💡 框选多行后<b>右键</b>可创建分组（同组共享同色外框）、加入/移出分组或按组查看；双击单元格编辑，右下角拖拽批量填充
+              💡 单击单元格即可在悬浮文本编辑器中实时编辑并自动同步全软件；框选多行后<b>右键</b>可分组
             </span>
             <span class="spacer" style="flex:1"></span>
             <input v-model="presetSearch" type="search" class="trk-tp-search" style="width:180px" placeholder="🔍 搜索预设名称/内容…">
@@ -2395,30 +2790,31 @@ window.Panel_gemini = (() => {
                     <span class="gs-col-resizer" @mousedown.stop.prevent="startColResize(presetColWidths, 'name', $event)"></span>
                   </th>
                   <th :style="{width: presetColWidths.template + 'px'}">
-                    提示词内容 <small class="muted" style="font-weight:400">(双击编辑 · 换行处自动作为【人物说的话】插槽)</small>
+                    提示词内容 <small class="muted" style="font-weight:400">(单击在悬浮编辑器编辑 · 双击行内编辑 · 修改实时同步全软件)</small>
                     <span class="gs-col-resizer" @mousedown.stop.prevent="startColResize(presetColWidths, 'template', $event)"></span>
                   </th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="(row, rIdx) in filteredPresetRows" :key="row._uid"
+                    :data-preset-uid="row._uid"
                     :class="{
                       'row-selected': presetSelected.has(row._uid),
+                      'preset-focus-flash': highlightedPresetUid === row._uid,
                       'gs-group-row': !!presetGroupBorderColor(row),
                       'gs-group-first': isPresetGroupFirst(rIdx),
                       'gs-group-last': isPresetGroupLast(rIdx)
                     }"
                     :style="{
                       '--group-border-color': presetGroupBorderColor(row) || 'transparent',
-                      height: (presetRowHeights[row._uid] || 48) + 'px'
+                      height: (presetRowHeights[row._uid] || 36) + 'px'
                     }"
                     @contextmenu.prevent="openPresetContextMenu(rIdx, row, $event)">
                   <!-- 第 1 列：预览颜色（大号清晰色块 + 行高度调节器） -->
                   <td style="text-align:center;vertical-align:middle"
                       :class="{'gs-cell-selected': isPresetCellSelected(rIdx, 0)}"
                       @mousedown="onPresetCellMouseDown(rIdx, 0, row, $event)"
-                      @mouseenter="onPresetCellMouseEnter(rIdx, 0); onCellHoverEnter($event, '预设分组与颜色', (row.category ? '分组：' + row.category + ' · ' : '未分组 · ') + '颜色：' + (row.color || '#d4a24c'))"
-                      @mouseleave="onCellHoverLeave">
+                      @mouseenter="onPresetCellMouseEnter(rIdx, 0)">
                     <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px">
                       <label class="gs-big-color-swatch" :style="{background: row.color || '#d4a24c'}" :title="(row.category ? '分组: ' + row.category + ' · ' : '') + '点击修改颜色'">
                         <input type="color" :value="row.color || '#d4a24c'"
@@ -2437,45 +2833,45 @@ window.Panel_gemini = (() => {
                         'gs-cell-active': presetEditingCell.rIdx===rIdx && presetEditingCell.cIdx===1
                       }"
                       @mousedown="onPresetCellMouseDown(rIdx, 1, row, $event)"
-                      @mouseenter="onPresetCellMouseEnter(rIdx, 1); onCellHoverEnter($event, '预设名称', row.name || '（未填写预设名称）')"
-                      @mouseleave="onCellHoverLeave"
+                      @mouseenter="onPresetCellMouseEnter(rIdx, 1)"
                       @dblclick="startEditPresetCell(rIdx, 1)">
                     <input v-if="presetEditingCell.rIdx===rIdx && presetEditingCell.cIdx===1"
-                           v-model="row.name"
+                           :value="row.name"
                            class="ap-cell-input"
                            autofocus
                            placeholder="输入预设名称…"
+                           @input="onPresetFieldInput(row, 'name', $event.target.value)"
                            @blur="stopEditPresetCell()"
                            @keydown.enter.prevent="stopEditPresetCell()"
                            @paste="onPresetCellPaste(rIdx, 'name', $event)">
                     <div v-else class="gs-cell-text" :class="textWrapMode" style="font-weight:600">
                       <span v-if="row.name">{{ row.name }}</span>
-                      <span v-else class="muted">双击输入预设名称…</span>
+                      <span v-else class="muted">输入预设名称…</span>
                     </div>
                     <span v-if="isPresetFillCorner(rIdx, 1)" class="gs-fill-handle" @mousedown="startPresetFillHandle(rIdx, 1, $event)"></span>
                   </td>
 
-                  <!-- 第 3 列：提示词内容（完全填充单元格 + 富文本显示【人物说的话】插槽 + 双击编辑） -->
+                  <!-- 第 3 列：提示词内容（默认溢出截断紧凑显示 + 单击载入悬浮编辑器 + 双击行内编辑） -->
                   <td :class="{
                         'cell-invalid-red': validateRow(row).missingTpl || validateRow(row).noNewlineWarn,
                         'gs-cell-selected': isPresetCellSelected(rIdx, 2),
                         'gs-cell-active': presetEditingCell.rIdx===rIdx && presetEditingCell.cIdx===2
                       }"
                       @mousedown="onPresetCellMouseDown(rIdx, 2, row, $event)"
-                      @mouseenter="onPresetCellMouseEnter(rIdx, 2); onCellHoverEnter($event, row.name ? ('提示词内容 · ' + row.name) : '提示词内容', row.template)"
-                      @mouseleave="onCellHoverLeave"
+                      @mouseenter="onPresetCellMouseEnter(rIdx, 2)"
                       @dblclick="startEditPresetCell(rIdx, 2)">
                     <textarea v-if="presetEditingCell.rIdx===rIdx && presetEditingCell.cIdx===2"
-                              v-model="row.template"
+                              :value="row.template"
                               class="gm3-cell-textarea"
-                              style="height:100%;min-height:64px"
+                              style="height:100%;min-height:56px"
                               autofocus
                               placeholder="在此输入提示词内容，在要插入【人物说的话】的位置按回车换行…"
+                              @input="onPresetFieldInput(row, 'template', $event.target.value)"
                               @blur="stopEditPresetCell()"
                               @paste="onPresetCellPaste(rIdx, 'template', $event)"></textarea>
                     <div v-else class="gs-cell-text" :class="textWrapMode">
                       <template v-if="!row.template">
-                        <span class="muted">双击编辑提示词内容（在台词位置加换行）…</span>
+                        <span class="muted">点击在编辑器编写提示词内容…</span>
                       </template>
                       <template v-else-if="validateRow(row).slot && validateRow(row).slot.hasNewline">
                         <span>{{ validateRow(row).slot.prefix }}</span>
@@ -2496,7 +2892,7 @@ window.Panel_gemini = (() => {
         </div>
 
         <!-- ══════════════════════════════════════════════════════════════════
-             Part B: 📝 任务提示词总表 (真 Google Sheet 单元格 + 默认隐藏任务行保留色框 + 预设列仅显示名称 + 富文本双击编辑 + 悬停预览)
+             Part B: 📝 任务提示词总表 (真 Google Sheet 单元格 + 默认溢出截断紧凑显示 + 单击载入悬浮编辑器实时同步)
              ══════════════════════════════════════════════════════════════════ -->
         <div v-if="viewMode==='table' || viewMode==='split'" class="gm3-pane gm3-table-pane">
           <div class="gm3-subbar">
@@ -2508,6 +2904,8 @@ window.Panel_gemini = (() => {
                     title="默认隐藏任务行并保留同任务外框颜色；开启后显示任务父级操作行">
               📋 任务行
             </button>
+            <button type="button" class="btn sm ghost" @click="expandAllTasks(false)" title="展开所有任务组">▾ 展开组</button>
+            <button type="button" class="btn sm ghost" @click="expandAllTasks(true)" title="收起所有段，仅显示任务组">▸ 收起组</button>
             <button type="button" class="btn sm ghost" @click="insertPromptColumn('right')">➕ 插入列</button>
             <label style="display:flex;align-items:center;gap:4px;font-size:12px;margin-left:4px">
               <input type="checkbox" v-model="onlyCurrentTask"> 仅当前任务
@@ -2592,167 +2990,172 @@ window.Panel_gemini = (() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-if="!flatTableRows.length && !visibleTasksInTable.length">
+                  <tr v-if="!tableTaskGroups.length">
                     <td :colspan="6 + orderedPromptColumns.length" class="muted" style="text-align:center;padding:32px">
                       暂无已拆段的任务，请先在「1 任务表」准备任务或在「2 排镜头」查看。
                     </td>
                   </tr>
 
-                  <!-- 当开启「任务行」时，渲染任务分组头；默认隐藏任务行，仅保留同组颜色外框 -->
-                  <template v-for="(item) in flatTableRows" :key="item.rowKey">
-                    <tr v-if="showTaskHeaderRows && item.isFirstInTask"
+                  <!-- 按任务组渲染：当开启「任务行」或该任务组被收起时，始终显示任务组行 -->
+                  <template v-for="grp in tableTaskGroups" :key="'tgrp-' + grp.tk.id">
+                    <tr v-if="showTaskHeaderRows || grp.isCollapsed"
                         class="trk-task-group-row"
-                        :style="{'--task-accent': item.groupColor}"
-                        @dragover.prevent @drop.prevent="onDropPresetOnTask(item.tk)">
+                        :style="{'--task-accent': grp.groupColor}"
+                        @dragover.prevent @drop.prevent="onDropPresetOnTask(grp.tk)">
                       <td style="text-align:center">
-                        <input type="checkbox" :checked="isTaskAllChecked(item.tk)" @change="toggleTaskCheck(item.tk)">
+                        <input type="checkbox" :checked="isTaskAllChecked(grp.tk)" @change="toggleTaskCheck(grp.tk)">
                       </td>
                       <td colspan="5">
                         <div style="display:flex;align-items:center;gap:8px">
-                          <span class="trk-task-badge" :style="{background: item.groupColor + '22', borderColor: item.groupColor, color: item.groupColor}">
-                            {{ item.tk.id }}
+                          <button type="button" class="btn sm ghost" style="padding:1px 6px"
+                                  @click.stop="collapsedTasks[grp.tk.id] = !collapsedTasks[grp.tk.id]">
+                            {{ grp.isCollapsed ? '▸ 展开' : '▾ 收起' }}
+                          </button>
+                          <span class="trk-task-badge" :style="{background: grp.groupColor + '22', borderColor: grp.groupColor, color: grp.groupColor}">
+                            {{ grp.tk.id }}
                           </span>
-                          <b>{{ item.tk.name || item.tk.id }}</b>
-                          <span class="muted mono" style="font-size:12px">({{ (item.tk.segments || []).length }} 段 · {{ item.tk.image_count || 0 }} 图)</span>
+                          <b>{{ grp.tk.name || grp.tk.id }}</b>
+                          <span class="muted mono" style="font-size:12px">({{ grp.segCount }} 段 · {{ grp.tk.image_count || 0 }} 图)</span>
                         </div>
                       </td>
                       <td :colspan="orderedPromptColumns.length">
                         <div style="display:flex;align-items:center;gap:8px">
                           <span class="muted" style="font-size:12px;white-space:nowrap">📌 任务总预设:</span>
-                          <select class="ap-cell-select" :value="item.tk.preset_id || ''"
-                                  @change="applyPresetToTask(item.tk, $event.target.value)">
-                            <option value="">— 选择预设应用到 {{ item.tk.id }} 全段 —</option>
+                          <select class="ap-cell-select" :value="grp.tk.preset_id || ''"
+                                  @change="applyPresetToTask(grp.tk, $event.target.value)">
+                            <option value="">— 选择预设应用到 {{ grp.tk.id }} 全段 —</option>
                             <option v-for="p in validPublishedPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
                           </select>
                         </div>
                       </td>
                     </tr>
 
-                    <!-- 标准 Google Sheet 分段数据行（带同任务外框颜色） -->
-                    <tr :class="{
-                          'row-selected': isSegChecked(item.tk.id, item.sg.s),
-                          'gs-group-row': true,
-                          'gs-group-first': item.isFirstInTask && !showTaskHeaderRows,
-                          'gs-group-last': item.isLastInTask
-                        }"
-                        :style="{
-                          '--group-border-color': item.groupColor,
-                          '--task-accent': item.groupColor,
-                          height: (tableRowHeights[item.rowKey] || 42) + 'px'
-                        }">
-                      <!-- 勾选列 -->
-                      <td class="ap-td-sel"
-                          @mousedown.prevent="startSegDrag(item.tk.id, item.sg.s, $event)"
-                          @mouseenter="enterSegDrag(item.tk.id, item.sg.s)">
-                        <input type="checkbox" :checked="isSegChecked(item.tk.id, item.sg.s)" tabindex="-1" style="pointer-events:none">
-                        <span class="gs-row-resizer" @mousedown.stop.prevent="startRowResize(tableRowHeights, item.rowKey, $event)"></span>
-                      </td>
-
-                      <!-- 列 0: 段号（首行附带可点击的任务胶囊） -->
-                      <td class="mono"
-                          :class="{'gs-cell-selected': isTableCellSelected(item.flatIdx, 0)}"
-                          @mousedown="onTableCellMouseDown(item.flatIdx, 0, $event)"
-                          @mouseenter="onTableCellMouseEnter(item.flatIdx, 0)">
-                        <div style="display:flex;align-items:center;gap:4px">
-                          <span v-if="item.isFirstInTask && !showTaskHeaderRows"
-                                class="gs-task-inline-pill"
-                                :style="{background: item.groupColor + '22', borderColor: item.groupColor, color: item.groupColor}"
-                                title="点击切换展开任务行"
-                                @click.stop="showTaskHeaderRows = !showTaskHeaderRows">
-                            {{ item.tk.id }}
-                          </span>
-                          <span>s{{ pad3(item.sg.s) }}</span>
-                        </div>
-                        <span v-if="isTableFillCorner(item.flatIdx, 0)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 0, $event)"></span>
-                      </td>
-
-                      <!-- 列 1: 配图 -->
-                      <td class="mono"
-                          :class="{'gs-cell-selected': isTableCellSelected(item.flatIdx, 1)}"
-                          @mousedown="onTableCellMouseDown(item.flatIdx, 1, $event)"
-                          @mouseenter="onTableCellMouseEnter(item.flatIdx, 1); onCellHoverEnter($event, item.tk.id + ' s' + pad3(item.sg.s) + ' 配图', item.sg.image || 'p01')"
-                          @mouseleave="onCellHoverLeave">
-                        {{ item.sg.image || 'p01' }}
-                        <span v-if="isTableFillCorner(item.flatIdx, 1)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 1, $event)"></span>
-                      </td>
-
-                      <!-- 列 2: 时长 -->
-                      <td class="mono"
-                          :class="{'gs-cell-selected': isTableCellSelected(item.flatIdx, 2)}"
-                          @mousedown="onTableCellMouseDown(item.flatIdx, 2, $event)"
-                          @mouseenter="onTableCellMouseEnter(item.flatIdx, 2)">
-                        {{ item.sg.duration || 6 }}s
-                        <span v-if="isTableFillCorner(item.flatIdx, 2)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 2, $event)"></span>
-                      </td>
-
-                      <!-- 列 3: 文案字幕（富文本显示 + 双击编辑 + 悬停预览） -->
-                      <td :class="{
-                            'gs-cell-selected': isTableCellSelected(item.flatIdx, 3),
-                            'gs-cell-active': tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===3
-                          }"
-                          @mousedown="onTableCellMouseDown(item.flatIdx, 3, $event)"
-                          @mouseenter="onTableCellMouseEnter(item.flatIdx, 3); onCellHoverEnter($event, item.tk.id + ' s' + pad3(item.sg.s) + ' 文案字幕', item.sg.text)"
-                          @mouseleave="onCellHoverLeave"
-                          @dblclick="startEditTableCell(item.flatIdx, 3)">
-                        <textarea v-if="tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===3"
-                                  class="gm3-cell-textarea"
-                                  :value="item.sg.text || ''"
-                                  autofocus
-                                  @change="updateSegmentField(item.tk.id, item.sg, 'text', $event.target.value, 'main')"
-                                  @blur="stopEditTableCell()"
-                                  @paste="onTableCellPaste(item.tk, item.sIdx, 'text', $event)"></textarea>
-                        <div v-else class="gs-cell-text" :class="textWrapMode">
-                          {{ item.sg.text || '' }}
-                        </div>
-                        <span v-if="isTableFillCorner(item.flatIdx, 3)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 3, $event)"></span>
-                      </td>
-
-                      <!-- 列 4: 预设（严格只显示预设名称，不显示预设内容！） -->
-                      <td :class="{
-                            'gs-cell-selected': isTableCellSelected(item.flatIdx, 4),
-                            'gs-cell-active': tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===4
-                          }"
-                          @mousedown="onTableCellMouseDown(item.flatIdx, 4, $event)"
-                          @mouseenter="onTableCellMouseEnter(item.flatIdx, 4); onCellHoverEnter($event, '当前预设名称', presetNameById(item.sg.preset_id) || '未指定预设')"
-                          @mouseleave="onCellHoverLeave"
-                          @dblclick="startEditTableCell(item.flatIdx, 4)">
-                        <select class="ap-cell-select"
-                                :value="item.sg.preset_id || ''"
-                                @change="applyPresetToSegment(item.tk, item.sg, 'main', validPublishedPresets.find(x => x.id === $event.target.value))">
-                          <option value="">— 选择预设 —</option>
-                          <option v-for="p in validPublishedPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
-                        </select>
-                        <span v-if="isTableFillCorner(item.flatIdx, 4)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 4, $event)"></span>
-                      </td>
-
-                      <!-- 列 5+: 提示词列（单元格富文本，默认自动换行/可切换截断，双击编辑，悬停预览） -->
-                      <td v-for="(col, cIdx) in orderedPromptColumns" :key="item.rowKey + ':' + col.col_id"
+                    <!-- 标准 Google Sheet 分段数据行（带同任务外框颜色，默认溢出截断紧凑显示） -->
+                    <template v-if="!grp.isCollapsed">
+                      <tr v-for="item in grp.rows" :key="item.rowKey"
                           :class="{
-                            'gs-cell-selected': isTableCellSelected(item.flatIdx, 5 + cIdx),
-                            'gs-cell-active': tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===(5 + cIdx)
+                            'row-selected': isSegChecked(item.tk.id, item.sg.s),
+                            'gs-group-row': true,
+                            'gs-group-first': item.isFirstInTask && !showTaskHeaderRows,
+                            'gs-group-last': item.isLastInTask
                           }"
-                          @mousedown="onTableCellMouseDown(item.flatIdx, 5 + cIdx, $event)"
-                          @mouseenter="onTableCellMouseEnter(item.flatIdx, 5 + cIdx); onCellHoverEnter($event, item.tk.id + ' s' + pad3(item.sg.s) + ' · ' + col.name, getPromptCellValue(item.sg, col))"
-                          @mouseleave="onCellHoverLeave"
-                          @dblclick="startEditTableCell(item.flatIdx, 5 + cIdx)"
-                          @contextmenu.prevent="openColContextMenu(col, cIdx, $event)"
-                          @dragover.prevent
-                          @drop.prevent="onDropPresetOnCell(item.tk, item.sg, col.col_id)">
-                        <textarea v-if="tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===(5 + cIdx)"
-                                  class="gm3-cell-textarea"
-                                  style="height:100%;min-height:56px"
-                                  :value="getPromptCellValue(item.sg, col)"
-                                  autofocus
-                                  placeholder="输入提示词内容…"
-                                  @change="updateSegmentField(item.tk.id, item.sg, 'custom_prompt', $event.target.value, col.col_id)"
-                                  @blur="stopEditTableCell()"
-                                  @paste="onTableCellPaste(item.tk, item.sIdx, col.col_id, $event)"></textarea>
-                        <div v-else class="gs-cell-text" :class="textWrapMode">
-                          {{ getPromptCellValue(item.sg, col) }}
-                        </div>
-                        <span v-if="isTableFillCorner(item.flatIdx, 5 + cIdx)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 5 + cIdx, $event)"></span>
-                      </td>
-                    </tr>
+                          :style="{
+                            '--group-border-color': item.groupColor,
+                            '--task-accent': item.groupColor,
+                            height: (tableRowHeights[item.rowKey] || 36) + 'px'
+                          }">
+                        <!-- 勾选列 -->
+                        <td class="ap-td-sel"
+                            @mousedown.prevent="startSegDrag(item.tk.id, item.sg.s, $event)"
+                            @mouseenter="enterSegDrag(item.tk.id, item.sg.s)">
+                          <input type="checkbox" :checked="isSegChecked(item.tk.id, item.sg.s)" tabindex="-1" style="pointer-events:none">
+                          <span class="gs-row-resizer" @mousedown.stop.prevent="startRowResize(tableRowHeights, item.rowKey, $event)"></span>
+                        </td>
+
+                        <!-- 列 0: 段号（首行附带可点击的任务胶囊） -->
+                        <td class="mono"
+                            :class="{'gs-cell-selected': isTableCellSelected(item.flatIdx, 0)}"
+                            @mousedown="onTableCellMouseDown(item.flatIdx, 0, $event)"
+                            @mouseenter="onTableCellMouseEnter(item.flatIdx, 0)">
+                          <div style="display:flex;align-items:center;gap:4px">
+                            <span v-if="item.isFirstInTask && !showTaskHeaderRows"
+                                  class="gs-task-inline-pill"
+                                  :style="{background: item.groupColor + '22', borderColor: item.groupColor, color: item.groupColor}"
+                                  title="点击切换展开任务行"
+                                  @click.stop="showTaskHeaderRows = !showTaskHeaderRows">
+                              {{ item.tk.id }}
+                            </span>
+                            <span>s{{ pad3(item.sg.s) }}</span>
+                          </div>
+                          <span v-if="isTableFillCorner(item.flatIdx, 0)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 0, $event)"></span>
+                        </td>
+
+                        <!-- 列 1: 配图 -->
+                        <td class="mono"
+                            :class="{'gs-cell-selected': isTableCellSelected(item.flatIdx, 1)}"
+                            @mousedown="onTableCellMouseDown(item.flatIdx, 1, $event)"
+                            @mouseenter="onTableCellMouseEnter(item.flatIdx, 1)">
+                          {{ item.sg.image || 'p01' }}
+                          <span v-if="isTableFillCorner(item.flatIdx, 1)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 1, $event)"></span>
+                        </td>
+
+                        <!-- 列 2: 时长 -->
+                        <td class="mono"
+                            :class="{'gs-cell-selected': isTableCellSelected(item.flatIdx, 2)}"
+                            @mousedown="onTableCellMouseDown(item.flatIdx, 2, $event)"
+                            @mouseenter="onTableCellMouseEnter(item.flatIdx, 2)">
+                          {{ item.sg.duration || 6 }}s
+                          <span v-if="isTableFillCorner(item.flatIdx, 2)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 2, $event)"></span>
+                        </td>
+
+                        <!-- 列 3: 文案字幕（默认溢出截断紧凑显示 + 单击载入悬浮编辑器 + 双击行内编辑） -->
+                        <td :class="{
+                              'gs-cell-selected': isTableCellSelected(item.flatIdx, 3),
+                              'gs-cell-active': tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===3
+                            }"
+                            @mousedown="onTableCellMouseDown(item.flatIdx, 3, $event)"
+                            @mouseenter="onTableCellMouseEnter(item.flatIdx, 3)"
+                            @dblclick="startEditTableCell(item.flatIdx, 3)">
+                          <textarea v-if="tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===3"
+                                    class="gm3-cell-textarea"
+                                    :value="item.sg.text || ''"
+                                    autofocus
+                                    @input="onSegmentInputRealtime(item.tk.id, item.sg, 'text', $event.target.value, 'main', false)"
+                                    @change="onSegmentInputRealtime(item.tk.id, item.sg, 'text', $event.target.value, 'main', true)"
+                                    @blur="stopEditTableCell()"
+                                    @paste="onTableCellPaste(item.tk, item.sIdx, 'text', $event)"></textarea>
+                          <div v-else class="gs-cell-text" :class="textWrapMode">
+                            {{ item.sg.text || '' }}
+                          </div>
+                          <span v-if="isTableFillCorner(item.flatIdx, 3)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 3, $event)"></span>
+                        </td>
+
+                        <!-- 列 4: 预设（严格只显示预设名称，支持清空及与提示词覆盖二选一联动） -->
+                        <td :class="{
+                              'gs-cell-selected': isTableCellSelected(item.flatIdx, 4),
+                              'gs-cell-active': tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===4
+                            }"
+                            @mousedown="onTableCellMouseDown(item.flatIdx, 4, $event)"
+                            @mouseenter="onTableCellMouseEnter(item.flatIdx, 4)"
+                            @dblclick="startEditTableCell(item.flatIdx, 4)">
+                          <select class="ap-cell-select"
+                                  :value="item.sg.preset_id || ''"
+                                  @change="applyPresetToSegment(item.tk, item.sg, 'main', validPublishedPresets.find(x => x.id === $event.target.value) || null)">
+                            <option value="">— 无预设 (清空) —</option>
+                            <option v-for="p in validPublishedPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
+                          </select>
+                          <span v-if="isTableFillCorner(item.flatIdx, 4)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 4, $event)"></span>
+                        </td>
+
+                        <!-- 列 5+: 提示词列（默认溢出截断紧凑显示 + 单击载入悬浮文本编辑器实时编辑保存） -->
+                        <td v-for="(col, cIdx) in orderedPromptColumns" :key="item.rowKey + ':' + col.col_id"
+                            :class="{
+                              'gs-cell-selected': isTableCellSelected(item.flatIdx, 5 + cIdx),
+                              'gs-cell-active': tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===(5 + cIdx)
+                            }"
+                            @mousedown="onTableCellMouseDown(item.flatIdx, 5 + cIdx, $event)"
+                            @mouseenter="onTableCellMouseEnter(item.flatIdx, 5 + cIdx)"
+                            @dblclick="startEditTableCell(item.flatIdx, 5 + cIdx)"
+                            @contextmenu.prevent="openColContextMenu(col, cIdx, $event)"
+                            @dragover.prevent
+                            @drop.prevent="onDropPresetOnCell(item.tk, item.sg, col.col_id)">
+                          <textarea v-if="tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===(5 + cIdx)"
+                                    class="gm3-cell-textarea"
+                                    style="height:100%;min-height:56px"
+                                    :value="getPromptCellValue(item.sg, col)"
+                                    autofocus
+                                    placeholder="输入提示词内容（自动清空预设）…"
+                                    @input="onSegmentInputRealtime(item.tk.id, item.sg, 'custom_prompt', $event.target.value, col.col_id, false)"
+                                    @change="onSegmentInputRealtime(item.tk.id, item.sg, 'custom_prompt', $event.target.value, col.col_id, true)"
+                                    @blur="stopEditTableCell()"
+                                    @paste="onTableCellPaste(item.tk, item.sIdx, col.col_id, $event)"></textarea>
+                          <div v-else class="gs-cell-text" :class="textWrapMode">
+                            {{ getPromptCellValue(item.sg, col) }}
+                          </div>
+                          <span v-if="isTableFillCorner(item.flatIdx, 5 + cIdx)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 5 + cIdx, $event)"></span>
+                        </td>
+                      </tr>
+                    </template>
                   </template>
                 </tbody>
               </table>
@@ -2798,12 +3201,45 @@ window.Panel_gemini = (() => {
         </div>
       </div>
 
-      <!-- 鼠标悬停单元格内容预览浮层 (Google Sheet Cell Hover Preview) -->
-      <div v-if="hoverPopover.visible && hoverPopover.content"
-           class="gs-cell-hover-popover"
-           :style="{left: hoverPopover.x + 'px', top: hoverPopover.y + 'px'}">
-        <div v-if="hoverPopover.title" class="gs-pop-title">{{ hoverPopover.title }}</div>
-        <div>{{ hoverPopover.content }}</div>
+      <!-- 📝 悬浮大号单元格文本编辑器（可任意拖动位置、可自由拖拽调整窗口大小、可随时关闭/开启、点击任意单元格即载入并实时保存同步全软件） -->
+      <div v-if="cellEditor.open"
+           class="gm3-floating-cell-editor"
+           :style="{
+             left: cellEditor.x != null ? (cellEditor.x + 'px') : 'auto',
+             top: cellEditor.y != null ? (cellEditor.y + 'px') : 'auto',
+             right: cellEditor.x != null ? 'auto' : '24px',
+             bottom: cellEditor.y != null ? 'auto' : '48px',
+             width: cellEditor.w + 'px',
+             height: cellEditor.h + 'px'
+           }"
+           @click.stop>
+        <div class="ce-hd" @mousedown="startCellEditorDrag($event)">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+            <span style="font-weight:700;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              {{ cellEditor.title || '📝 单元格文本编辑器（请点击任意单元格）' }}
+            </span>
+            <span v-if="cellEditor.saving" class="tag warn" style="font-size:10.5px;padding:1px 6px">同步保存中…</span>
+            <span v-else-if="cellEditor.kind" class="tag ok" style="font-size:10.5px;padding:1px 6px">✓ 实时同步</span>
+          </div>
+          <button type="button" class="btn sm ghost" style="padding:1px 7px" title="关闭文本编辑器（可在顶部工具栏重新开启）" @click="cellEditor.open = false">×</button>
+        </div>
+        <div v-if="cellEditor.subTitle" class="ce-sub">
+          {{ cellEditor.subTitle }}
+        </div>
+        <div class="ce-body">
+          <textarea class="ce-textarea"
+                    :disabled="!cellEditor.kind"
+                    :value="cellEditorValue"
+                    :placeholder="cellEditor.kind ? '在此直接输入或修改内容，实时自动保存并同步到全软件…' : '请在表格中点击任意单元格，内容将显示在此处并可直接编辑…'"
+                    @input="onCellEditorInput($event.target.value)"
+                    @blur="onCellEditorBlur($event.target.value)"></textarea>
+        </div>
+        <div class="ce-ft">
+          <span class="muted" style="font-size:11px">
+            字符数：{{ (cellEditorValue || '').length }} · 修改自动实时保存并同步至 2 排镜头 与生成队列
+          </span>
+          <span class="ce-resizer" title="拖拽调整编辑器窗口大小" @mousedown="startCellEditorResize($event)">◢</span>
+        </div>
       </div>
 
       <!-- 📚 预设管理右键菜单（创建分组 / 加入分组 / 移出分组 / 查看全部分组） -->
