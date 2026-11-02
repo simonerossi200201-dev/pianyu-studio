@@ -1442,6 +1442,16 @@ window.Panel_track = (() => {
       const TASK_COLORS = ['#d4a24c', '#3b82f6', '#10b981', '#a855f7', '#ec4899', '#f97316', '#06b6d4', '#84cc16'];
       const expandPresetId = ref('');
       const presetSearch = ref('');
+      const hoveredImgP = ref('');
+      const activePoolImg = computed(() => {
+        const list = (images.value || []).filter(im => im && im.status !== 'pending_review' && im.exists !== false);
+        if (!list.length) return null;
+        if (hoveredImgP.value) {
+          const hit = list.find(im => fmtP(im.p) === fmtP(hoveredImgP.value));
+          if (hit) return hit;
+        }
+        return list[0];
+      });
       const showAllTasks = ref(true);           // 默认展示全部任务形成完整表格
       const showTaskHeaderRows = ref(false);    // 默认隐藏“任务”行，只保留同组外框颜色
       const expandedTaskRows = reactive({});    // 点击某组首行任务徽标可单独展开该任务的任务行
@@ -1455,12 +1465,12 @@ window.Panel_track = (() => {
       const colWidths = reactive({
         check: 36,
         seg: 92,
-        image: 138,
-        dur: 72,
-        flow: 112,
+        image: 146,
+        dur: 74,
+        flow: 126,
         conn: 98,
         text: 360,
-        preset: 136,
+        preset: 180,
         prompt: 340,
       });
       const rowHeights = reactive({}); // `${taskId}:${s}` -> px
@@ -2147,7 +2157,7 @@ window.Panel_track = (() => {
         planNow, reseed, onHoldInput, onUnitChange, toggleSpacing, applyTrack, runJob,
         cancelExpand, toggleLog, goExpandPrompt, canBeRef, toggleRef, itemClass, itemTitle,
         rowOf, whyMark, isNowBroll, txtOpen, toggleTxt, openImgMenu, onImgMenu, imgMenuOff, quickImgAct,
-        expandPresetId, presetSearch, showAllTasks, showTaskHeaderRows, expandedTaskRows, batchMenuOpen,
+        expandPresetId, presetSearch, hoveredImgP, activePoolImg, showAllTasks, showTaskHeaderRows, expandedTaskRows, batchMenuOpen,
         allTasksTable, collapsedTasks, segChecked,
         colWidths, rowHeights, startColResize, startRowResize,
         sheetFlatRows, gsSel, isGsCellInRange, isGsCellActive, isGsFillHandleCell, isGsCellFillPreview,
@@ -2173,7 +2183,7 @@ window.Panel_track = (() => {
     <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:var(--panel-2);border:1px solid var(--rule-2);border-radius:6px">
       <span style="font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap">📌 任务总预设:</span>
       <input v-model="presetSearch" class="trk-tp-search" style="width:96px;padding:3px 6px;font-size:12px" placeholder="搜预设…">
-      <select :value="curTaskPresetId" class="trk-tp-select" style="min-width:155px;max-width:210px;padding:3px 6px;font-size:12px"
+      <select :value="curTaskPresetId" class="trk-tp-select" style="min-width:165px;padding:3px 6px;font-size:12px"
               @change="onTaskPresetChange(tid, $event.target.value)">
         <option value="">— 选择预设应用到本任务 —</option>
         <option v-for="p in filteredPresets" :key="p.id" :value="p.id">
@@ -2401,6 +2411,18 @@ window.Panel_track = (() => {
         <button type="button" class="btn sm tog" :class="{on: stripView==='shots'}"
                 @click="setStripView('shots')">{{ t('track.view.shots') }}</button>
         <button type="button" class="btn sm" :disabled="!previewOn" @click="revertPreview">{{ t('track.revert') }}</button>
+        <!-- 图片快捷工具条：移至图池上方独立工具栏区域，完全避开缩略图，绝不遮挡图片点击（同时支持右键图片菜单） -->
+        <span v-if="stripView==='pool' && activePoolImg" class="ps-dock-bar"
+              style="margin-left:8px;display:inline-flex;align-items:center;gap:5px;padding:3px 8px;background:var(--panel-2);border:1px solid var(--rule-2);border-radius:6px">
+          <span class="mono" style="font-size:11.5px;color:var(--accent);font-weight:600">{{ fmtP(activePoolImg.p) }} 快捷操作:</span>
+          <i class="ps-hb-btn" title="✨ 设为参考并扩图" @click.stop="quickImgAct(activePoolImg, 'expand', $event)">✨扩图</i>
+          <i class="ps-hb-btn" title="🔍 提升画质 / 超分重绘" @click.stop="quickImgAct(activePoolImg, 'upscale', $event)">🔍超分</i>
+          <i class="ps-hb-btn" title="↔ 水平镜像翻转" @click.stop="quickImgAct(activePoolImg, 'flip', $event)">↔翻转</i>
+          <i class="ps-hb-btn" title="✂ 裁切构图" @click.stop="quickImgAct(activePoolImg, 'crop', $event)">✂裁切</i>
+          <i class="ps-hb-btn ps-hb-eng" :class="{studio: expandAcc && expandAcc.id==='STUDIO'}"
+             :title="'点击切换生图引擎（当前：' + ((expandAcc && expandAcc.id==='STUDIO') ? '本地 AI · FLUX.2 (可选项)' : '优先付费 Flow/Grok (默认)') + '）'"
+             @click.stop="quickImgAct(activePoolImg, 'engine', $event)">{{ (expandAcc && expandAcc.id==='STUDIO') ? '🖥️本地' : '⚡付费' }}</i>
+        </span>
       </div>
       <div class="seq-bar warn" v-if="stripView==='shots' && previewOn">{{ t('track.preview_bar') }}</div>
       <div class="seq-stats" v-if="stripView==='shots'">
@@ -2411,26 +2433,18 @@ window.Panel_track = (() => {
         <span>{{ t('track.seq.dur', { dur: shotStats.durText }) }}</span>
       </div>
       <div class="strip" v-if="stripView==='pool'">
-        <button v-for="im in images" :key="im.p" :class="thClass(im)"
+        <button v-for="im in images" :key="im.p" :class="[thClass(im), { 'th-active-target': activePoolImg && fmtP(activePoolImg.p)===fmtP(im.p) }]"
                 :style="{borderColor: pool.includes(fmtP(im.p)) ? pcolor(im.p) : ''}"
-                :title="im.status==='pending_review' ? t('track.review') : t('track.th_in')"
-                @click="clickThumb(im)"
-                @contextmenu.prevent="openImgMenu($event, im)">
+                :title="im.status==='pending_review' ? t('track.review') : (t('track.th_in') + '（右键或上方工具栏可扩图/超分/裁切）')"
+                @mouseenter="hoveredImgP = fmtP(im.p)"
+                @click="hoveredImgP = fmtP(im.p); clickThumb(im)"
+                @contextmenu.prevent="hoveredImgP = fmtP(im.p); openImgMenu($event, im)">
           <img :alt="fmtP(im.p)" :src="mediaUrl(tid, im.file, im.mtime)">
           <span class="refmark" v-if="canBeRef(im)" :class="{on: !!im.expand_ref}"
                 :title="t('track.ref_mark')" @click="toggleRef(im, $event)">{{ im.expand_ref ? '✓' : '' }}</span>
           <span class="tag">{{ fmtP(im.p) }}</span>
           <span class="used">{{ t('track.used', { n: String(usedCount(im.p)) }) }}</span>
           <span class="no" v-if="im.status==='blocked' || im.blocked">×</span>
-          <span class="ps-hover-bar" v-if="im.status!=='pending_review' && im.exists!==false" @click.stop>
-            <i class="ps-hb-btn" title="✨ 设为参考并扩图" @click.stop="quickImgAct(im, 'expand', $event)">✨扩图</i>
-            <i class="ps-hb-btn" title="🔍 提升画质 / 超分重绘" @click.stop="quickImgAct(im, 'upscale', $event)">🔍超分</i>
-            <i class="ps-hb-btn" title="↔ 水平镜像翻转" @click.stop="quickImgAct(im, 'flip', $event)">↔翻转</i>
-            <i class="ps-hb-btn" title="✂ 裁切构图" @click.stop="quickImgAct(im, 'crop', $event)">✂裁切</i>
-            <i class="ps-hb-btn ps-hb-eng" :class="{studio: expandAcc && expandAcc.id==='STUDIO'}"
-               :title="'点击切换生图引擎（当前：' + ((expandAcc && expandAcc.id==='STUDIO') ? '本地 AI · FLUX.2 (可选项)' : '优先付费 Flow/Grok (默认)') + '）'"
-               @click.stop="quickImgAct(im, 'engine', $event)">{{ (expandAcc && expandAcc.id==='STUDIO') ? '🖥️本地' : '⚡付费' }}</i>
-          </span>
           <span class="rev" v-if="im.status==='pending_review'">
             <button class="keep" @click="keepImg(im, $event)">{{ t('track.keep') }}</button>
             <button class="drop" @click="discardImg(im, $event)">{{ t('track.discard') }}</button>
@@ -2636,12 +2650,12 @@ window.Panel_track = (() => {
                        onerror="this.style.display='none'">
                   <span class="swatch" :style="{background: pcolor(item.pCode)}"></span>
                   <select v-if="item.taskImages && item.taskImages.length"
-                          class="dur-sel" style="flex:1;min-width:56px"
+                          class="dur-sel gs-img-select" style="flex:1;min-width:0"
                           :value="item.pCode"
                           @change="onSegImageChange(item.taskId, item.seg, $event.target.value)">
                     <option v-for="im in item.taskImages" :key="im.p" :value="fmtP(im.p)">{{ fmtP(im.p) }}</option>
                   </select>
-                  <input v-else class="trk-inline-input mono" style="width:58px"
+                  <input v-else class="trk-inline-input mono gs-img-select" style="flex:1;min-width:0"
                          :value="item.pCode"
                          @change="onSegImageChange(item.taskId, item.seg, $event.target.value)">
                 </div>
@@ -2812,10 +2826,14 @@ window.Panel_track = (() => {
   <ul v-if="menu.show && menu.im" class="ctx" ref="menuRef"
       :style="{left: menu.x + 'px', top: menu.y + 'px'}"
       @click.stop>
-    <li :class="{off: imgMenuOff(menu.im, 'copy')}" @click="onImgMenu('copy')">{{ t('track.ctx.copy') }}</li>
-    <li :class="{off: imgMenuOff(menu.im, 'flip')}" @click="onImgMenu('flip')">{{ t('track.ctx.flip') }}</li>
-    <li :class="{off: imgMenuOff(menu.im, 'crop')}" @click="onImgMenu('crop')">{{ t('track.ctx.crop') }}</li>
-    <li :class="{off: imgMenuOff(menu.im, 'upscale')}" @click="onImgMenu('upscale')">{{ t('track.ctx.upscale') }}</li>
+    <li @click="quickImgAct(menu.im, 'expand', $event); menu.show = false">✨ 设为参考并扩图 ({{ fmtP(menu.im.p) }})</li>
+    <li :class="{off: imgMenuOff(menu.im, 'upscale')}" @click="onImgMenu('upscale')">🔍 {{ t('track.ctx.upscale') }}</li>
+    <li :class="{off: imgMenuOff(menu.im, 'flip')}" @click="onImgMenu('flip')">↔ {{ t('track.ctx.flip') }}</li>
+    <li :class="{off: imgMenuOff(menu.im, 'crop')}" @click="onImgMenu('crop')">✂ {{ t('track.ctx.crop') }}</li>
+    <li :class="{off: imgMenuOff(menu.im, 'copy')}" @click="onImgMenu('copy')">📋 {{ t('track.ctx.copy') }}</li>
+    <li @click="quickImgAct(menu.im, 'engine', $event); menu.show = false">
+      {{ (expandAcc && expandAcc.id==='STUDIO') ? '⚡ 切换生图引擎为：付费 Flow/Grok' : '🖥️ 切换生图引擎为：本地 AI' }}
+    </li>
     <li class="sep"></li>
     <li class="bad" :class="{off: imgMenuOff(menu.im, 'discard')}" @click="onImgMenu('discard')">{{ t('track.ctx.discard') }}</li>
   </ul>

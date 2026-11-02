@@ -2860,9 +2860,9 @@ mark.ts-mark{
 }
 
 
-/* spec 84：时长手动 / 画幅灰字 */
+/* spec 84：时长手动 / 画幅灰字（取消 max-width:64px 限制，让单元格内下拉菜单完全跟随单元格宽度显示） */
 .panel-track .dur-cell{position:relative;min-width:72px}
-.panel-track .dur-sel{max-width:64px}
+.panel-track .dur-sel{width:100%;max-width:none}
 .panel-track .dur-edit{margin-left:3px;opacity:.7}
 .panel-track .dur-cell.warn{background:rgba(201,162,39,.22)}
 .panel-track .dur-warn{color:#b8860b;font-size:11px;line-height:1.2;margin-top:2px}
@@ -3796,11 +3796,11 @@ main.stage > section.panel-imgstudio{overflow:hidden;padding:12px 16px;display:f
 }
 .gs-sheet-table tbody td{
   position:relative;
-  padding:4px 8px;
+  padding:2px 6px;
   border-right:1px solid rgba(160,152,136,.22);
   border-bottom:1px solid rgba(160,152,136,.22);
   color:var(--ink);
-  vertical-align:top;
+  vertical-align:middle;
   box-sizing:border-box;
   overflow:hidden;
   background:var(--panel);
@@ -3808,6 +3808,66 @@ main.stage > section.panel-imgstudio{overflow:hidden;padding:12px 16px;display:f
 }
 .gs-sheet-table tbody tr:hover td{
   background:rgba(255,255,255,.025);
+}
+/* 表格单元格内的下拉菜单、输入框、多行文本框统一作为原生单元格数据铺满整格，绝不设 max-width 裁切，也不画内嵌小方框 */
+.gs-sheet-table tbody td select,
+.gs-sheet-table tbody td .dur-sel,
+.gs-sheet-table tbody td .ap-cell-select,
+.ap-sheet-table tbody td select,
+.ap-sheet-table tbody td .ap-cell-select,
+.panel-track .btable tbody td select{
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  height:100%;
+  min-height:28px;
+  margin:0;
+  padding:2px 4px;
+  border:1px solid transparent !important;
+  border-radius:0 !important;
+  background-color:transparent !important;
+  color:var(--ink);
+  font-size:12.5px;
+  line-height:1.4;
+  cursor:pointer;
+  box-sizing:border-box;
+  text-overflow:ellipsis;
+}
+.gs-sheet-table tbody td select.gs-img-select{
+  width:auto !important;
+  flex:1 1 auto;
+}
+.gs-sheet-table tbody td select:hover,
+.gs-sheet-table tbody td select:focus,
+.ap-sheet-table tbody td select:hover,
+.ap-sheet-table tbody td select:focus{
+  background-color:rgba(255,255,255,.04) !important;
+}
+.gs-sheet-table tbody td select option,
+.ap-sheet-table tbody td select option,
+.panel-track .btable tbody td select option,
+.gm3-col-controller select option,
+.trk-tp-select option{
+  background-color:var(--panel-2);
+  color:var(--ink);
+  padding:4px 8px;
+}
+.gs-sheet-table tbody td input:not([type="checkbox"]):not([type="color"]),
+.gs-sheet-table tbody td textarea,
+.ap-sheet-table tbody td input:not([type="checkbox"]):not([type="color"]),
+.ap-sheet-table tbody td textarea{
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  margin:0;
+  padding:2px 4px;
+  border:1px solid transparent !important;
+  border-radius:0 !important;
+  background-color:transparent !important;
+  color:var(--ink);
+  font-size:12.5px;
+  line-height:1.45;
+  box-sizing:border-box;
 }
 /* 列宽拖拽调整手柄 */
 .gs-col-resizer{
@@ -4110,5 +4170,14 @@ main.stage > section.panel-imgstudio{overflow:hidden;padding:12px 16px;display:f
   background:rgba(212,175,55,.15);
   color:var(--accent);
 }
+/* 图池快捷操作外置栏与当前目标缩略图高亮 (避免遮挡缩略图) */
+.panel-track .strip > button.th.th-active-target{
+  box-shadow:0 0 0 2px var(--accent), 0 4px 12px rgba(0,0,0,.45);
+}
+.ps-dock-bar .ps-mini-btn:hover{
+  border-color:var(--accent);
+  color:var(--accent);
+}
+
 
 

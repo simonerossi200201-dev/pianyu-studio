@@ -846,11 +846,11 @@ window.Panel_gemini = (() => {
       // Task Prompt Table column widths & row heights
       const tableColWidths = reactive({
         sel: 42,
-        s: 88,
+        s: 92,
         image: 76,
-        duration: 64,
-        text: 280,
-        preset: 150,
+        duration: 72,
+        text: 300,
+        preset: 180,
         main: 440,
       });
       const tableRowHeights = reactive({}); // `${taskId}:${s}` -> px
@@ -2618,8 +2618,8 @@ window.Panel_gemini = (() => {
                       </td>
                       <td :colspan="orderedPromptColumns.length">
                         <div style="display:flex;align-items:center;gap:8px">
-                          <span class="muted" style="font-size:12px">📌 任务总预设:</span>
-                          <select class="ap-cell-select" style="max-width:220px" :value="item.tk.preset_id || ''"
+                          <span class="muted" style="font-size:12px;white-space:nowrap">📌 任务总预设:</span>
+                          <select class="ap-cell-select" :value="item.tk.preset_id || ''"
                                   @change="applyPresetToTask(item.tk, $event.target.value)">
                             <option value="">— 选择预设应用到 {{ item.tk.id }} 全段 —</option>
                             <option v-for="p in validPublishedPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
