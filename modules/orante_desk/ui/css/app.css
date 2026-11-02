@@ -4322,6 +4322,26 @@ main.stage > section.panel-imgstudio{overflow:hidden;padding:12px 16px;display:f
   animation:presetFlashPulse .85s ease-in-out 3;
 }
 
+/* 顶部历史记录撤销/重做工具栏与下拉面板 */
+.history-bar{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+}
+.history-bar .tb:disabled{
+  opacity:.38;
+  cursor:not-allowed;
+}
+.history-bar .tb.on{
+  border-color:var(--accent);
+  color:var(--accent);
+}
+.trk-prompt-slot-view{
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+
+
 
 
 

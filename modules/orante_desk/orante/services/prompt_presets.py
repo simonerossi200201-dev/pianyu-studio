@@ -69,7 +69,7 @@ def insert_speech_at_max_newlines(template: str, speech: str) -> str:
     if not sp:
         return tpl
 
-    for token in ("{{speech}}", "{speech}", "{{copy}}", "{copy}", "【台词】"):
+    for token in ("{{speech}}", "{speech}", "{{copy}}", "{copy}", "【人物说的话】", "[人物说的话]", "【台词】"):
         if token in tpl:
             return tpl.replace(token, sp)
 
@@ -79,6 +79,110 @@ def insert_speech_at_max_newlines(template: str, speech: str) -> str:
     prefix = tpl[:start]
     suffix = tpl[end:]
     return f"{prefix}\n{sp}\n{suffix}"
+
+
+def strip_baked_speech_to_template(prompt_text: str, candidate_speeches: list[str] | None = None) -> str:
+    """将提示词覆盖中可能误写死的台词文案（包括本段或其他段的文案）剥离，
+    还原为保留换行插槽（对应【人物说的话】动态变量）的纯提示词模板。
+    """
+    raw = str(prompt_text or "")
+    if not raw.strip():
+        return ""
+    out = raw.replace("\r\n", "\n").replace("\r", "\n")
+
+    # 若用户显式输入了变量名，统一转换为标准 3 换行插槽，保持算法一致
+    for token in ("【人物说的话】", "[人物说的话]", "{{speech}}", "{speech}", "{{copy}}", "{copy}", "【台词】"):
+        if token in out:
+            out = re.sub(r"[ \t\n]*" + re.escape(token) + r"[ \t\n]*", "\n\n\n", out)
+
+    if candidate_speeches:
+        # 按长度降序匹配，优先剥离完整长句
+        valid_speeches = sorted(
+            {str(s or "").strip() for s in candidate_speeches if len(str(s or "").strip()) >= 4},
+            key=len,
+            reverse=True,
+        )
+        for sp in valid_speeches:
+            if sp in out:
+                pattern = r"[ \t]*\n*[ \t]*" + re.escape(sp) + r"[ \t]*\n*[ \t]*"
+                out = re.sub(pattern, "\n\n\n", out)
+
+    return out
+
+
+def sanitize_task_manifest_prompts(m, d: Path | None = None, task: dict | None = None) -> bool:
+    """清理任务 Manifest 中曾被误合并写死文案的 custom_prompt，还原为保留【人物说的话】变量插槽的模板，
+    并重算最终提交给 Flow 的 prompt_final（仅在 prompt_final 中动态合入本段自身文案）。
+    """
+    if not m or not getattr(m, "segments", None):
+        return False
+    from . import prompts as pr_mod
+
+    all_speeches = [
+        str(sg.get("text") or "").strip()
+        for sg in (m.segments or [])
+        if str(sg.get("text") or "").strip()
+    ]
+    changed = False
+    for sg in (m.segments or []):
+        s_pid = str(sg.get("preset_id") or "").strip()
+        cp = str(sg.get("custom_prompt") or "")
+        # 二选一原则：若已有 preset_id，清除残留的 custom_prompt
+        if s_pid and cp:
+            sg["custom_prompt"] = ""
+            cp = ""
+            changed = True
+        elif cp.strip():
+            cleaned = strip_baked_speech_to_template(cp, all_speeches)
+            if cleaned != cp:
+                sg["custom_prompt"] = cleaned
+                changed = True
+        try:
+            new_final = pr_mod.build_final_prompt(m, sg, task=task)
+            if sg.get("prompt_final") != new_final:
+                sg["prompt_final"] = new_final
+                sg["final_prompt"] = new_final
+                changed = True
+        except Exception:
+            pass
+
+    if changed and d is not None and Path(d).is_dir():
+        try:
+            m.save(Path(d))
+        except Exception:
+            pass
+    return changed
+
+
+def sanitize_all_tasks_baked_prompts() -> int:
+    """全量扫描并修复所有任务中曾把文案写死进提示词覆盖的数据。"""
+    try:
+        from .. import tasks as taskmod
+        from ..models import Manifest
+    except Exception:
+        return 0
+
+    fixed_tasks = 0
+    try:
+        all_tasks = taskmod.list_all(include_finished=True)
+    except Exception:
+        all_tasks = []
+
+    for t in all_tasks:
+        tid = t.get("id") or ""
+        d_str = t.get("dir") or ""
+        if not tid or not d_str or t.get("status") == "trash":
+            continue
+        d = Path(d_str)
+        if not d.is_dir():
+            continue
+        try:
+            m = Manifest.load(d)
+        except Exception:
+            continue
+        if sanitize_task_manifest_prompts(m, d=d, task=t):
+            fixed_tasks += 1
+    return fixed_tasks
 
 
 def inspect_preset_template(
@@ -314,6 +418,13 @@ def save_preset(payload: dict) -> dict:
     if not template.strip():
         raise OranteError("预设提示词内容不能为空")
 
+    if not payload.get("_skip_sync"):
+        try:
+            from . import history as hist_mod
+            hist_mod.record_before(f"保存预设「{name}」", include_presets=True)
+        except Exception:
+            pass
+
     insp = inspect_preset_template(name, template)
     gap_n = insp["max_newline_gap"]
     now = db.now()
@@ -427,6 +538,11 @@ def _sync_presets_to_tasks(preset_ids: set[str] | None = None) -> int:
 
 
 def batch_save_presets(items: list[dict]) -> dict:
+    try:
+        from . import history as hist_mod
+        hist_mod.record_before(f"更新提示词预设库 ({len(items or [])}条)", include_presets=True, coalesce_window_s=2.0)
+    except Exception:
+        pass
     saved = []
     pids: set[str] = set()
     for it in (items or []):
@@ -445,5 +561,12 @@ def delete_preset(preset_id: str) -> dict:
     pid = (preset_id or "").strip()
     if not pid:
         raise OranteError("预设 ID 不能为空")
+    try:
+        from . import history as hist_mod
+        pr = get_preset(pid)
+        pname = (pr or {}).get("name") or pid
+        hist_mod.record_before(f"删除预设「{pname}」", include_presets=True)
+    except Exception:
+        pass
     db.run("DELETE FROM prompt_presets WHERE id=?", (pid,))
     return {"ok": True, "deleted_id": pid}

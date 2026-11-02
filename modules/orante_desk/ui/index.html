@@ -21,6 +21,63 @@
       <span class="dot on" :class="{pause: descQueue.paused}"></span>{{ t('top.descq') }}
       <span class="muted mono">{{ descQueue.done }}/{{ descQueue.total }}</span>
     </button>
+    <!-- 专业历史记录撤销 / 重做工具组 (Ctrl+Z / Ctrl+Y) -->
+    <div class="tb-wrap history-bar" @click.stop>
+      <button class="tb" type="button"
+              :disabled="!historyState.can_undo || historyBusy"
+              :title="historyState.can_undo ? ('撤销 (Ctrl+Z)：' + (historyState.last_undo_label || '上一步操作')) : '暂无可撤销的历史操作 (Ctrl+Z)'"
+              @click="doUndo">
+        ↩ 撤销
+      </button>
+      <button class="tb" type="button"
+              :disabled="!historyState.can_redo || historyBusy"
+              :title="historyState.can_redo ? ('重做 (Ctrl+Y)：' + (historyState.last_redo_label || '下一步操作')) : '暂无可重做的历史操作 (Ctrl+Y)'"
+              @click="doRedo">
+        ↪ 重做
+      </button>
+      <button class="tb" type="button"
+              :class="{on: historyMenuOpen}"
+              title="查看操作历史记录栈（防误操作安全保护）"
+              @click="toggleHistoryMenu">
+        🕒 历史 <span class="muted mono">{{ historyState.undo_count || 0 }}</span>
+      </button>
+      <div class="tb-pop history-pop" v-if="historyMenuOpen" style="right:0;min-width:300px;max-width:380px;padding:8px" @click.stop>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px 8px;border-bottom:1px solid var(--border)">
+          <b style="font-size:12.5px;color:var(--accent)">🕒 操作历史记录 (Ctrl+Z / Ctrl+Y)</b>
+          <span class="muted mono" style="font-size:11px">可撤 {{ historyState.undo_count || 0 }} · 可重做 {{ historyState.redo_count || 0 }}</span>
+        </div>
+        <div v-if="!(historyState.undo_list && historyState.undo_list.length) && !(historyState.redo_list && historyState.redo_list.length)"
+             class="muted" style="padding:14px 8px;text-align:center;font-size:12px">
+          暂无操作历史记录（修改排镜头、提示词或预设后将自动记录快照）
+        </div>
+        <div v-else style="max-height:260px;overflow-y:auto;margin-top:4px">
+          <div v-if="historyState.undo_list && historyState.undo_list.length" style="margin-bottom:6px">
+            <div class="muted" style="font-size:11px;padding:2px 6px">可撤销操作（点击立即撤销上一步）：</div>
+            <div v-for="(h, idx) in historyState.undo_list" :key="'u-' + h.id"
+                 style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;border-radius:5px;cursor:pointer;font-size:12px"
+                 :style="idx === 0 ? 'background:rgba(212,162,76,0.14);font-weight:600' : 'opacity:0.8'"
+                 @click="idx === 0 && doUndo()">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                {{ idx === 0 ? '↩ ' : '· ' }}{{ h.label }}
+              </span>
+              <span v-if="idx === 0" class="tag ok" style="font-size:10px;padding:1px 5px">点击撤销</span>
+            </div>
+          </div>
+          <div v-if="historyState.redo_list && historyState.redo_list.length">
+            <div class="muted" style="font-size:11px;padding:2px 6px">可重做操作（点击立即重做）：</div>
+            <div v-for="(h, idx) in historyState.redo_list" :key="'r-' + h.id"
+                 style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;border-radius:5px;cursor:pointer;font-size:12px"
+                 :style="idx === 0 ? 'background:rgba(59,130,246,0.14);font-weight:600' : 'opacity:0.8'"
+                 @click="idx === 0 && doRedo()">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                {{ idx === 0 ? '↪ ' : '· ' }}{{ h.label }}
+              </span>
+              <span v-if="idx === 0" class="tag" style="font-size:10px;padding:1px 5px">点击重做</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="tb-wrap" @click.stop>
       <button class="tb ico" :class="{warn: !sseOk, spin: refreshing && !refreshOk, done: refreshOk}"
               :title="sseOk ? t('top.refresh_tip') : t('top.refresh_sse')"

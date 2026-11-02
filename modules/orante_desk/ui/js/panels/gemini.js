@@ -661,6 +661,8 @@ window.GeminiSwitchLogic = (function () {
 
 // ─── 需求 5：预设校验与最大换行处【人物说的话】红字插槽解析引擎 ───
 window.PresetSlotLogic = (function () {
+  const EXPLICIT_TOKENS = ['【人物说的话】', '[人物说的话]', '{{speech}}', '{speech}', '【台词】'];
+
   function analyzeTemplate(rawTemplate) {
     const tpl = String(rawTemplate == null ? '' : rawTemplate).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const trimmed = tpl.trim();
@@ -673,15 +675,41 @@ window.PresetSlotLogic = (function () {
         suffix: '',
       };
     }
+    // 1. 优先识别显式变量占位符（如【人物说的话】）
+    for (const tok of EXPLICIT_TOKENS) {
+      const idx = tpl.indexOf(tok);
+      if (idx >= 0) {
+        return {
+          hasContent: true,
+          hasNewline: true,
+          maxNewlines: 3,
+          prefix: tpl.slice(0, idx).replace(/\n+$/, ''),
+          suffix: tpl.slice(idx + tok.length).replace(/^\n+/, ''),
+        };
+      }
+    }
+    // 2. 识别中间最大连续换行处作为【人物说的话】变量插槽
     const re = /\n+/g;
     let m;
     let bestLen = 0;
     let bestIdx = -1;
     while ((m = re.exec(tpl)) !== null) {
       const len = m[0].length;
-      if (len > bestLen) {
+      const before = tpl.slice(0, m.index).trim();
+      const after = tpl.slice(m.index + len).trim();
+      if (before && after && len > bestLen) {
         bestLen = len;
         bestIdx = m.index;
+      }
+    }
+    if (bestIdx < 0) {
+      re.lastIndex = 0;
+      while ((m = re.exec(tpl)) !== null) {
+        const len = m[0].length;
+        if (len > bestLen) {
+          bestLen = len;
+          bestIdx = m.index;
+        }
       }
     }
     if (bestIdx < 0) {
@@ -700,6 +728,38 @@ window.PresetSlotLogic = (function () {
       prefix: tpl.slice(0, bestIdx),
       suffix: tpl.slice(bestIdx + bestLen),
     };
+  }
+
+  // 剥离误混入提示词模板的具体文案，恢复为纯 \n\n\n 【人物说的话】变量插槽
+  function stripBakedSpeech(rawTemplate, candidateSpeeches) {
+    if (!rawTemplate) return '';
+    let tpl = String(rawTemplate).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    for (const tok of EXPLICIT_TOKENS) {
+      if (tpl.includes(tok)) {
+        const parts = tpl.split(tok);
+        return parts[0].replace(/\n+$/, '') + '\n\n\n' + parts.slice(1).join('').replace(/^\n+/, '');
+      }
+    }
+    const candidates = Array.isArray(candidateSpeeches) ? candidateSpeeches : (candidateSpeeches ? [candidateSpeeches] : []);
+    for (const sp of candidates) {
+      const s = String(sp || '').trim();
+      if (s && s.length >= 2 && tpl.includes(s)) {
+        const idx = tpl.indexOf(s);
+        const before = tpl.slice(0, idx).replace(/\n+$/, '');
+        const after = tpl.slice(idx + s.length).replace(/^\n+/, '');
+        return before + '\n\n\n' + after;
+      }
+    }
+    const lines = tpl.split('\n');
+    if (lines.length === 3) {
+      const l0 = lines[0].trim();
+      const l1 = lines[1].trim();
+      const l2 = lines[2].trim();
+      if (l0 && l1 && l2 && /[\u4e00-\u9fff]/.test(l0) && /[\u4e00-\u9fff]/.test(l2) && !/[\u4e00-\u9fff]/.test(l1)) {
+        return lines[0] + '\n\n\n' + lines[2];
+      }
+    }
+    return tpl;
   }
 
   function validatePresetRow(row) {
@@ -761,7 +821,7 @@ window.PresetSlotLogic = (function () {
     return slot.prefix + '\n' + (sp || '【人物说的话】') + '\n' + slot.suffix;
   }
 
-  return { analyzeTemplate, validatePresetRow, composeSpeech };
+  return { analyzeTemplate, stripBakedSpeech, validatePresetRow, composeSpeech };
 })();
 
 // ─── 节点 3 提示词面板：Less is More 双核架构（📚 预设管理 + 📝 任务提示词总表 + 🎴 预设卡片库） ───
@@ -1126,7 +1186,7 @@ window.Panel_gemini = (() => {
           for (const sg of (tk.segments || [])) {
             if (sg.preset_id === presetId || (!sg.preset_id && tk.preset_id === presetId)) {
               sg.custom_prompt = '';
-              sg.prompt_preview = PresetSlotLogic.composeSpeech(newTemplate, sg.text);
+              sg.prompt_preview = newTemplate || '';
             }
           }
         }
@@ -1904,21 +1964,22 @@ window.Panel_gemini = (() => {
             if (p) {
               sg.preset_id = p.id;
               sg.custom_prompt = '';
-              sg.prompt_preview = PresetSlotLogic.composeSpeech(p.template, sg.text);
+              sg.prompt_preview = p.template || '';
               batchUpdates.push({ task_id: tk.id, s: sg.s, preset_id: p.id, custom_prompt: '' });
             }
           }
         } else if (cIdx >= 5) {
           const col = orderedPromptColumns.value[cIdx - 5];
           if (!col) return;
+          const cleanTpl = PresetSlotLogic.stripBakedSpeech(val, [sg.text]);
           if (col.col_id === 'main') {
             sg.preset_id = '';
-            sg.custom_prompt = val;
-            sg.prompt_preview = val;
-            batchUpdates.push({ task_id: tk.id, s: sg.s, preset_id: '', custom_prompt: val });
+            sg.custom_prompt = cleanTpl;
+            sg.prompt_preview = cleanTpl;
+            batchUpdates.push({ task_id: tk.id, s: sg.s, preset_id: '', custom_prompt: cleanTpl });
           } else {
             if (!sg.extra_prompts) sg.extra_prompts = {};
-            sg.extra_prompts[col.col_id] = val;
+            sg.extra_prompts[col.col_id] = cleanTpl;
             batchUpdates.push({ task_id: tk.id, s: sg.s, extra_prompts: Object.assign({}, sg.extra_prompts) });
           }
         }
@@ -2165,29 +2226,42 @@ window.Panel_gemini = (() => {
           if (mode === 'random_group' && groupPresets.length) {
             picked = groupPresets[Math.floor(Math.random() * groupPresets.length)];
           }
-          let composed = '';
+          let pureTemplate = '';
           const cacheKey = `${task_id}:${seg.image || 'p01'}`;
           if (mode === 'gemini_template' && imagePromptCache[cacheKey]) {
-            composed = PresetSlotLogic.composeSpeech(imagePromptCache[cacheKey], seg.text);
+            pureTemplate = imagePromptCache[cacheKey];
           } else if (picked) {
+            pureTemplate = picked.template || '';
             if (mode === 'gemini_template') {
-              imagePromptCache[cacheKey] = picked.template;
+              imagePromptCache[cacheKey] = pureTemplate;
             }
-            composed = PresetSlotLogic.composeSpeech(picked.template, seg.text);
           }
 
           if (col.col_id === 'main') {
-            if (picked) seg.preset_id = picked.id;
-            if (composed) seg.custom_prompt = composed;
-            updates.push({
-              task_id,
-              s,
-              preset_id: picked ? picked.id : seg.preset_id,
-              custom_prompt: composed || seg.custom_prompt,
-            });
+            if (mode === 'gemini_template') {
+              seg.preset_id = '';
+              seg.custom_prompt = pureTemplate;
+              seg.prompt_preview = pureTemplate;
+              updates.push({
+                task_id,
+                s,
+                preset_id: '',
+                custom_prompt: pureTemplate,
+              });
+            } else {
+              if (picked) seg.preset_id = picked.id;
+              seg.custom_prompt = '';
+              seg.prompt_preview = pureTemplate;
+              updates.push({
+                task_id,
+                s,
+                preset_id: picked ? picked.id : seg.preset_id,
+                custom_prompt: '',
+              });
+            }
           } else {
             if (!seg.extra_prompts) seg.extra_prompts = {};
-            seg.extra_prompts[col.col_id] = composed;
+            seg.extra_prompts[col.col_id] = pureTemplate;
             updates.push({
               task_id,
               s,
@@ -2207,26 +2281,33 @@ window.Panel_gemini = (() => {
         } catch (e) {
           await API.post('/api/tasks/batch-update-segments', { updates }).catch(() => {});
         }
+        if (window.refreshHistoryStatus) window.refreshHistoryStatus();
         await loadTasksSegmentsTable(true);
-        toast(`✓ 已对 ${targets.length} 个勾选分段批量执行【${mode === 'random_group' ? '随机应用提示词组' : (mode === 'gemini_template' ? '按模板生成描述语（同图复用）' : '直接选预设')}】`, '', 'ok');
+        toast(`✓ 已对 ${targets.length} 个勾选分段批量执行【${mode === 'random_group' ? '随机应用提示词组' : (mode === 'gemini_template' ? '按模板生成描述语（同图复用·保留变量）' : '直接选预设')}】`, '', 'ok');
       }
 
       // Cell value getter/setter & multi-row paste
+      // 核心原则：在 2 排镜头 与 3 提示词 中，提示词列永远保留【人物说的话】变量插槽，绝不把左侧文案写死进提示词！
       function getPromptCellValue(sg, col) {
         if (!sg) return '';
         if (!col || col.col_id === 'main') {
           if (sg.custom_prompt && String(sg.custom_prompt).trim()) {
-            return String(sg.custom_prompt);
+            return PresetSlotLogic.stripBakedSpeech(String(sg.custom_prompt), [sg.text]);
           }
           if (sg.preset_id) {
             const p = validPublishedPresets.value.find(x => x.id === sg.preset_id || x.name === sg.preset_id);
             if (p && p.template) {
-              return PresetSlotLogic.composeSpeech(p.template, sg.text);
+              return String(p.template);
             }
           }
-          return sg.prompt_preview || '';
+          return PresetSlotLogic.stripBakedSpeech(String(sg.prompt_preview || ''), [sg.text]);
         }
-        return (sg.extra_prompts && sg.extra_prompts[col.col_id]) || '';
+        const rawExtra = (sg.extra_prompts && sg.extra_prompts[col.col_id]) || '';
+        return PresetSlotLogic.stripBakedSpeech(String(rawExtra), [sg.text]);
+      }
+
+      function analyzePromptCellSlot(sg, col) {
+        return PresetSlotLogic.analyzeTemplate(getPromptCellValue(sg, col));
       }
 
       async function flushSegmentUpdate(taskId, sg, u) {
@@ -2234,6 +2315,7 @@ window.Panel_gemini = (() => {
         try {
           await API.post('/api/tasks/batch-update-segments', { updates: [u] }, { silent: true });
           cellEditor.savedAt = Date.now();
+          if (window.refreshHistoryStatus) window.refreshHistoryStatus();
         } catch (e) { /* ignore */ } finally {
           cellEditor.saving = false;
         }
@@ -2243,23 +2325,25 @@ window.Panel_gemini = (() => {
         if (!taskId || !sg) return;
         const u = { task_id: taskId, s: sg.s };
         if (extraColId && extraColId !== 'main') {
+          const cleanTpl = PresetSlotLogic.stripBakedSpeech(val, [sg.text]);
           if (!sg.extra_prompts) sg.extra_prompts = {};
-          sg.extra_prompts[extraColId] = val;
+          sg.extra_prompts[extraColId] = cleanTpl;
           u.extra_prompts = Object.assign({}, sg.extra_prompts);
         } else if (field === 'custom_prompt') {
-          // 二选一：手动编辑提示词覆盖时，自动清空预设名称
+          // 二选一：手动编辑提示词覆盖时，自动清空预设名称，并始终保留【人物说的话】变量插槽
+          const cleanTpl = PresetSlotLogic.stripBakedSpeech(val, [sg.text]);
           sg.preset_id = '';
-          sg.custom_prompt = val;
-          sg.prompt_preview = val;
+          sg.custom_prompt = cleanTpl;
+          sg.prompt_preview = cleanTpl;
           u.preset_id = '';
-          u.custom_prompt = val;
+          u.custom_prompt = cleanTpl;
         } else if (field === 'text') {
           sg.text = val;
           u.text = val;
           if (sg.preset_id && !sg.custom_prompt) {
             const p = validPublishedPresets.value.find(x => x.id === sg.preset_id || x.name === sg.preset_id);
             if (p && p.template) {
-              sg.prompt_preview = PresetSlotLogic.composeSpeech(p.template, val);
+              sg.prompt_preview = p.template;
             }
           }
         } else {
@@ -2335,21 +2419,25 @@ window.Panel_gemini = (() => {
           sg.custom_prompt = '';
           sg.prompt_preview = '';
           await API.post('/api/tasks/batch-update-segments', {
+            action_label: `清空预设 (${tk.id} s${pad3(sg.s)})`,
             updates: [{ task_id: tk.id, s: sg.s, preset_id: '', custom_prompt: '' }],
           });
+          if (window.refreshHistoryStatus) window.refreshHistoryStatus();
           toast(`🧹 已清空 ${tk.id} s${pad3(sg.s)} 的预设`, '', 'ok');
           return;
         }
-        const composed = PresetSlotLogic.composeSpeech(preset.template, sg.text);
+        const pureTemplate = preset.template || '';
         if (!colId || colId === 'main') {
           sg.preset_id = preset.id;
           sg.custom_prompt = '';
-          sg.prompt_preview = composed;
+          sg.prompt_preview = pureTemplate;
           await API.post('/api/tasks/batch-update-segments', {
+            action_label: `应用预设【${preset.name}】(${tk.id} s${pad3(sg.s)})`,
             updates: [{ task_id: tk.id, s: sg.s, preset_id: preset.id, custom_prompt: '' }],
           });
+          if (window.refreshHistoryStatus) window.refreshHistoryStatus();
         } else {
-          await updateSegmentField(tk.id, sg, 'extra_prompts', composed, colId);
+          await updateSegmentField(tk.id, sg, 'extra_prompts', pureTemplate, colId);
         }
         toast(`已应用预设【${preset.name}】→ ${tk.id} s${pad3(sg.s)}`, '', 'ok');
       }
@@ -2375,7 +2463,7 @@ window.Panel_gemini = (() => {
         for (const sg of (tk.segments || [])) {
           sg.preset_id = p ? p.id : '';
           sg.custom_prompt = '';
-          sg.prompt_preview = p ? PresetSlotLogic.composeSpeech(p.template, sg.text) : '';
+          sg.prompt_preview = p ? (p.template || '') : '';
           updates.push({
             task_id: tk.id,
             s: sg.s,
@@ -2383,7 +2471,11 @@ window.Panel_gemini = (() => {
             custom_prompt: '',
           });
         }
-        await API.post('/api/tasks/batch-update-segments', { updates });
+        await API.post('/api/tasks/batch-update-segments', {
+          action_label: p ? `应用任务总预设【${p.name}】(${tk.id})` : `清空任务总预设 (${tk.id})`,
+          updates,
+        });
+        if (window.refreshHistoryStatus) window.refreshHistoryStatus();
         toast(p ? `已将预设【${p.name}】应用到任务 ${tk.id} 全段` : `已清空任务 ${tk.id} 全段预设`, '', 'ok');
       }
 
@@ -2397,10 +2489,9 @@ window.Panel_gemini = (() => {
         const updates = [];
         for (const item of list) {
           const { task_id, s, seg } = item;
-          const composed = PresetSlotLogic.composeSpeech(preset.template, seg.text);
           seg.preset_id = preset.id;
           seg.custom_prompt = '';
-          seg.prompt_preview = composed;
+          seg.prompt_preview = preset.template || '';
           updates.push({
             task_id,
             s,
@@ -2408,7 +2499,11 @@ window.Panel_gemini = (() => {
             custom_prompt: '',
           });
         }
-        await API.post('/api/tasks/batch-update-segments', { updates });
+        await API.post('/api/tasks/batch-update-segments', {
+          action_label: `预设卡片【${preset.name}】填入 ${updates.length} 段`,
+          updates,
+        });
+        if (window.refreshHistoryStatus) window.refreshHistoryStatus();
         toast(`🎴 已将预设【${preset.name}】应用到 ${updates.length} 个勾选分段`, '', 'ok');
       }
 
@@ -2644,6 +2739,34 @@ window.Panel_gemini = (() => {
         if (presetCtxMenu.open) presetCtxMenu.open = false;
       }
 
+      const cellEditorSlot = computed(() => {
+        if (!cellEditor.kind) return null;
+        if (cellEditor.kind === 'preset' && cellEditor.presetField === 'name') return null;
+        if (cellEditor.kind === 'segment' && cellEditor.colId === 'text') return null;
+        return PresetSlotLogic.analyzeTemplate(cellEditorValue.value || '');
+      });
+
+      function insertSpeechVariableToCellEditor() {
+        const ta = document.querySelector('.gm3-floating-cell-editor textarea');
+        const cur = String(cellEditorValue.value || '');
+        let nextVal = cur;
+        if (ta && typeof ta.selectionStart === 'number') {
+          const st = ta.selectionStart;
+          const ed = ta.selectionEnd;
+          nextVal = cur.slice(0, st) + '\n\n\n' + cur.slice(ed);
+        } else {
+          nextVal = cur ? (cur + '\n\n\n') : '\n\n\n';
+        }
+        onCellEditorInput(nextVal);
+        onCellEditorBlur(nextVal);
+        toast('🔴 已在光标处插入【人物说的话】变量插槽（仅在出片/Flow 提交时合并左侧文案）', '', 'ok');
+      }
+
+      function onHistoryApplied() {
+        loadPresets(true);
+        loadTasksSegmentsTable(true);
+      }
+
       onMounted(async () => {
         await loadPresets(false);
         await loadTasksSegmentsTable(false);
@@ -2659,6 +2782,7 @@ window.Panel_gemini = (() => {
         window.addEventListener('mouseup', stopAllDrags);
         window.addEventListener('keydown', onGlobalKeyDown);
         window.addEventListener('paste', onGlobalPaste);
+        window.addEventListener('orante:history-applied', onHistoryApplied);
         document.addEventListener('click', onGlobalClick);
       });
 
@@ -2667,6 +2791,7 @@ window.Panel_gemini = (() => {
         window.removeEventListener('mouseup', stopAllDrags);
         window.removeEventListener('keydown', onGlobalKeyDown);
         window.removeEventListener('paste', onGlobalPaste);
+        window.removeEventListener('orante:history-applied', onHistoryApplied);
         document.addEventListener('click', onGlobalClick);
       });
 
@@ -2686,7 +2811,7 @@ window.Panel_gemini = (() => {
       return {
         ui, store, t, pad3,
         viewMode,
-        cellEditor, cellEditorValue, highlightedPresetUid,
+        cellEditor, cellEditorValue, cellEditorSlot, insertSpeechVariableToCellEditor, highlightedPresetUid,
         bindCellEditorToPreset, bindCellEditorToSegment, onCellEditorInput, onCellEditorBlur,
         startCellEditorDrag, startCellEditorResize, focusPresetById,
         startColResize, startRowResize,
@@ -2715,7 +2840,7 @@ window.Panel_gemini = (() => {
         isTaskAllChecked, toggleTaskCheck, selectAllTableSegs, invertTableSegs, expandAllTasks,
         openColContextMenu, insertPromptColumn, renamePromptColumn, deletePromptColumn,
         setColHeaderMode, setColHeaderSecondVal, runColumnBatchAction,
-        getPromptCellValue, updateSegmentField, onSegmentInputRealtime, onTableCellPaste,
+        getPromptCellValue, analyzePromptCellSlot, updateSegmentField, onSegmentInputRealtime, onTableCellPaste,
         onDragStartPreset, onDropPresetOnCell, onDropPresetOnTask, applyPresetToSegment, applyPresetToTask, applyCardToChecked,
         openFindReplace, executeFindReplace, openGeminiCfg, saveGeminiCfg,
       };
@@ -3127,7 +3252,7 @@ window.Panel_gemini = (() => {
                           <span v-if="isTableFillCorner(item.flatIdx, 4)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 4, $event)"></span>
                         </td>
 
-                        <!-- 列 5+: 提示词列（默认溢出截断紧凑显示 + 单击载入悬浮文本编辑器实时编辑保存） -->
+                        <!-- 列 5+: 提示词列（始终保留红色【人物说的话】变量插槽，不写死具体文案；默认溢出截断紧凑显示 + 单击载入悬浮文本编辑器实时编辑保存） -->
                         <td v-for="(col, cIdx) in orderedPromptColumns" :key="item.rowKey + ':' + col.col_id"
                             :class="{
                               'gs-cell-selected': isTableCellSelected(item.flatIdx, 5 + cIdx),
@@ -3144,13 +3269,23 @@ window.Panel_gemini = (() => {
                                     style="height:100%;min-height:56px"
                                     :value="getPromptCellValue(item.sg, col)"
                                     autofocus
-                                    placeholder="输入提示词内容（自动清空预设）…"
+                                    placeholder="输入提示词模板（最大换行处自动作为【人物说的话】变量插槽，自动清空预设）…"
                                     @input="onSegmentInputRealtime(item.tk.id, item.sg, 'custom_prompt', $event.target.value, col.col_id, false)"
                                     @change="onSegmentInputRealtime(item.tk.id, item.sg, 'custom_prompt', $event.target.value, col.col_id, true)"
                                     @blur="stopEditTableCell()"
                                     @paste="onTableCellPaste(item.tk, item.sIdx, col.col_id, $event)"></textarea>
                           <div v-else class="gs-cell-text" :class="textWrapMode">
-                            {{ getPromptCellValue(item.sg, col) }}
+                            <template v-if="!getPromptCellValue(item.sg, col)">
+                              <span class="muted">点击编写提示词模板（换行处代表【人物说的话】变量）…</span>
+                            </template>
+                            <template v-else-if="analyzePromptCellSlot(item.sg, col).hasNewline">
+                              <span>{{ analyzePromptCellSlot(item.sg, col).prefix }}</span>
+                              <span class="speech-slot-badge" :title="'动态变量：对应左侧文案「' + (item.sg.text || '人物说的话') + '」，仅在提交 Flow 生成与最终收片时合成'">人物说的话</span>
+                              <span>{{ analyzePromptCellSlot(item.sg, col).suffix }}</span>
+                            </template>
+                            <template v-else>
+                              <span>{{ getPromptCellValue(item.sg, col) }}</span>
+                            </template>
                           </div>
                           <span v-if="isTableFillCorner(item.flatIdx, 5 + cIdx)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 5 + cIdx, $event)"></span>
                         </td>
@@ -3223,8 +3358,24 @@ window.Panel_gemini = (() => {
           </div>
           <button type="button" class="btn sm ghost" style="padding:1px 7px" title="关闭文本编辑器（可在顶部工具栏重新开启）" @click="cellEditor.open = false">×</button>
         </div>
-        <div v-if="cellEditor.subTitle" class="ce-sub">
-          {{ cellEditor.subTitle }}
+        <div v-if="cellEditor.subTitle" class="ce-sub" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <span>{{ cellEditor.subTitle }}</span>
+          <div v-if="cellEditorSlot" style="display:inline-flex;align-items:center;gap:6px">
+            <span v-if="cellEditorSlot.hasNewline" class="speech-slot-badge" title="当前提示词中的最大连续换行处将自动识别为【人物说的话】动态变量，仅在提交 Flow 或收片时合并具体文案">
+              人物说的话 (已识别变量插槽)
+            </span>
+            <button type="button" class="btn sm ghost" style="padding:1px 7px;font-size:11px"
+                    @click="insertSpeechVariableToCellEditor()"
+                    title="在光标处插入连续换行作为【人物说的话】动态变量插槽">
+              ➕ 插入【人物说的话】变量换行
+            </button>
+          </div>
+        </div>
+        <div v-if="cellEditorSlot && cellEditorSlot.hasNewline" class="ce-slot-preview" style="padding:5px 12px;background:rgba(239,68,68,0.06);border-bottom:1px solid var(--border);font-size:11.5px;line-height:1.45;max-height:54px;overflow:auto">
+          <span class="muted">变量预览：</span>
+          <span>{{ cellEditorSlot.prefix }}</span>
+          <span class="speech-slot-badge">人物说的话</span>
+          <span>{{ cellEditorSlot.suffix }}</span>
         </div>
         <div class="ce-body">
           <textarea class="ce-textarea"

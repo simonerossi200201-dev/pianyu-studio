@@ -552,13 +552,15 @@ def tasks_all_segments_table(include_finished: int = 0, player_mode: int = 0):
 @app.post("/api/tasks/batch-update-segments")
 async def tasks_batch_update_segments(req: Request):
     """批量修改跨任务分段（文案/图片/时长/预设/提示词/Flow模式/勾选）。"""
-    from .services import arrange
+    from .services import arrange, history as hist_mod
     d = await body(req) or {}
-    return ok(**arrange.batch_update_segments(
+    res = arrange.batch_update_segments(
         updates=d.get("updates") or [],
         items=d.get("items") or [],
         task_updates=d.get("task_updates") or [],
-    ))
+        action_label=str(d.get("action_label") or ""),
+    )
+    return ok(**{k: v for k, v in res.items() if k != "ok"}, history=hist_mod.get_status())
 
 
 @app.post("/api/tasks/batch-apply-preset")
@@ -1030,10 +1032,14 @@ async def task_review_clear_fresh(tid: str, req: Request):
 async def task_track_settings(tid: str, req: Request):
     """只存钉住 / 限定图池 / 参数，不算轨、不改配图。"""
     tasks.ensure_writable(tid)
-    from .services import arrange
+    from .services import arrange, history as hist_mod
     d = await body(req)
     track = d.get("track") if isinstance(d.get("track"), dict) else d
-    return ok(track=arrange.save_track(tid, track))
+    try:
+        hist_mod.record_before(f"更新图池/排轨设置 ({tid})", task_ids=[tid], coalesce_window_s=1.0)
+    except Exception:
+        pass
+    return ok(track=arrange.save_track(tid, track), history=hist_mod.get_status())
 
 
 @app.post("/api/tasks/{tid}/mode")
@@ -2677,3 +2683,33 @@ async def player_save_project(req: Request):
         tids = [tids]
     res = player_mode.save_as_project(tids)
     return ok(**{k: v for k, v in res.items() if k != "ok"})
+
+
+# ---------------- 全局专业历史记录与撤销/重做 (Undo / Redo) ----------------
+@app.get("/api/history")
+def history_status():
+    from .services import history as hist_mod
+    st = hist_mod.get_status()
+    return ok(history=st, **st)
+
+
+@app.post("/api/history/undo")
+def history_undo():
+    from .services import history as hist_mod
+    res = hist_mod.undo()
+    return ok(**{k: v for k, v in res.items() if k != "ok"})
+
+
+@app.post("/api/history/redo")
+def history_redo():
+    from .services import history as hist_mod
+    res = hist_mod.redo()
+    return ok(**{k: v for k, v in res.items() if k != "ok"})
+
+
+@app.post("/api/history/clear")
+def history_clear():
+    from .services import history as hist_mod
+    res = hist_mod.clear_history()
+    return ok(**{k: v for k, v in res.items() if k != "ok"})
+

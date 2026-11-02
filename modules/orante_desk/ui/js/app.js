@@ -68,6 +68,73 @@
       const sseOk = computed(() => store.sseOk !== false);
       let refreshOkTimer = 0;
 
+      // ─── 专业历史记录撤销 / 重做引擎 (Ctrl+Z / Ctrl+Y) ───
+      const historyState = ref({
+        can_undo: false,
+        can_redo: false,
+        undo_count: 0,
+        redo_count: 0,
+        last_undo_label: '',
+        last_redo_label: '',
+        undo_list: [],
+        redo_list: [],
+      });
+      const historyBusy = ref(false);
+      const historyMenuOpen = ref(false);
+
+      async function refreshHistoryStatus() {
+        try {
+          const r = await API.get('/api/history', { silent: true });
+          if (r && (r.history || typeof r.can_undo === 'boolean')) {
+            historyState.value = r.history || r;
+          }
+        } catch (e) { /* ignore */ }
+      }
+      window.refreshHistoryStatus = refreshHistoryStatus;
+
+      async function doUndo() {
+        if (historyBusy.value || !historyState.value.can_undo) return;
+        historyBusy.value = true;
+        try {
+          const r = await API.post('/api/history/undo', {});
+          if (r && r.history) historyState.value = r.history;
+          if (r && r.applied) {
+            toast(`↩ 已撤销：${r.label || '上一步操作'}`, '', 'ok');
+            await refreshState({ probe: false });
+            store.refreshSeq = (store.refreshSeq || 0) + 1;
+            window.dispatchEvent(new CustomEvent('orante:history-applied', { detail: { action: 'undo', label: r.label } }));
+          }
+        } catch (e) { /* API toast */ } finally {
+          historyBusy.value = false;
+        }
+      }
+      window.oranteUndo = doUndo;
+
+      async function doRedo() {
+        if (historyBusy.value || !historyState.value.can_redo) return;
+        historyBusy.value = true;
+        try {
+          const r = await API.post('/api/history/redo', {});
+          if (r && r.history) historyState.value = r.history;
+          if (r && r.applied) {
+            toast(`↪ 已重做：${r.label || '下一步操作'}`, '', 'ok');
+            await refreshState({ probe: false });
+            store.refreshSeq = (store.refreshSeq || 0) + 1;
+            window.dispatchEvent(new CustomEvent('orante:history-applied', { detail: { action: 'redo', label: r.label } }));
+          }
+        } catch (e) { /* API toast */ } finally {
+          historyBusy.value = false;
+        }
+      }
+      window.oranteRedo = doRedo;
+
+      function toggleHistoryMenu() {
+        historyMenuOpen.value = !historyMenuOpen.value;
+        if (historyMenuOpen.value) {
+          refreshHistoryStatus();
+        }
+      }
+
       function typingTarget(el) {
         if (!el) return false;
         const tag = (el.tagName || '').toLowerCase();
@@ -113,6 +180,23 @@
       }
 
       function onRefreshKey(ev) {
+        // 全局 Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z 撤销与重做（当未在普通文本框内打字时触发全局快照撤销）
+        if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && !typingTarget(ev.target)) {
+          const k = (ev.key || '').toLowerCase();
+          if (k === 'z' && !ev.shiftKey) {
+            if (historyState.value.can_undo) {
+              ev.preventDefault();
+              doUndo();
+              return;
+            }
+          } else if (k === 'y' || (k === 'z' && ev.shiftKey)) {
+            if (historyState.value.can_redo) {
+              ev.preventDefault();
+              doRedo();
+              return;
+            }
+          }
+        }
         if (ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) {
           const altMap = {
             '0': 'accounts_pool',
@@ -137,7 +221,10 @@
         ev.preventDefault();
         doRefresh(false);
       }
-      function onDocClick() { refreshMenu.value = false; }
+      function onDocClick() {
+        refreshMenu.value = false;
+        historyMenuOpen.value = false;
+      }
 
       function openRescan() {
         if (window.Rescan) window.Rescan.open(ui.panelTid);
@@ -253,6 +340,7 @@ const lampTips = computed(() => {
         document.addEventListener('click', onDocClick);
         window.addEventListener('beforeunload', onAppUnload);
         window.addEventListener('pagehide', onAppUnload);
+        setTimeout(() => refreshHistoryStatus(), 600);
       });
       onUnmounted(() => {
         window.removeEventListener('keydown', onRefreshKey);
@@ -275,6 +363,7 @@ const lampTips = computed(() => {
       return {
         store, ui, t, currentPanel, panelKey, capTid, capTasks, activeJobs, readyAccounts, lamps, lampTips, nodeSubs, descQueue,
         refreshing, refreshOk, refreshMenu, sseOk, doRefresh, goNode,
+        historyState, historyBusy, historyMenuOpen, doUndo, doRedo, toggleHistoryMenu, refreshHistoryStatus,
         creditHalt, ackCredit, portLabel, cfgNotice, cfgNoticeText, newWindow, applyCfgRefresh,
         rescan: window.Rescan, srcWithV: window.srcWithV, openRescan,
         bootRetry, bootOpenLogs, bootCopyDiag,

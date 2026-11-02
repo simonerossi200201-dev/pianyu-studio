@@ -432,6 +432,7 @@ def get_track(task_id: str) -> dict:
     from . import broll, expand as expandmod, prompt_presets
     d, m, sync_log = broll.load_synced(task_id)
     t = taskmod.get(task_id) or {}
+    prompt_presets.sanitize_task_manifest_prompts(m, d=d, task=t)
     presets_info = prompt_presets.list_presets()
     presets_by_id = {p["id"]: p for p in presets_info.get("presets", [])}
     images = _annotate_images(m, d)
@@ -494,6 +495,11 @@ def arrange(job, track=None):
     """把 track 存进 manifest，plan + apply，任务标 arranged。不占账号。"""
     if not job.task_id:
         raise OranteError("arrange 需要 task_id")
+    try:
+        from . import history as hist_mod
+        hist_mod.record_before(f"应用排轨 {job.task_id}", task_ids=[job.task_id])
+    except Exception:
+        pass
     from . import broll
     d, m, sync_log = broll.load_synced(job.task_id)
     for ln in sync_log:
@@ -717,21 +723,27 @@ def set_seg_flow_mode(
 
 
 def _resolve_seg_prompt_preview(m: Manifest, seg: dict, task: dict, presets_by_id: dict[str, dict]) -> tuple[str, str]:
-    """返回 `(preset_name, prompt_preview)`。"""
-    from . import prompt_presets, prompts as pr_mod
+    """返回 `(preset_name, prompt_template)`。
+
+    注意：在 2 排镜头 与 3 提示词 表格中，提示词列必须保留【人物说的话】动态变量插槽（换行空行处），
+    绝不在此处将固定文案合并写死；仅在 4 生成 (Flow 提交) 与 5 收片 的 `prompt_final` 中再动态合入文案。
+    """
+    from . import prompt_presets
     pid = str(seg.get("preset_id") or task.get("preset_id") or "").strip()
     pr = presets_by_id.get(pid) if pid else None
     pname = (pr or {}).get("name") or ""
-    try:
-        preview = pr_mod.build_final_prompt(m, seg, task=task)
-    except Exception:
-        custom = str(seg.get("custom_prompt") or "").strip()
-        if custom:
-            preview = prompt_presets.insert_speech_at_max_newlines(custom, seg.get("text") or "")
-        elif pr and pr.get("template"):
-            preview = prompt_presets.insert_speech_at_max_newlines(pr["template"], seg.get("text") or "")
-        else:
-            preview = str(seg.get("prompt_final") or seg.get("text") or "")
+    custom = str(seg.get("custom_prompt") or "").strip()
+    if custom and not str(seg.get("preset_id") or "").strip():
+        all_speeches = [
+            str(s.get("text") or "").strip()
+            for s in (getattr(m, "segments", None) or [])
+            if str(s.get("text") or "").strip()
+        ]
+        preview = prompt_presets.strip_baked_speech_to_template(custom, all_speeches)
+    elif pr and pr.get("template"):
+        preview = str(pr["template"])
+    else:
+        preview = ""
     return pname, preview
 
 
@@ -773,6 +785,8 @@ def get_all_tasks_segments_table(
                     m = Manifest.load(Path(d_str))
                 except Exception:
                     m = None
+            if m is not None:
+                prompt_presets.sanitize_task_manifest_prompts(m, d=Path(d_str), task=t)
 
         images_out: list[dict] = []
         img_map: dict[str, dict] = {}
@@ -823,6 +837,7 @@ def get_all_tasks_segments_table(
                     "custom_prompt": "" if sg.get("preset_id") else (sg.get("custom_prompt") or ""),
                     "extra_prompts": extra_cols,
                     "prompt_preview": preview,
+                    "prompt_final": sg.get("prompt_final") or "",
                     "status": sg.get("status") or "planned",
                 }
                 segs_out.append(row)
@@ -857,9 +872,10 @@ def batch_update_segments(
     updates: list[dict] | None = None,
     items: list[dict] | None = None,
     task_updates: list[dict] | None = None,
+    action_label: str = "",
 ) -> dict:
     """批量保存跨任务镜头表的修改（勾选状态、配图、文案、时长、生成模式、预设、自定义提示词、附加列）。"""
-    from . import prompt_presets, prompts as pr_mod
+    from . import history as hist_mod, prompt_presets, prompts as pr_mod
     from ..engines.flow_api import normalize_flow_mode
 
     merged_updates = list(updates or []) + list(items or []) + list(task_updates or [])
@@ -871,6 +887,13 @@ def batch_update_segments(
         if tid:
             by_task.setdefault(tid, []).append(u)
 
+    if by_task:
+        try:
+            lbl = action_label or f"修改分段数据 ({', '.join(sorted(by_task.keys()))} 共 {len(merged_updates)} 项)"
+            hist_mod.record_before(lbl, task_ids=list(by_task.keys()), coalesce_window_s=1.2)
+        except Exception:
+            pass
+
     updated_segments = 0
     updated_tasks = 0
 
@@ -879,6 +902,11 @@ def batch_update_segments(
             t, m, d = _load(tid)
         except Exception:
             continue
+        all_task_speeches = [
+            str(s.get("text") or "").strip()
+            for s in (m.segments or [])
+            if str(s.get("text") or "").strip()
+        ]
         changed = False
         for it in items:
             if it.get("s") is None:
@@ -899,6 +927,8 @@ def batch_update_segments(
                 changed = True
             if "text" in it and it["text"] is not None:
                 seg["text"] = str(it["text"])
+                if str(it["text"]).strip():
+                    all_task_speeches.append(str(it["text"]).strip())
                 changed = True
             if "duration" in it and it["duration"] is not None:
                 seg["duration"] = int(it["duration"])
@@ -914,7 +944,9 @@ def batch_update_segments(
                     seg["custom_prompt"] = ""
                 changed = True
             if "custom_prompt" in it and it["custom_prompt"] is not None:
-                cp = str(it["custom_prompt"])
+                raw_cp = str(it["custom_prompt"])
+                # 严格保留【人物说的话】变量插槽，剥离任何误写死的固定文案
+                cp = prompt_presets.strip_baked_speech_to_template(raw_cp, all_task_speeches) if raw_cp.strip() else ""
                 seg["custom_prompt"] = cp
                 if cp.strip() and not str(it.get("preset_id") or "").strip():
                     seg["preset_id"] = ""
@@ -972,6 +1004,17 @@ def batch_apply_preset(
             continue
         s_val = int(tgt["s"]) if tgt.get("s") is not None else None
         by_task.setdefault(tid, []).append(s_val)
+
+    if by_task:
+        try:
+            from . import history as hist_mod
+            hist_mod.record_before(
+                f"批量应用提示词 ({mode_clean} · {', '.join(sorted(by_task.keys()))})",
+                task_ids=list(by_task.keys()),
+                coalesce_window_s=0.5,
+            )
+        except Exception:
+            pass
 
     # 准备预设池
     single_pr = prompt_presets.get_preset(preset_id) if preset_id else None
@@ -1067,14 +1110,22 @@ def batch_apply_preset(
                         im_obj["desc"] = gen_desc
 
                 gen_tpl = seen_task_images[dedup_key]
+                all_task_speeches = [
+                    str(s.get("text") or "").strip()
+                    for s in (m.segments or [])
+                    if str(s.get("text") or "").strip()
+                ]
                 if "\n" in gen_tpl:
-                    sg["custom_prompt"] = prompt_presets.insert_speech_at_max_newlines(
-                        gen_tpl, sg.get("text") or ""
+                    # 保留换行变量插槽（【人物说的话】），绝不将本段文案写死进 custom_prompt
+                    sg["custom_prompt"] = prompt_presets.strip_baked_speech_to_template(
+                        gen_tpl, all_task_speeches
                     )
                 else:
                     sg["custom_prompt"] = ""
-                if single_pr:
+                if single_pr and not sg["custom_prompt"]:
                     sg["preset_id"] = single_pr["id"]
+                else:
+                    sg["preset_id"] = ""
                 sg["prompt_final"] = pr_mod.build_final_prompt(m, sg, task=t)
                 sg["final_prompt"] = sg["prompt_final"]
                 applied_segments += 1

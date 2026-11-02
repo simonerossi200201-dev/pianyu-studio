@@ -1738,15 +1738,15 @@ window.Panel_track = (() => {
         gsSel.fillTargetR = rg.maxR;
       }
 
-      function composePresetPreview(presetId, speechText) {
+      // 核心原则：在 2 排镜头 中，提示词覆盖列始终保留【人物说的话】动态变量插槽，绝不把左侧具体文案写死进提示词！
+      const editingPromptKey = ref('');
+
+      function composePresetPreview(presetId) {
         if (!presetId) return '';
         const list = store.promptPresets || [];
         const pr = list.find(p => p && (p.id === presetId || p.name === presetId));
         if (!pr || !pr.template) return '';
-        if (window.PresetSlotLogic && typeof window.PresetSlotLogic.composeSpeech === 'function') {
-          return window.PresetSlotLogic.composeSpeech(pr.template, speechText || '');
-        }
-        return pr.template;
+        return String(pr.template);
       }
 
       function presetNameOf(presetId) {
@@ -1756,12 +1756,45 @@ window.Panel_track = (() => {
         return pr ? pr.name : presetId;
       }
 
+      function stripSpeechIfPresent(rawPrompt, segObj) {
+        if (!rawPrompt) return '';
+        const s = String(rawPrompt);
+        if (window.PresetSlotLogic && typeof window.PresetSlotLogic.stripBakedSpeech === 'function') {
+          return window.PresetSlotLogic.stripBakedSpeech(s, segObj && segObj.text ? [segObj.text] : []);
+        }
+        return s;
+      }
+
       function getSegPromptDisplay(sg) {
         if (!sg) return '';
-        if (sg.preset_id) {
-          return composePresetPreview(sg.preset_id, sg.text) || sg.prompt_preview || '';
+        if (sg.custom_prompt && String(sg.custom_prompt).trim()) {
+          return stripSpeechIfPresent(sg.custom_prompt, sg);
         }
-        return sg.custom_prompt || '';
+        if (sg.preset_id) {
+          return composePresetPreview(sg.preset_id) || stripSpeechIfPresent(sg.prompt_preview || '', sg);
+        }
+        return stripSpeechIfPresent(sg.prompt_preview || '', sg);
+      }
+
+      function analyzeSegPromptSlot(sg) {
+        const tpl = getSegPromptDisplay(sg);
+        if (window.PresetSlotLogic && typeof window.PresetSlotLogic.analyzeTemplate === 'function') {
+          return window.PresetSlotLogic.analyzeTemplate(tpl);
+        }
+        return { hasContent: !!tpl, hasNewline: false, maxNewlines: 0, prefix: tpl, suffix: '' };
+      }
+
+      function startEditSegPrompt(item, ev) {
+        if (!item) return;
+        editingPromptKey.value = item.rowKey;
+        setTimeout(() => {
+          const el = document.querySelector(`textarea[data-prompt-edit="${item.rowKey}"]`);
+          if (el && el.focus) el.focus();
+        }, 20);
+      }
+
+      function stopEditSegPrompt() {
+        editingPromptKey.value = '';
       }
 
       function getCellVal(rowItem, colIdx) {
@@ -1831,17 +1864,12 @@ window.Panel_track = (() => {
           u.preset_id = pid;
           u.custom_prompt = '';
         } else if (field === 'custom_prompt') {
-          const cp = String(rawVal == null ? '' : rawVal);
+          const cp = stripSpeechIfPresent(String(rawVal == null ? '' : rawVal), sg);
           sg.custom_prompt = cp;
           u.custom_prompt = cp;
           // 二选一：只要手动添加/粘贴了提示词覆盖，前面的预设自动清空
-          if (cp.trim()) {
-            sg.preset_id = '';
-            u.preset_id = '';
-          } else {
-            sg.preset_id = '';
-            u.preset_id = '';
-          }
+          sg.preset_id = '';
+          u.preset_id = '';
         }
         updatesOut.push(u);
       }
@@ -2131,10 +2159,14 @@ window.Panel_track = (() => {
         });
       }
 
-      async function saveBatchSegUpdates(updates, toastMsg) {
+      async function saveBatchSegUpdates(updates, toastMsg, actionLabel) {
         if (!updates || !updates.length) return;
         try {
-          await API.post('/api/tasks/batch-update-segments', { updates });
+          await API.post('/api/tasks/batch-update-segments', {
+            action_label: actionLabel || toastMsg || '',
+            updates,
+          });
+          if (window.refreshHistoryStatus) window.refreshHistoryStatus();
           if (toastMsg) toast(toastMsg, '', 'ok');
           if (showAllTasks.value) await loadAllTasksTable(true);
         } catch (e) { /* API toast */ }
@@ -2227,12 +2259,13 @@ window.Panel_track = (() => {
         );
       }
 
-      // 提示词覆盖输入/修改（二选一：只要手动添加/修改了提示词，前面的预设自动清空，并实时自动保存）
+      // 提示词覆盖输入/修改（二选一：只要手动添加/修改了提示词，前面的预设自动清空，并始终保留【人物说的话】动态变量插槽）
       const segPromptTimers = {};
       function onSegCustomPromptInput(taskId, sg, val, immediate = false) {
         const tId = taskId || tid.value;
-        const cp = String(val == null ? '' : val);
+        const cp = stripSpeechIfPresent(String(val == null ? '' : val), sg);
         sg.custom_prompt = cp;
+        sg.prompt_preview = cp;
         sg.preset_id = '';
         const key = `${tId}:${sg.s}`;
         if (segPromptTimers[key]) {
@@ -2240,7 +2273,11 @@ window.Panel_track = (() => {
           delete segPromptTimers[key];
         }
         const commit = () => {
-          saveBatchSegUpdates([{ task_id: tId, s: sg.s, custom_prompt: cp, preset_id: '' }]);
+          saveBatchSegUpdates(
+            [{ task_id: tId, s: sg.s, custom_prompt: cp, preset_id: '' }],
+            '',
+            `修改提示词覆盖 (${tId} s${pad3(sg.s)})`
+          );
         };
         if (immediate) {
           commit();
@@ -2386,17 +2423,22 @@ window.Panel_track = (() => {
           touchedImages.push(imgP);
 
           const allSegsInTask = getTaskSegListForItem(src);
+          const allTaskSpeeches = allSegsInTask.map(x => x && x.text).filter(Boolean);
+          const cleanTemplate = (window.PresetSlotLogic && typeof window.PresetSlotLogic.stripBakedSpeech === 'function')
+            ? window.PresetSlotLogic.stripBakedSpeech(manualPrompt || displayPrompt, allTaskSpeeches)
+            : (manualPrompt || displayPrompt);
+
           for (const sg of allSegsInTask) {
             if (getEffectiveSegImgP(tId, sg) !== imgP) continue;
             if (hasPreset && gsCellMenu.colIdx === 5) {
               sg.preset_id = src.seg.preset_id;
               sg.custom_prompt = '';
               updates.push({ task_id: tId, s: sg.s, preset_id: sg.preset_id, custom_prompt: '' });
-            } else if (manualPrompt || displayPrompt) {
-              const finalPromptText = manualPrompt || displayPrompt;
-              sg.custom_prompt = finalPromptText;
+            } else if (cleanTemplate) {
+              sg.custom_prompt = cleanTemplate;
+              sg.prompt_preview = cleanTemplate;
               sg.preset_id = '';
-              updates.push({ task_id: tId, s: sg.s, custom_prompt: finalPromptText, preset_id: '' });
+              updates.push({ task_id: tId, s: sg.s, custom_prompt: cleanTemplate, preset_id: '' });
             } else if (hasPreset) {
               sg.preset_id = src.seg.preset_id;
               sg.custom_prompt = '';
@@ -2548,11 +2590,18 @@ window.Panel_track = (() => {
         if (gsSel.fillDragging) commitGsFillDrag();
       }
 
+      function onHistoryApplied() {
+        window.refreshPromptPresets({ silent: true }).catch(() => {});
+        if (tid.value) loadTrack();
+        if (showAllTasks.value) loadAllTasksTable(true).catch(() => {});
+      }
+
       onMounted(() => {
         document.addEventListener('click', onDocClick);
         document.addEventListener('keydown', onMenuKey);
         document.addEventListener('keydown', handleGsCopyPasteKey);
         window.addEventListener('mouseup', stopAllMouseUp);
+        window.addEventListener('orante:history-applied', onHistoryApplied);
         window.refreshPromptPresets({ silent: true }).catch(() => {});
         if (!adoptPanelTid(tid, 'track') && !tid.value && readyTasks.value.length) {
           tid.value = readyTasks.value[0].id;
@@ -2571,6 +2620,7 @@ window.Panel_track = (() => {
         document.removeEventListener('keydown', onMenuKey);
         document.removeEventListener('keydown', handleGsCopyPasteKey);
         window.removeEventListener('mouseup', stopAllMouseUp);
+        window.removeEventListener('orante:history-applied', onHistoryApplied);
         if (window.unregisterFlush) window.unregisterFlush('track');
         stopPolls();
         if (holdTimer) clearTimeout(holdTimer);
@@ -2605,7 +2655,8 @@ window.Panel_track = (() => {
         floatingViewer, currentFloatingRow, toggleFloatingViewer, stepFloatingViewer, startFloatingViewerDrag,
         toggleSingleTaskHeaderRow, isTaskHeaderVisible,
         allPresets, expandPresets, filteredPresets, curTaskFlowMode, curTaskPresetId,
-        composePresetPreview, presetNameOf, getSegPromptDisplay,
+        composePresetPreview, presetNameOf, getSegPromptDisplay, analyzeSegPromptSlot,
+        editingPromptKey, startEditSegPrompt, stopEditSegPrompt,
         taskColor, toggleShowAllTasks, expandAllTasks, hotSwitchTask,
         isSegChecked, startSegDrag, enterSegDrag, isTaskAllSegChecked, toggleTaskAllSeg,
         onTaskPresetChange, onTaskFlowModeChange, onSegImageChange, onSegFlowModeChange,
@@ -3204,7 +3255,7 @@ window.Panel_track = (() => {
                         @mousedown="startGsFillDrag($event)"></span>
                 </td>
 
-                <!-- Col 6: 提示词覆盖内容（手动输入后自动清空前面预设，与预设二选一） -->
+                <!-- Col 6: 提示词覆盖内容（始终保留红色【人物说的话】动态变量对应左侧文案，绝不把文案写死进去；手动输入后自动清空前面预设） -->
                 <td :class="{
                       'gs-cell-in-range': isGsCellInRange(item.flatIdx, 6),
                       'gs-cell-active': isGsCellActive(item.flatIdx, 6),
@@ -3212,15 +3263,36 @@ window.Panel_track = (() => {
                     }"
                     @mousedown="onGsCellMouseDown(item.flatIdx, 6, $event)"
                     @mouseenter="onGsCellMouseEnter(item.flatIdx, 6)"
+                    @dblclick="startEditSegPrompt(item, $event)"
                     @contextmenu.prevent="openGsCellMenu(item, 6, $event)">
-                  <textarea class="trk-inline-input"
-                            style="width:100%;min-height:28px;height:100%;resize:none;line-height:1.4;white-space:pre-wrap"
-                            rows="1"
+                  <textarea v-if="editingPromptKey === item.rowKey"
+                            :data-prompt-edit="item.rowKey"
+                            class="trk-inline-input"
+                            style="width:100%;min-height:48px;height:100%;resize:vertical;line-height:1.45;white-space:pre-wrap"
+                            rows="2"
                             :value="getSegPromptDisplay(item.seg)"
-                            placeholder="手动输入提示词（自动清空预设）…"
+                            placeholder="手动输入提示词模板（最大换行处自动作为【人物说的话】变量插槽，自动清空预设）…"
                             @input="onSegCustomPromptInput(item.taskId, item.seg, $event.target.value, false)"
                             @change="onSegCustomPromptInput(item.taskId, item.seg, $event.target.value, true)"
+                            @blur="stopEditSegPrompt()"
                             @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'custom_prompt', $event)"></textarea>
+                  <div v-else
+                       class="gs-cell-text trk-prompt-slot-view"
+                       style="cursor:text;min-height:28px;line-height:1.45;padding:2px 4px"
+                       title="单击选中（可右键批量套用给同图的所有段），双击进入编辑（换行处自动作为【人物说的话】动态变量对应左侧文案）"
+                       @click="isGsCellActive(item.flatIdx, 6) && startEditSegPrompt(item, $event)">
+                    <template v-if="!getSegPromptDisplay(item.seg)">
+                      <span class="muted" style="font-size:11.5px" @click.stop="startEditSegPrompt(item, $event)">点击输入提示词模板（换行处为【人物说的话】变量）…</span>
+                    </template>
+                    <template v-else-if="analyzeSegPromptSlot(item.seg).hasNewline">
+                      <span>{{ analyzeSegPromptSlot(item.seg).prefix }}</span>
+                      <span class="speech-slot-badge" :title="'动态变量：对应左侧文案「' + (item.seg.text || '人物说的话') + '」，仅在提交 Flow 与收片时合成'">人物说的话</span>
+                      <span>{{ analyzeSegPromptSlot(item.seg).suffix }}</span>
+                    </template>
+                    <template v-else>
+                      <span>{{ getSegPromptDisplay(item.seg) }}</span>
+                    </template>
+                  </div>
                   <span v-if="isGsFillHandleCell(item.flatIdx, 6)" class="gs-fill-handle"
                         @mousedown="startGsFillDrag($event)"></span>
                 </td>
