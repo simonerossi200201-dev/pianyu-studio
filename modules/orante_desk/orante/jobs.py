@@ -9,22 +9,35 @@ from __future__ import annotations
 import copy
 import threading
 
-from . import events, tasks as taskmod
+from . import events, paths, tasks as taskmod
 from .errors import OranteError
 from .scheduler import Job, scheduler
 
-REGISTRY: dict[str, callable] = {}
-ACCOUNT_BOUND: set[str] = set()
+REGISTRY: dict[str, callable] = globals().get("REGISTRY") or {}
+ACCOUNT_BOUND: set[str] = globals().get("ACCOUNT_BOUND") or set()
 
 # Job 类实际在 scheduler.py。规格 14 要的进度字段挂在这里打补丁，
 # 这样 /api/jobs 的 to_dict 会带上 progress，不必改调度器其它逻辑。
 _MISSING = object()
-_orig_job_init = Job.__init__
-_orig_job_to_dict = Job.to_dict
 
 
-def _job_init(self, *args, **kwargs):
-    _orig_job_init(self, *args, **kwargs)
+def _job_init(self, job_id: str, task_id: str | None, kind: str, account_id: str | None, fn, args: dict):
+    self.id = job_id
+    self.task_id = task_id
+    self.kind = kind
+    self.account_id = account_id      # None = 不占账号（纯本地计算）
+    self.fn = fn
+    self.args = args
+    self.status = "queued"
+    self.cancelled = threading.Event()
+    self.log_path = paths.LOGS / f"{job_id}.log"
+    self._fh = None
+    self.error = None
+    self.result = None
+    self.credit_halt = None
+    self.credit_continue = False
+    self.credit_b0 = None
+    self.flow_throttle = None
     self.progress = {
         "phase": "", "done": 0, "total": 0, "current": "", "items": [],
     }
@@ -55,7 +68,12 @@ def _job_set_progress(self, **kw):
 
 
 def _job_to_dict(self):
-    d = _orig_job_to_dict(self)
+    d = {
+        "id": self.id, "task_id": self.task_id, "kind": self.kind, "account_id": self.account_id,
+        "status": self.status, "error": self.error, "log": str(self.log_path), "result": self.result,
+        "prio": self.prio, "credit_halt": self.credit_halt,
+        "flow_throttle": self.flow_throttle,
+    }
     lock = getattr(self, "_progress_lock", None)
     prog = getattr(self, "progress", None)
     if lock is not None and prog is not None:
@@ -124,11 +142,6 @@ def _check_run_account(kind: str, task_id: str, t: dict, account_id: str | None)
 
 
 def start(kind: str, task_id: str | None, **args):
-    try:
-        from .services.refresh import reload_runtime_modules
-        reload_runtime_modules()
-    except Exception:
-        pass
     fn = REGISTRY.get(kind)
     if not fn:
         raise OranteError(f"未知的任务类型 {kind}", f"可用: {', '.join(sorted(REGISTRY))}")

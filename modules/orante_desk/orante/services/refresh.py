@@ -8,8 +8,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import threading as _threading
+
 from .. import accounts, tasks as taskmod
 from ..errors import OranteError
+
+_RELOAD_LOCK = _threading.Lock()
 
 
 def reload_runtime_modules() -> list[str]:
@@ -19,30 +23,35 @@ def reload_runtime_modules() -> list[str]:
     reloaded: list[str] = []
     mod_names = (
         "orante.engines.flow_api",
+        "orante.services.prepare",
         "orante.services.describe",
         "orante.services.simple86",
         "orante.services.prompt_presets",
         "orante.services.arrange",
-        "orante.jobs",
+        "orante.services.expand",
+        "orante.services.review",
+        "orante.services.tails",
+        "orante.services.bench",
+        "orante.services.desc_cards",
         "orante.services.generate",
-        "orante.services.refresh",
     )
-    for name in mod_names:
-        mod = sys.modules.get(name)
-        if mod is not None:
-            try:
-                importlib.reload(mod)
-                reloaded.append(name)
-            except Exception:
-                pass
-    try:
-        from ..engines import shared as _sh, flow_api as _fa
-        for sh in list(getattr(_sh, "_registry", {}).values()):
-            eng = getattr(sh, "_eng", None)
-            if eng is not None and getattr(eng, "name", "") == "flow":
-                eng.__class__ = _fa.FlowEngine
-    except Exception:
-        pass
+    with _RELOAD_LOCK:
+        for name in mod_names:
+            mod = sys.modules.get(name)
+            if mod is not None:
+                try:
+                    importlib.reload(mod)
+                    reloaded.append(name)
+                except Exception:
+                    pass
+        try:
+            from ..engines import shared as _sh, flow_api as _fa
+            for sh in list(getattr(_sh, "_registry", {}).values()):
+                eng = getattr(sh, "_eng", None)
+                if eng is not None and getattr(eng, "name", "") == "flow":
+                    eng.__class__ = _fa.FlowEngine
+        except Exception:
+            pass
     return reloaded
 
 
