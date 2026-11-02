@@ -592,9 +592,13 @@ _REJECT_HINT = re.compile(
     r"prominent|policy|violat|unsafe|celebrit|blocked|SAFETY|RAI", re.I)
 
 # 规格 82：Flow 错误码 → 人话 + 处理。散落的 _REJECT_HINT / 重试判断往这里收。
-# action: throttle 不重试并冷却；reject 换图；retry 现有退避；
-#         busy 30s→60s→120s；unknown 现有重试，第一行人话。
+# action: throttle 不重试并冷却；busy_traffic 原地退避重试本段（3次仍限流再转 throttle）；
+#         reject 换图；retry 现有退避；busy 30s→60s→120s；unknown 现有重试，第一行人话。
 FLOW_ERRORS = {
+    "PUBLIC_ERROR_UNUSUAL_ACTIVITY_TOO_MUCH_TRAFFIC": {
+        "plain": "Flow 提示短时间内提交偏快（TOO_MUCH_TRAFFIC）",
+        "action": "busy_traffic",
+    },
     "PUBLIC_ERROR_UNUSUAL_ACTIVITY": {
         "plain": "这个 Flow 账号被 Google 暂时限流了（短时间内提交太多）",
         "action": "throttle",
@@ -622,6 +626,7 @@ FLOW_ERRORS = {
     },
 }
 BUSY_BACKOFF = (30, 60, 120)
+TRAFFIC_BACKOFF = (35, 60, 90)
 _PUBLIC_ERR_RE = re.compile(r"PUBLIC_ERROR_[A-Z0-9_]+")
 _NAMED_ERR_RE = re.compile(
     r"(PUBLIC_ERROR_[A-Z0-9_]+|RESOURCE_EXHAUSTED|UNAVAILABLE)")
@@ -900,10 +905,25 @@ def classify_flow_error(rpc: str, res: dict | None) -> dict:
     if not code and status == 429:
         code = "HTTP_429"
     low = blob.lower()
+    up_code = (code or "").upper()
+    up_blob = blob.upper()
     info = FLOW_ERRORS.get(code) if code else None
+    if info is None and ("TOO_MUCH_TRAFFIC" in up_code or "TOO_MUCH_TRAFFIC" in up_blob or "RATE_LIMIT" in up_code):
+        info = FLOW_ERRORS["PUBLIC_ERROR_UNUSUAL_ACTIVITY_TOO_MUCH_TRAFFIC"]
+        code = code or "PUBLIC_ERROR_UNUSUAL_ACTIVITY_TOO_MUCH_TRAFFIC"
+    if info is None and ("UNUSUAL_ACTIVITY" in up_code or "UNUSUAL_ACTIVITY" in up_blob):
+        info = FLOW_ERRORS["PUBLIC_ERROR_UNUSUAL_ACTIVITY"]
+        code = code or "PUBLIC_ERROR_UNUSUAL_ACTIVITY"
     if info is None and code.startswith("PUBLIC_ERROR_") and _REJECT_HINT.search(code):
         info = {"plain": "画面被 Flow 审核拦下了", "action": "reject"}
-    if info is None and (status == 429 or "high demand" in low or "resource_exhausted" in low):
+    if info is None and (
+        status in (429, 500, 502, 503, 504)
+        or "high demand" in low
+        or "resource_exhausted" in low
+        or "unavailable" in low
+        or "deadline_exceeded" in low
+        or "timed_out" in low
+    ):
         info = FLOW_ERRORS["RESOURCE_EXHAUSTED"]
         code = code or "RESOURCE_EXHAUSTED"
     if info is None and code:
@@ -2199,63 +2219,6 @@ class FlowEngine(Engine):
             time.sleep(0.3)
         self._ui_step("点生成")
         match_rpcs = VIDEO_GEN_RPCS if rpc == "eb1hJf" else (rpc,)
-        # 在页面内挂一层轻量 XHR/fetch 旁路缓存，防止 Chromium 偶发回收 CDP Network 缓冲区
-        # 报 Protocol error (Network.getResponseBody): No data found for resource with given identifier
-        try:
-            page.evaluate(r"""() => {
-                window.__orante_rpc_tap = null;
-                if (window.__orante_rpc_tap_installed) return;
-                window.__orante_rpc_tap_installed = true;
-                const origOpen = XMLHttpRequest.prototype.open;
-                const origSend = XMLHttpRequest.prototype.send;
-                XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-                    this.__or_url = String(url || '');
-                    this.__or_method = String(method || '');
-                    return origOpen.call(this, method, url, ...rest);
-                };
-                XMLHttpRequest.prototype.send = function(body) {
-                    if (this.__or_url && this.__or_url.includes('batchexecute')) {
-                        const post = typeof body === 'string' ? body : '';
-                        this.addEventListener('load', () => {
-                            try {
-                                window.__orante_rpc_tap = {
-                                    url: this.__or_url,
-                                    status: this.status || 200,
-                                    text: this.responseText || '',
-                                    post: post,
-                                    at: Date.now()
-                                };
-                            } catch (e) {}
-                        });
-                    }
-                    return origSend.call(this, body);
-                };
-                if (typeof window.fetch === 'function') {
-                    const origFetch = window.fetch;
-                    window.fetch = async function(input, init) {
-                        const url = typeof input === 'string' ? input : (input && input.url) || '';
-                        const post = (init && typeof init.body === 'string') ? init.body : '';
-                        const resp = await origFetch.apply(this, arguments);
-                        if (url && url.includes('batchexecute')) {
-                            try {
-                                const clone = resp.clone();
-                                clone.text().then(txt => {
-                                    window.__orante_rpc_tap = {
-                                        url: url,
-                                        status: resp.status || 200,
-                                        text: txt || '',
-                                        post: post,
-                                        at: Date.now()
-                                    };
-                                }).catch(() => {});
-                            } catch (e) {}
-                        }
-                        return resp;
-                    };
-                }
-            }""")
-        except Exception:
-            pass
         with page.expect_response(
             lambda r: r.request.method == "POST" and "batchexecute" in r.url and any(
                 f"rpcids={x}" in r.url or f"%2C{x}" in r.url or f",{x}" in r.url
@@ -2275,20 +2238,23 @@ class FlowEngine(Engine):
         try:
             raw_text = resp.text()
         except Exception:
-            # CDP 缓冲区被释放时，从页面内旁路 tap 读取响应正文
-            for _ in range(10):
-                try:
-                    tap = page.evaluate("() => window.__orante_rpc_tap")
-                    if isinstance(tap, dict) and tap.get("text"):
-                        raw_text = str(tap.get("text") or "")
-                        if not post and tap.get("post"):
-                            post = str(tap.get("post") or "")
-                        break
-                except Exception:
-                    pass
-                time.sleep(0.15)
-            if not raw_text:
-                raise
+            # 偶发 Chromium 提前释放 CDP Network 缓冲区（Network.getResponseBody）：
+            # 不在页面内篡改原生 XHR/fetch（避免触发 reCAPTCHA 环境检测），
+            # 而是直接监听 Flow 页面自身紧接着发出的 jwpduf 轮询回包，按本段提示词精准认领新生成的 genId。
+            if rpc == "eb1hJf" and resp.status == 200:
+                recovered_gid = self._ui_recover_gid_from_jwpduf(page, prompt)
+                if recovered_gid:
+                    return {
+                        "payload": [None, self._credits_last, None, [[recovered_gid]]],
+                        "err": None,
+                        "raw": "",
+                        "rpc": rpc,
+                        "status": 200,
+                        "prompt_ok": True,
+                        "req_strings": _freq_strings(post) if post else None,
+                        "audio": request_audio_flag(post) if post else None,
+                    }
+            raise
         out = _parse_batchexecute(raw_text, rpc)
         out["status"] = resp.status
         out["prompt_ok"] = None
@@ -2302,6 +2268,40 @@ class FlowEngine(Engine):
             except Exception:
                 out["prompt_ok"] = None
         return out
+
+    def _ui_recover_gid_from_jwpduf(self, page, prompt: str | None) -> str | None:
+        """当提交响应正文被 CDP 提前回收时，从页面随后的 jwpduf 轮询回包里按提示词找回刚生成的 genId。"""
+        want = _norm_prompt(prompt or "")
+        for _ in range(2):
+            try:
+                with page.expect_response(
+                    lambda r: r.request.method == "POST" and "batchexecute" in r.url and "jwpduf" in r.url,
+                    timeout=10_000,
+                ) as jw_info:
+                    pass
+                jw_txt = jw_info.value.text()
+                parsed = _parse_batchexecute(jw_txt, "jwpduf")
+                recs = _g(parsed.get("payload"), 2, default=[]) or []
+                for rec in recs:
+                    gid = _g(rec, 0)
+                    if not isinstance(gid, str) or len(gid) < 20 or gid in self._active:
+                        continue
+                    if not want or any(_norm_prompt(s) == want for s in _walk_strs(rec)):
+                        self.log(f"  · 从页面轮询流中成功认领本段 genId → {gid[:8]}…")
+                        return gid
+            except Exception:
+                pass
+        return None
+
+    def _ui_cleanup_failed_card(self, page) -> None:
+        """如果页面左上角出现了 Failed 卡片（带 Delete 按钮），顺手点掉，保持网格干净。"""
+        try:
+            del_btn = page.get_by_role("button", name="Delete", exact=True)
+            if del_btn.count() > 0 and del_btn.first.is_visible():
+                del_btn.first.click(timeout=3000)
+                self._ui_pace(0.3, 0.6)
+        except Exception:
+            pass
 
     def _ui_dump_scene(self, page, why: str) -> str:
         """对不上的时候把现场存下来：一张截图 + 页面上所有按钮/单选/输入框。
@@ -2454,43 +2454,65 @@ class FlowEngine(Engine):
         """真点上传框、真粘贴、真点「开始生成」——不走 page.evaluate 拼接口，
         让 Flow 自己的前端代码去发那个请求，reCAPTCHA 看到的是一次真操作。"""
         page = self._ensure_page()
-        res = self._ui_attempt(page, lambda: self._ui_fill_and_generate(
-            page, image, prompt, duration, last_image=last_image, aspect=aspect,
-            silent=silent, flow_mode=flow_mode))
-        self._ui_step("看回包")
-        if res.get("status") == 200 and not res.get("err"):
-            payload = res.get("payload")
-            recs = _g(payload, 3, default=[]) or []
-            gen_id = _g(recs, 0, 0)
-            if not gen_id:
-                raise OranteError("真人操作提交没拿到 genId",
-                                  json.dumps(payload, ensure_ascii=False)[:300])
-            if res.get("prompt_ok") is False:
-                # 收到的这条生成回包，请求里带的不是这一段的提示词——对号绝不能乱认，
-                # 宁可这一段报错（不记 genId、不下载、不改名），也不能把别的片子记到这段头上。
-                raise OranteError(
-                    "生成回包和这一段对不上（请求里的提示词不是这一段的），这个 genId 不认",
-                    f"genId {gen_id[:8]}… 没记到 s{seg.get('s', 0):03d} 头上，也不会下载改名。"
-                    "已经点了「生成」，这一段可能已经在 Flow 里生成了——先去 Flow 页面看一眼，别急着重交。")
-            mid = model_id_for(self.model_name, duration)
-            mid_r2v = mid.replace("_i2v_", "_r2v_")
-            leaves = res.get("req_strings") or []
-            if leaves and mid not in leaves and mid_r2v not in leaves:
-                got = next((x for x in leaves if x.startswith("veo_")), "?")
-                self.log(f"  ⚠ s{seg.get('s', 0):03d} 请求里的模型是 {got}，不是预期的 {mid}")
-            want_audio = AUDIO_SILENT if silent else AUDIO_WITH_SOUND
-            got_audio = res.get("audio")
-            if got_audio is not None and got_audio != want_audio:
-                self.log(f"  ⚠ s{seg.get('s', 0):03d} 请求里的声音设置是"
-                         f"{'无声' if got_audio == AUDIO_SILENT else '有声'}，跟这段要的"
-                         f"{'无声' if silent else '有声'}对不上（网页「Return silent videos」开关）")
-            slot1 = _g(payload, 1)
-            self._note_rpc("eb1hJf", mid, slot1)
-            self._active.add(gen_id)
-            self.log(f"  ✓ 已提交 s{seg.get('s', 0):03d}（真人操作）→ {gen_id[:8]}…  "
-                     f"{duration}s  剩余额度 {slot1}")
-            return gen_id
-        info = classify_flow_error("eb1hJf", res)
+        res = {}
+        info = {}
+        for traffic_try in range(len(TRAFFIC_BACKOFF) + 1):
+            res = self._ui_attempt(page, lambda: self._ui_fill_and_generate(
+                page, image, prompt, duration, last_image=last_image, aspect=aspect,
+                silent=silent, flow_mode=flow_mode))
+            self._ui_step("看回包")
+            if res.get("status") == 200 and not res.get("err"):
+                payload = res.get("payload")
+                recs = _g(payload, 3, default=[]) or []
+                gen_id = _g(recs, 0, 0)
+                if not gen_id:
+                    raise OranteError("真人操作提交没拿到 genId",
+                                      json.dumps(payload, ensure_ascii=False)[:300])
+                if res.get("prompt_ok") is False:
+                    # 收到的这条生成回包，请求里带的不是这一段的提示词——对号绝不能乱认，
+                    # 宁可这一段报错（不记 genId、不下载、不改名），也不能把别的片子记到这段头上。
+                    raise OranteError(
+                        "生成回包和这一段对不上（请求里的提示词不是这一段的），这个 genId 不认",
+                        f"genId {gen_id[:8]}… 没记到 s{seg.get('s', 0):03d} 头上，也不会下载改名。"
+                        "已经点了「生成」，这一段可能已经在 Flow 里生成了——先去 Flow 页面看一眼，别急着重交。")
+                mid = model_id_for(self.model_name, duration)
+                mid_r2v = mid.replace("_i2v_", "_r2v_")
+                leaves = res.get("req_strings") or []
+                if leaves and mid not in leaves and mid_r2v not in leaves:
+                    got = next((x for x in leaves if x.startswith("veo_")), "?")
+                    self.log(f"  ⚠ s{seg.get('s', 0):03d} 请求里的模型是 {got}，不是预期的 {mid}")
+                want_audio = AUDIO_SILENT if silent else AUDIO_WITH_SOUND
+                got_audio = res.get("audio")
+                if got_audio is not None and got_audio != want_audio:
+                    self.log(f"  ⚠ s{seg.get('s', 0):03d} 请求里的声音设置是"
+                             f"{'无声' if got_audio == AUDIO_SILENT else '有声'}，跟这段要的"
+                             f"{'无声' if silent else '有声'}对不上（网页「Return silent videos」开关）")
+                slot1 = _g(payload, 1)
+                self._note_rpc("eb1hJf", mid, slot1)
+                self._active.add(gen_id)
+                self.log(f"  ✓ 已提交 s{seg.get('s', 0):03d}（真人操作）→ {gen_id[:8]}…  "
+                         f"{duration}s  剩余额度 {slot1}")
+                return gen_id
+            info = classify_flow_error("eb1hJf", res)
+            self._ui_cleanup_failed_card(page)
+            act = info.get("action")
+            if act in ("busy_traffic", "busy", "retry"):
+                if traffic_try < len(TRAFFIC_BACKOFF):
+                    delay = TRAFFIC_BACKOFF[traffic_try] + random.uniform(2.0, 8.0)
+                    self.log(f"  ⏸ s{seg.get('s', 0):03d} {info.get('plain')}，"
+                             f"原地缓 {int(delay)} 秒后自动重交本段（第 {traffic_try + 1}/{len(TRAFFIC_BACKOFF)} 次）")
+                    time.sleep(delay)
+                    try:
+                        self._ui_reload(page)
+                    except Exception:
+                        pass
+                    continue
+                if act == "busy_traffic":
+                    raise FlowThrottled(
+                        self.account.get("name") or "",
+                        code=info.get("code") or "PUBLIC_ERROR_UNUSUAL_ACTIVITY_TOO_MUCH_TRAFFIC",
+                        err_n=info.get("err_n"), raw=str(res.get("err"))[:300])
+            break
         if info.get("action") == "throttle":
             raise FlowThrottled(
                 self.account.get("name") or "",

@@ -85,8 +85,8 @@ DEFAULTS: dict = {
     "engine.pack.max_tasks": 3,           # 打开后最多几个任务共用一个账号（2~5）
     # 冷却期间每隔几分钟真的试提交一次；成功就当场解除。0 = 不探路，等满为止
     "engine.flow.throttle_probe_min": 4,
-    # 规格 94：两次提交之间至少隔几秒（带抖动）。连打最容易被 Google 判成「异常活动」。0 = 不等
-    "engine.flow.submit_gap_sec": 2,
+    # 规格 94 + 11-03 铁律四：两次提交之间至少隔几秒（带抖动）。默认 8 秒避免滑窗流控 TOO_MUCH_TRAFFIC。0 = 不等
+    "engine.flow.submit_gap_sec": 8,
     # 规格 98：本地 AI 算力网关（LTX-2.5 22B 视频 / FLUX.2 4B 生图）。
     "engine.studio.enabled": True,            # 总开关：默认开，支持随时手动切本地 AI 或自动兜底
     "engine.studio.fallback": True,           # 优先开关（默认开）：Flow 拒图时优先唤醒本地视频模型 LTX（不重新生图，自动按本地/Grok规则重分段）

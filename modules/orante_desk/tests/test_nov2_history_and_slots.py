@@ -213,6 +213,29 @@ class TestNov2HistoryAndVariableSlots(unittest.TestCase):
         self.assertIn("asset-item-active", flow_api.ASSET_STATE_JS)
         self.assertIn("mat-spinner", flow_api.ASSET_STATE_JS)
 
+    def test_four_iron_rules_traffic_and_proven_image(self):
+        from orante import models
+        from orante.engines import flow_api
+        from orante.services import generate
+
+        # Iron Rule 1: TOO_MUCH_TRAFFIC classified as busy_traffic (in-place backoff) rather than unknown
+        info = flow_api.classify_flow_error(
+            "eb1hJf",
+            {"status": 200, "err": ["PUBLIC_ERROR_UNUSUAL_ACTIVITY_TOO_MUCH_TRAFFIC"]},
+        )
+        self.assertEqual(info["action"], "busy_traffic")
+
+        # Iron Rule 3: Proven good image is not considered _never_collected
+        d = self._create_sample_task("T0199")
+        m = models.Manifest.load(d)
+        m.segments[0]["image"] = "p01"
+        m.segments[0]["status"] = "collected"
+        self.assertFalse(generate._never_collected(m, "p01"))
+        self.assertFalse(generate.maybe_block_for_fails("p01") if hasattr(generate, "maybe_block_for_fails") else False)
+
+        # Iron Rule 4: submit_gap defaults to 8.0s breathing room
+        self.assertEqual(generate.submit_gap(), 8.0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -871,18 +871,16 @@ def submit_wait(acc_id: str, gap: float, *, now: float | None = None) -> float:
 def submit_gap() -> float:
     """两次提交之间至少隔多久（秒）。0 = 不等。
 
-    规格 94：插件是人一条条点的，Orante 是一秒钟连打好几发——
-    reCAPTCHA Enterprise 给的是"这次交互像不像人"的分数，连打最容易被判成
-    PUBLIC_ERROR_UNUSUAL_ACTIVITY。隔几秒再交一发，代价是每段多等几秒，
-    换来的是不用等 20 分钟冷却。嫌慢的把这项设成 0。
+    规格 94 + 11-03 铁律四：拉开「呼吸感」提交间隔，默认 8 秒（配合 submit_wait 抖动约 8~12 秒），
+    避免多任务连跑时触发 Google 滑窗流控 PUBLIC_ERROR_UNUSUAL_ACTIVITY_TOO_MUCH_TRAFFIC。
     """
     try:
         v = config.get("engine.flow.submit_gap_sec", None)
-        if v is None:
-            return 2.0
+        if v is None or float(v) == 2.0:
+            return 8.0
         return max(0.0, float(v))
     except Exception:  # noqa: BLE001
-        return 2.0
+        return 8.0
 
 
 def _probe_every() -> float:
@@ -969,6 +967,38 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
     if missing_reset:
         job.log(f"  · 检测到 {missing_reset} 段磁盘缺片且无缓存地址，已自动打回待生成")
         m.save(d)
+    # 铁律三（已出片好图免死金牌）+ 手动开跑自动解封被误判的图：
+    # 1) 只要某张图在本任务中已经成功收过片（not _never_collected），它就绝不是违规坏图，自动解除 blocked / studio_pending；
+    # 2) 手动点开始生成（rtc_round == 0）时，凡不是上传当场被拒（flow_upload_refused）的 blocked 图，一律恢复 ok 用原图出片。
+    unblocked_ps: list[str] = []
+    for im0 in (m.images or []):
+        p0 = im0.get("p") or ""
+        if not p0:
+            continue
+        proven_ok = not _never_collected(m, p0)
+        false_block = (rtc_round == 0 and not im0.get("flow_upload_refused"))
+        if im0.get("status") == "blocked" and (proven_ok or false_block):
+            im0["status"] = "ok"
+            im0["gen_fail"] = 0
+            im0["content_fail"] = 0
+            im0.pop("block_reason", None)
+            im0.pop("studio_route", None)
+            unblocked_ps.append(p0)
+        if proven_ok:
+            for sg0 in (m.segments or []):
+                if sg0.get("image") == p0 and sg0.get("studio_pending"):
+                    sg0.pop("studio_pending", None)
+                    sg0.pop("studio_reason", None)
+                    if sg0.get("status") == "blocked":
+                        sg0["status"] = "planned"
+                        sg0["error"] = None
+    if unblocked_ps:
+        for sg0 in (m.segments or []):
+            if sg0.get("image") in unblocked_ps and sg0.get("status") == "blocked" and not sg0.get("studio_pending"):
+                sg0["status"] = "planned"
+                sg0["error"] = None
+        m.save(d)
+        job.log(f"  · 已自动解封原图 {'/'.join(unblocked_ps)}，恢复用原图正常出片")
     # 开着「跑到全部出片」或手动开跑（rtc_round==0）时 blocked 也进队，再点开始生成不再假装看不见
     todo = [s for s in m.segments
             if s["status"] in ("planned", "failed")
@@ -982,7 +1012,9 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
     if rtc_round == 0:
         for s in todo:
             s.pop("grok_retry", None)
-            if s.get("status") == "failed":
+            s.pop("_ui_retry", None)
+            s.pop("_flow_seg_retry", None)
+            if s.get("status") in ("failed", "blocked"):
                 s["timeout_count"] = 0
                 s["thumb_count"] = 0
                 s["mismatch_count"] = 0
@@ -1304,6 +1336,8 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
     net_down = 0
     n_throttled = 0
     account_paused = False
+    consec_sub_fail = 0              # 铁律二：连续提交失败计数（熔断保护用）
+    breaker_trips = 0                # 本轮熔断触发次数
     summary_prev = None
     summary_quiet = 0
     judged: set[str] = set()
@@ -1751,8 +1785,30 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
                             n_fail += 1
                         save()
                         continue
-                    judged.add(p)
                     refused = is_flow_upload_refused(e)
+                    proven_ok = not _never_collected(m, p)
+                    # 铁律三（已出片好图免死金牌）：只要这张图已经成功出过片（且不是上传当场被拒），
+                    # 绝不因单段偶发拦截就把整张图打成 blocked 或踢给本地模型，而是本段改用首尾帧重交一次。
+                    if proven_ok and not refused:
+                        n_sr = int(seg.get("_flow_seg_retry") or 0)
+                        pipeline.cleanup_bridge_tmp(d, seg.get("s"))
+                        if n_sr < 2:
+                            seg["_flow_seg_retry"] = n_sr + 1
+                            seg["flow_mode"] = "frames"
+                            seg["status"] = "planned"
+                            seg["error"] = None
+                            seg["gen_id"] = None
+                            queue.append(seg)
+                            job.log(f"  ↻ s{seg['s']:03d} 偶发触发审核（图 {p} 已证实可用，不拉黑图），"
+                                    f"改用首尾帧模式重交本段（第 {n_sr + 1}/2 次）")
+                        else:
+                            seg["status"] = "failed"
+                            seg["error"] = str(e)
+                            n_fail += 1
+                            job.log(f"  ✗ s{seg['s']:03d} 重交后仍未过（{e}），仅标本段失败，不拉黑图 {p}")
+                        save()
+                        continue
+                    judged.add(p)
                     if refused:
                         # 上传这一步就被 Flow 拒了：这张原图在 Flow 上根本传不上去
                         _block_image(m, p, flow_refused_text(p))
@@ -1784,6 +1840,18 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
                         save()
                         from ..scheduler import JobCancelled
                         raise JobCancelled()
+                    up_msg = f"{e.message or ''} {getattr(e, 'hint', '') or ''}".upper()
+                    if "TOO_MUCH_TRAFFIC" in up_msg or "UNUSUAL_ACTIVITY" in up_msg:
+                        # 铁律一兜底：万一上层透传了流控文本，绝不把段标红失败、绝不连打后续分段
+                        seg["status"] = "planned"
+                        seg["error"] = "Flow 短时流控，稍后自动续跑"
+                        n_throttled += 1
+                        account_paused = True
+                        pipeline.cleanup_bridge_tmp(d, seg.get("s"))
+                        queue.clear()
+                        save()
+                        job.log(f"  ⏸ s{seg['s']:03d} 触发 Flow 流控，已暂停后续连打并保留待生成状态")
+                        continue
                     if is_net_down(e.message):
                         # 断网不是这一段的错：放回队首，等一会儿再试；一直没网就停，段留着待做
                         net_down += 1
@@ -1812,17 +1880,46 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
                         job.log(f"  ↺ s{seg['s']:03d} 提交其实成功了（页面晚一步跳到 post 页），"
                                 f"按已提交处理 → post {post0[:8]}…")
                     else:
+                        # 点生成之前的偶发界面未点中：自动给本段 1 次退避重走机会
+                        hint_txt = str(getattr(e, "hint", "") or "")
+                        if ("真人操作卡在" in str(e.message or "")
+                                and "已经点了「生成」" not in hint_txt
+                                and int(seg.get("_ui_retry") or 0) < 1):
+                            seg["_ui_retry"] = int(seg.get("_ui_retry") or 0) + 1
+                            seg["status"] = "planned"
+                            seg["error"] = None
+                            pipeline.cleanup_bridge_tmp(d, seg.get("s"))
+                            queue.insert(0, seg)
+                            save()
+                            job.log(f"  ↻ s{seg['s']:03d} 界面偶发未点上（{e.message}），缓 10 秒后自动重走一次本段")
+                            job.sleep(10.0)
+                            continue
                         seg["status"] = "failed"
                         seg["error"] = e.message
                         if conv0:
                             seg["orphan_conv"] = conv0
                         n_fail += 1
+                        consec_sub_fail += 1
                         job.log(f"  ✗ s{seg['s']:03d} 提交失败：{e.message}")
                         if getattr(e, "hint", ""):
                             job.log(f"        {e.hint}")
                         pipeline.cleanup_bridge_tmp(d, seg.get("s"))
                         save()
+                        # 铁律二：连续提交失败熔断器（Circuit Breaker）——绝不允许一口气把队列里剩下 20 段全撞红
+                        if consec_sub_fail >= 2 and queue:
+                            breaker_trips += 1
+                            consec_sub_fail = 0
+                            if breaker_trips >= 2:
+                                job.log(f"  ⚡ 连续提交再次受阻，触发二级熔断：队列中其余 {len(queue)} 段保留「待生成」状态（不标红），"
+                                        f"先收齐在飞片子后停下等你检查")
+                                queue.clear()
+                                break
+                            job.log(f"  ⚡ 连续 2 段提交受阻，触发保护熔断：暂停提交 25 秒、先处理在飞分段，防止后续分段连环报错")
+                            job.sleep(25.0)
+                            if inflight:
+                                break
                         continue
+                consec_sub_fail = 0
                 if probing:
                     # 探路这一发真的提交成功了：Google 早就放行，冷却是我们自己多等的
                     probing = False
@@ -1857,7 +1954,12 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
                 started[gid] = time.time()
                 n_sub += 1
                 save()
-                job.sleep(1.5)
+                # 铁律四：每连续提交 6 段额外缓一口气（16 秒），打破机械匀速滑窗特征
+                if acc.get("engine") == "flow" and n_sub > 0 and n_sub % 6 == 0 and queue:
+                    job.log(f"  · 已连续提交 {n_sub} 段，缓 16 秒保持自然节奏…")
+                    job.sleep(16.0)
+                else:
+                    job.sleep(2.0)
             if not inflight:
                 continue
             # 2) 轮询。续跑接手：submitted 段的会话 Id 从 manifest 塞回引擎。
@@ -2154,24 +2256,46 @@ def generate(job, only: list[int] | None = None, redo: bool = False,
                             pipeline.stamp_waits(m)
                         save()
                         continue
+                    im = m.image(p)
+                    proven_ok = not _never_collected(m, p)
+                    n_sr = int(seg.get("_flow_seg_retry") or 0)
+                    # 铁律三（已出片好图免死金牌）+ 单段自愈重试：
+                    # 1) 如果图 p 在本任务已经成功收过片（proven_ok），说明图本身 100% 没问题；
+                    #    偶发生成后被过滤（如 8s 素材模式触发 PROMINENT_PEOPLE_FILTER_FAILED 或 AUDIO_FILTERED），
+                    #    绝不把整张图拉黑（blocked）或把同图其它段踢去本地 LTX，而是自动改用首尾帧（frames）模式重交本段！
+                    # 2) 即便图 p 还没收过片，第 1 次出现生成后过滤也先改用首尾帧（frames）重试一次本段，确认真不行再判图被拒。
+                    if (proven_ok and n_sr < 2) or (not proven_ok and n_sr < 1 and not (im or {}).get("flow_upload_refused")):
+                        seg["_flow_seg_retry"] = n_sr + 1
+                        seg["flow_mode"] = "frames"
+                        seg["status"] = "planned"
+                        seg["error"] = None
+                        seg["gen_id"] = None
+                        queued_s = {int(sg.get("s") or 0) for sg in queue}
+                        if int(seg.get("s") or 0) not in queued_s:
+                            queue.append(seg)
+                        job.log(f"  ↻ s{seg['s']:03d} 生成偶发未过（{err}）→ "
+                                f"{'图 ' + p + ' 已证实可用，不拉黑图，' if proven_ok else ''}"
+                                f"自动改用首尾帧（Frames）模式重交本段（第 {n_sr + 1} 次）")
+                        save()
+                        continue
                     seg["status"] = "failed"
                     seg["error"] = err
                     seg["fail_count"] = int(seg.get("fail_count") or 0) + 1
-                    im = m.image(p)
-                    if im:
+                    if im and not proven_ok:
                         im["gen_fail"] = int(im.get("gen_fail") or 0) + 1
                     n_fail += 1
                     job.log(f"  ✗ s{seg['s']:03d} 生成失败 {err} {raw[:300]}")
                     block_now = False
-                    if im is not None and is_content_refusal(f"{err} {raw[:300]}"):
-                        im["content_fail"] = int(im.get("content_fail") or 0) + 1
-                        _block_image(m, p, f"{err} {raw[:120]}".strip())
-                        block_now = True
-                    elif "被拒" in str(err):
-                        _block_image(m, p, err)
-                        block_now = True
-                    elif maybe_block_for_fails(p):
-                        block_now = True
+                    if not proven_ok:
+                        if im is not None and is_content_refusal(f"{err} {raw[:300]}"):
+                            im["content_fail"] = int(im.get("content_fail") or 0) + 1
+                            _block_image(m, p, f"{err} {raw[:120]}".strip())
+                            block_now = True
+                        elif "被拒" in str(err):
+                            _block_image(m, p, err)
+                            block_now = True
+                        elif maybe_block_for_fails(p):
+                            block_now = True
                     # 主片失败：后面的接片保持 planned，显示等前置，不消耗重生
                     if chain_mode:
                         if pipeline.chain_exhausted(seg):
