@@ -1851,6 +1851,11 @@ window.Panel_gemini = (() => {
         return list;
       });
 
+      const areAllGroupsCollapsed = computed(() => {
+        const groups = tableTaskGroups.value;
+        return groups.length > 0 && groups.every(g => !!g.isCollapsed);
+      });
+
       function tableSelBounds() {
         if (tableGridSel.startRow < 0 || tableGridSel.startCol < 0) return null;
         return {
@@ -2831,7 +2836,7 @@ window.Panel_gemini = (() => {
         dockSearch, dockCat, dockOpen, tableSearch, onlyCurrentTask,
         showTaskHeaderRows, textWrapMode,
         tableColWidths, tableRowHeights, tableEditingCell, tableGridSel,
-        visibleTasksInTable, tableTaskGroups, flatTableRows, checkedTargets, dockPresets, orderedPromptColumns,
+        visibleTasksInTable, tableTaskGroups, flatTableRows, areAllGroupsCollapsed, checkedTargets, dockPresets, orderedPromptColumns,
         colMenu, findReplaceModal, geminiCfgModal,
         taskColor, presetNameById,
         isTableCellSelected, isTableFillCorner, onTableCellMouseDown, onTableCellMouseEnter,
@@ -2867,10 +2872,10 @@ window.Panel_gemini = (() => {
                 title="显示/关闭可自由移动与缩放的大号单元格文本编辑器（点中任意单元格即可直接查看并实时编辑保存）">
           📝 文本编辑器
         </button>
-        <button type="button" class="btn sm tog" :class="{on: textWrapMode==='wrap'}"
-                @click="textWrapMode = textWrapMode==='wrap' ? 'clip' : 'wrap'"
-                title="默认使用溢出截断让表格更紧凑整齐；点击可切换自动换行">
-          {{ textWrapMode==='wrap' ? '↩ 自动换行' : '✂️ 溢出截断' }}
+        <button type="button" class="btn sm tog" :class="{on: textWrapMode==='clip'}"
+                @click="textWrapMode = textWrapMode==='clip' ? 'wrap' : 'clip'"
+                title="默认开启溢出截断让表格空间紧凑整齐；点击关闭可切换为多行自动换行">
+          ✂️ 溢出截断
         </button>
         <button type="button" class="btn sm ghost" @click="openFindReplace()">🔍 查找替换</button>
         <button type="button" class="btn sm ghost" @click="openGeminiCfg()">🔑 Gemini 设置</button>
@@ -2985,29 +2990,34 @@ window.Panel_gemini = (() => {
                       @mousedown="onPresetCellMouseDown(rIdx, 2, row, $event)"
                       @mouseenter="onPresetCellMouseEnter(rIdx, 2)"
                       @dblclick="startEditPresetCell(rIdx, 2)">
-                    <textarea v-if="presetEditingCell.rIdx===rIdx && presetEditingCell.cIdx===2"
-                              :value="row.template"
-                              class="gm3-cell-textarea"
-                              style="height:100%;min-height:56px"
-                              autofocus
-                              placeholder="在此输入提示词内容，在要插入【人物说的话】的位置按回车换行…"
-                              @input="onPresetFieldInput(row, 'template', $event.target.value)"
-                              @blur="stopEditPresetCell()"
-                              @paste="onPresetCellPaste(rIdx, 'template', $event)"></textarea>
-                    <div v-else class="gs-cell-text" :class="textWrapMode">
-                      <template v-if="!row.template">
-                        <span class="muted">点击在编辑器编写提示词内容…</span>
-                      </template>
-                      <template v-else-if="validateRow(row).slot && validateRow(row).slot.hasNewline">
-                        <span>{{ validateRow(row).slot.prefix }}</span>
-                        <span class="speech-slot-badge">人物说的话</span>
-                        <span>{{ validateRow(row).slot.suffix }}</span>
-                      </template>
-                      <template v-else>
-                        <span>{{ row.template }}</span>
-                        <span v-if="validateRow(row).noNewlineWarn" class="tag bad" style="margin-left:6px">⚠️ 需加换行插槽</span>
-                      </template>
+                    <div class="trk-cell-fixed-box"
+                         :class="{'is-row-tall': textWrapMode==='wrap' || (presetRowHeights[row._uid] || 36) > 46}"
+                         :style="{height: (textWrapMode==='wrap' && !(presetRowHeights[row._uid])) ? 'auto' : (Math.max(26, (presetRowHeights[row._uid] || 36) - 6) + 'px')}">
+                      <textarea v-if="presetEditingCell.rIdx===rIdx && presetEditingCell.cIdx===2"
+                                :value="row.template"
+                                class="gm3-cell-textarea trk-fixed-textarea is-editing"
+                                rows="1"
+                                autofocus
+                                placeholder="在此输入提示词内容，在要插入【人物说的话】的位置按回车换行…"
+                                @input="onPresetFieldInput(row, 'template', $event.target.value)"
+                                @blur="stopEditPresetCell()"
+                                @paste="onPresetCellPaste(rIdx, 'template', $event)"></textarea>
+                      <div v-else class="gs-cell-text trk-prompt-slot-view" :class="(textWrapMode==='wrap' || (presetRowHeights[row._uid] || 36) > 46) ? 'wrap' : 'clip'">
+                        <template v-if="!row.template">
+                          <span class="muted">点击在编辑器编写提示词内容…</span>
+                        </template>
+                        <template v-else-if="validateRow(row).slot && validateRow(row).slot.hasNewline">
+                          <span>{{ validateRow(row).slot.prefix }}</span>
+                          <span class="speech-slot-badge">人物说的话</span>
+                          <span>{{ validateRow(row).slot.suffix }}</span>
+                        </template>
+                        <template v-else>
+                          <span>{{ row.template }}</span>
+                          <span v-if="validateRow(row).noNewlineWarn" class="tag bad" style="margin-left:6px">⚠️ 需加换行插槽</span>
+                        </template>
+                      </div>
                     </div>
+                    <span class="gs-row-resizer" @mousedown.stop.prevent="startRowResize(presetRowHeights, row._uid, $event)"></span>
                     <span v-if="isPresetFillCorner(rIdx, 2)" class="gs-fill-handle" @mousedown="startPresetFillHandle(rIdx, 2, $event)"></span>
                   </td>
                 </tr>
@@ -3021,20 +3031,20 @@ window.Panel_gemini = (() => {
              ══════════════════════════════════════════════════════════════════ -->
         <div v-if="viewMode==='table' || viewMode==='split'" class="gm3-pane gm3-table-pane">
           <div class="gm3-subbar">
-            <button type="button" class="btn sm" @click="selectAllTableSegs(true)">☑ 全选</button>
+            <button type="button" class="btn sm tog" :class="{on: flatTableRows.length > 0 && checkedTargets.length === flatTableRows.length}" @click="selectAllTableSegs(true)">☑ 全选</button>
             <button type="button" class="btn sm" @click="invertTableSegs()">反选</button>
-            <button type="button" class="btn sm" @click="selectAllTableSegs(false)">取消</button>
+            <button type="button" class="btn sm" :disabled="!checkedTargets.length" @click="selectAllTableSegs(false)">取消</button>
             <span class="tag ok mono">已选 {{ checkedTargets.length }} 段</span>
             <button type="button" class="btn sm tog" :class="{on: showTaskHeaderRows}" @click="showTaskHeaderRows=!showTaskHeaderRows"
                     title="默认隐藏任务行并保留同任务外框颜色；开启后显示任务父级操作行">
               📋 任务行
             </button>
-            <button type="button" class="btn sm ghost" @click="expandAllTasks(false)" title="展开所有任务组">▾ 展开组</button>
-            <button type="button" class="btn sm ghost" @click="expandAllTasks(true)" title="收起所有段，仅显示任务组">▸ 收起组</button>
-            <button type="button" class="btn sm ghost" @click="insertPromptColumn('right')">➕ 插入列</button>
-            <label style="display:flex;align-items:center;gap:4px;font-size:12px;margin-left:4px">
-              <input type="checkbox" v-model="onlyCurrentTask"> 仅当前任务
-            </label>
+            <button type="button" class="btn sm tog" :class="{on: !areAllGroupsCollapsed && tableTaskGroups.length > 0}" @click="expandAllTasks(false)" title="展开所有任务组">▾ 展开组</button>
+            <button type="button" class="btn sm tog" :class="{on: areAllGroupsCollapsed}" @click="expandAllTasks(true)" title="收起所有段，仅显示任务组">▸ 收起组</button>
+            <button type="button" class="btn sm" @click="insertPromptColumn('right')">➕ 插入列</button>
+            <button type="button" class="btn sm tog" :class="{on: onlyCurrentTask}" @click="onlyCurrentTask = !onlyCurrentTask" title="切换仅显示当前任务或显示全部任务">
+              🎯 仅当前任务
+            </button>
             <span class="spacer" style="flex:1"></span>
             <input v-model="tableSearch" type="search" class="trk-tp-search" style="width:170px" placeholder="🔍 搜任务/文案/提示词…">
             <button type="button" class="btn sm tog" :class="{on: dockOpen}" @click="dockOpen=!dockOpen">
@@ -3221,17 +3231,23 @@ window.Panel_gemini = (() => {
                             @mousedown="onTableCellMouseDown(item.flatIdx, 3, $event)"
                             @mouseenter="onTableCellMouseEnter(item.flatIdx, 3)"
                             @dblclick="startEditTableCell(item.flatIdx, 3)">
-                          <textarea v-if="tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===3"
-                                    class="gm3-cell-textarea"
-                                    :value="item.sg.text || ''"
-                                    autofocus
-                                    @input="onSegmentInputRealtime(item.tk.id, item.sg, 'text', $event.target.value, 'main', false)"
-                                    @change="onSegmentInputRealtime(item.tk.id, item.sg, 'text', $event.target.value, 'main', true)"
-                                    @blur="stopEditTableCell()"
-                                    @paste="onTableCellPaste(item.tk, item.sIdx, 'text', $event)"></textarea>
-                          <div v-else class="gs-cell-text" :class="textWrapMode">
-                            {{ item.sg.text || '' }}
+                          <div class="trk-cell-fixed-box"
+                               :class="{'is-row-tall': textWrapMode==='wrap' || (tableRowHeights[item.rowKey] || 36) > 46}"
+                               :style="{height: (textWrapMode==='wrap' && !(tableRowHeights[item.rowKey])) ? 'auto' : (Math.max(26, (tableRowHeights[item.rowKey] || 36) - 6) + 'px')}">
+                            <textarea v-if="tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===3"
+                                      class="gm3-cell-textarea trk-fixed-textarea is-editing"
+                                      rows="1"
+                                      :value="item.sg.text || ''"
+                                      autofocus
+                                      @input="onSegmentInputRealtime(item.tk.id, item.sg, 'text', $event.target.value, 'main', false)"
+                                      @change="onSegmentInputRealtime(item.tk.id, item.sg, 'text', $event.target.value, 'main', true)"
+                                      @blur="stopEditTableCell()"
+                                      @paste="onTableCellPaste(item.tk, item.sIdx, 'text', $event)"></textarea>
+                            <div v-else class="gs-cell-text trk-prompt-slot-view" :class="(textWrapMode==='wrap' || (tableRowHeights[item.rowKey] || 36) > 46) ? 'wrap' : 'clip'">
+                              {{ item.sg.text || '' }}
+                            </div>
                           </div>
+                          <span class="gs-row-resizer" @mousedown.stop.prevent="startRowResize(tableRowHeights, item.rowKey, $event)"></span>
                           <span v-if="isTableFillCorner(item.flatIdx, 3)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 3, $event)"></span>
                         </td>
 
@@ -3249,6 +3265,7 @@ window.Panel_gemini = (() => {
                             <option value="">— 无预设 (清空) —</option>
                             <option v-for="p in validPublishedPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
                           </select>
+                          <span class="gs-row-resizer" @mousedown.stop.prevent="startRowResize(tableRowHeights, item.rowKey, $event)"></span>
                           <span v-if="isTableFillCorner(item.flatIdx, 4)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 4, $event)"></span>
                         </td>
 
@@ -3264,29 +3281,34 @@ window.Panel_gemini = (() => {
                             @contextmenu.prevent="openColContextMenu(col, cIdx, $event)"
                             @dragover.prevent
                             @drop.prevent="onDropPresetOnCell(item.tk, item.sg, col.col_id)">
-                          <textarea v-if="tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===(5 + cIdx)"
-                                    class="gm3-cell-textarea"
-                                    style="height:100%;min-height:56px"
-                                    :value="getPromptCellValue(item.sg, col)"
-                                    autofocus
-                                    placeholder="输入提示词模板（最大换行处自动作为【人物说的话】变量插槽，自动清空预设）…"
-                                    @input="onSegmentInputRealtime(item.tk.id, item.sg, 'custom_prompt', $event.target.value, col.col_id, false)"
-                                    @change="onSegmentInputRealtime(item.tk.id, item.sg, 'custom_prompt', $event.target.value, col.col_id, true)"
-                                    @blur="stopEditTableCell()"
-                                    @paste="onTableCellPaste(item.tk, item.sIdx, col.col_id, $event)"></textarea>
-                          <div v-else class="gs-cell-text" :class="textWrapMode">
-                            <template v-if="!getPromptCellValue(item.sg, col)">
-                              <span class="muted">点击编写提示词模板（换行处代表【人物说的话】变量）…</span>
-                            </template>
-                            <template v-else-if="analyzePromptCellSlot(item.sg, col).hasNewline">
-                              <span>{{ analyzePromptCellSlot(item.sg, col).prefix }}</span>
-                              <span class="speech-slot-badge" :title="'动态变量：对应左侧文案「' + (item.sg.text || '人物说的话') + '」，仅在提交 Flow 生成与最终收片时合成'">人物说的话</span>
-                              <span>{{ analyzePromptCellSlot(item.sg, col).suffix }}</span>
-                            </template>
-                            <template v-else>
-                              <span>{{ getPromptCellValue(item.sg, col) }}</span>
-                            </template>
+                          <div class="trk-cell-fixed-box"
+                               :class="{'is-row-tall': textWrapMode==='wrap' || (tableRowHeights[item.rowKey] || 36) > 46}"
+                               :style="{height: (textWrapMode==='wrap' && !(tableRowHeights[item.rowKey])) ? 'auto' : (Math.max(26, (tableRowHeights[item.rowKey] || 36) - 6) + 'px')}">
+                            <textarea v-if="tableEditingCell.rIdx===item.flatIdx && tableEditingCell.cIdx===(5 + cIdx)"
+                                      class="gm3-cell-textarea trk-fixed-textarea is-editing"
+                                      rows="1"
+                                      :value="getPromptCellValue(item.sg, col)"
+                                      autofocus
+                                      placeholder="输入提示词模板（最大换行处自动作为【人物说的话】变量插槽，自动清空预设）…"
+                                      @input="onSegmentInputRealtime(item.tk.id, item.sg, 'custom_prompt', $event.target.value, col.col_id, false)"
+                                      @change="onSegmentInputRealtime(item.tk.id, item.sg, 'custom_prompt', $event.target.value, col.col_id, true)"
+                                      @blur="stopEditTableCell()"
+                                      @paste="onTableCellPaste(item.tk, item.sIdx, col.col_id, $event)"></textarea>
+                            <div v-else class="gs-cell-text trk-prompt-slot-view" :class="(textWrapMode==='wrap' || (tableRowHeights[item.rowKey] || 36) > 46) ? 'wrap' : 'clip'">
+                              <template v-if="!getPromptCellValue(item.sg, col)">
+                                <span class="muted">点击编写提示词模板（换行处代表【人物说的话】变量）…</span>
+                              </template>
+                              <template v-else-if="analyzePromptCellSlot(item.sg, col).hasNewline">
+                                <span>{{ analyzePromptCellSlot(item.sg, col).prefix }}</span>
+                                <span class="speech-slot-badge" :title="'动态变量：对应左侧文案「' + (item.sg.text || '人物说的话') + '」，仅在提交 Flow 生成与最终收片时合成'">人物说的话</span>
+                                <span>{{ analyzePromptCellSlot(item.sg, col).suffix }}</span>
+                              </template>
+                              <template v-else>
+                                <span>{{ getPromptCellValue(item.sg, col) }}</span>
+                              </template>
+                            </div>
                           </div>
+                          <span class="gs-row-resizer" @mousedown.stop.prevent="startRowResize(tableRowHeights, item.rowKey, $event)"></span>
                           <span v-if="isTableFillCorner(item.flatIdx, 5 + cIdx)" class="gs-fill-handle" @mousedown="startTableFillHandle(item.flatIdx, 5 + cIdx, $event)"></span>
                         </td>
                       </tr>

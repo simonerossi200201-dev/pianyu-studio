@@ -2042,14 +2042,33 @@ window.Panel_track = (() => {
         window.addEventListener('mouseup', onUp);
       }
 
+      function toggleAllTaskHeaderRows() {
+        showTaskHeaderRows.value = !showTaskHeaderRows.value;
+        for (const k of Object.keys(expandedTaskRows)) {
+          delete expandedTaskRows[k];
+        }
+      }
+
       function toggleSingleTaskHeaderRow(taskId, ev) {
         if (ev && ev.stopPropagation) ev.stopPropagation();
-        expandedTaskRows[taskId] = !expandedTaskRows[taskId];
+        if (showTaskHeaderRows.value) {
+          showTaskHeaderRows.value = false;
+          for (const grp of sheetTaskGroups.value) {
+            expandedTaskRows[grp.taskId] = grp.taskId !== taskId;
+          }
+        } else {
+          expandedTaskRows[taskId] = !expandedTaskRows[taskId];
+        }
       }
 
       function isTaskHeaderVisible(taskId) {
         return !!showTaskHeaderRows.value || !!expandedTaskRows[taskId] || !!collapsedTasks[taskId];
       }
+
+      const areAllTasksCollapsed = computed(() => {
+        const groups = sheetTaskGroups.value;
+        return groups.length > 0 && groups.every(g => !!collapsedTasks[g.taskId]);
+      });
 
       const allPresets = computed(() => store.promptPresets || []);
       const expandPresets = computed(() => {
@@ -2653,7 +2672,7 @@ window.Panel_track = (() => {
         sheetTaskGroups, sheetFlatRows, gsSel, isGsCellInRange, isGsCellActive, isGsFillHandleCell, isGsCellFillPreview,
         onGsCellMouseDown, onGsCellMouseEnter, startGsFillDrag,
         floatingViewer, currentFloatingRow, toggleFloatingViewer, stepFloatingViewer, startFloatingViewerDrag,
-        toggleSingleTaskHeaderRow, isTaskHeaderVisible,
+        toggleAllTaskHeaderRows, toggleSingleTaskHeaderRow, isTaskHeaderVisible, areAllTasksCollapsed,
         allPresets, expandPresets, filteredPresets, curTaskFlowMode, curTaskPresetId,
         composePresetPreview, presetNameOf, getSegPromptDisplay, analyzeSegPromptSlot,
         editingPromptKey, startEditSegPrompt, stopEditSegPrompt,
@@ -2699,7 +2718,7 @@ window.Panel_track = (() => {
         全部任务
       </button>
       <button type="button" class="btn sm tog" :class="{on: showTaskHeaderRows}"
-              @click="showTaskHeaderRows = !showTaskHeaderRows"
+              @click="toggleAllTaskHeaderRows"
               title="默认隐藏任务分组行（仅保留同组颜色外框），开启后显示任务汇总操作行">
         任务行
       </button>
@@ -2711,7 +2730,7 @@ window.Panel_track = (() => {
 
       <!-- 次要与批量功能收纳下拉菜单 -->
       <div class="gs-toolbar-dropdown" @click.stop>
-        <button type="button" class="btn sm" @click="batchMenuOpen = !batchMenuOpen">
+        <button type="button" class="btn sm" :class="{on: batchMenuOpen}" @click="batchMenuOpen = !batchMenuOpen">
           更多操作 ▾
         </button>
         <div class="gs-toolbar-dropdown-menu" v-if="batchMenuOpen">
@@ -2719,13 +2738,13 @@ window.Panel_track = (() => {
                   @click="batchMenuOpen=false; batchApplyAll(true)">
             🚀 跳过编排并立即排队生成
           </button>
-          <button type="button" class="dd-item" @click="batchMenuOpen=false; showTaskHeaderRows = !showTaskHeaderRows">
+          <button type="button" class="dd-item" :class="{on: showTaskHeaderRows}" @click="batchMenuOpen=false; toggleAllTaskHeaderRows()">
             {{ showTaskHeaderRows ? '🙈 隐藏全部任务行 (仅留色框)' : '📂 显示全部任务行 (批量操作)' }}
           </button>
-          <button type="button" class="dd-item" v-if="showAllTasks" @click="batchMenuOpen=false; expandAllTasks(false)">
+          <button type="button" class="dd-item" :class="{on: !areAllTasksCollapsed}" @click="batchMenuOpen=false; expandAllTasks(false)">
             ▾ 展开全部任务组
           </button>
-          <button type="button" class="dd-item" v-if="showAllTasks" @click="batchMenuOpen=false; expandAllTasks(true)">
+          <button type="button" class="dd-item" :class="{on: areAllTasksCollapsed}" @click="batchMenuOpen=false; expandAllTasks(true)">
             ▸ 收起全部任务组
           </button>
           <button type="button" class="dd-item" @click="batchMenuOpen=false; goDescribe()">
@@ -3099,7 +3118,7 @@ window.Panel_track = (() => {
                   }"
                   :style="{
                     '--group-border-color': item.taskColor,
-                    height: (rowHeights[item.rowKey] ? rowHeights[item.rowKey] + 'px' : 'auto')
+                    height: (rowHeights[item.rowKey] || 38) + 'px'
                   }"
                   @click="hotSwitchTask(item.taskId); floatingViewer.rowIdx = item.flatIdx">
                 <!-- 勾选列 -->
@@ -3108,7 +3127,7 @@ window.Panel_track = (() => {
                     @mouseenter="enterSegDrag(item.taskId, item.seg.s)"
                     @contextmenu.prevent="openGsCellMenu(item, 0, $event)">
                   <input type="checkbox" :checked="isSegChecked(item.taskId, item.seg.s)" tabindex="-1" style="pointer-events:none">
-                  <span class="gs-row-resizer" @mousedown="startRowResize(item.rowKey, $event)"></span>
+                  <span class="gs-row-resizer" @mousedown.stop.prevent="startRowResize(item.rowKey, $event)"></span>
                 </td>
 
                 <!-- 分镜序号列（组首行带可点击的任务徽标，用于随时展开/收起该任务的任务行） -->
@@ -3123,7 +3142,7 @@ window.Panel_track = (() => {
                     </span>
                     <span>s{{ pad3(item.seg.s) }}</span>
                   </div>
-                  <span class="gs-row-resizer" @mousedown="startRowResize(item.rowKey, $event)"></span>
+                  <span class="gs-row-resizer" @mousedown.stop.prevent="startRowResize(item.rowKey, $event)"></span>
                 </td>
 
                 <!-- Col 0: 配图 + 行内缩略图预览 -->
@@ -3155,6 +3174,7 @@ window.Panel_track = (() => {
                            :value="item.pCode"
                            @change="onSegImageChange(item.taskId, item.seg, $event.target.value)">
                   </div>
+                  <span class="gs-row-resizer" @mousedown.stop="startRowResize(item.rowKey, $event)"></span>
                   <span v-if="isGsFillHandleCell(item.flatIdx, 0)" class="gs-fill-handle"
                         title="向下或向上拖拽批量拷贝填充"
                         @mousedown="startGsFillDrag($event)"></span>
@@ -3174,6 +3194,7 @@ window.Panel_track = (() => {
                           @change="item.taskId===tid ? onDurChange(item.seg, $event) : onSegFieldUpdate(item.taskId, item.seg, 'duration', Number($event.target.value))">
                     <option v-for="d in (item.seg.duration_options || [4,6,8,10,15])" :key="d" :value="d">{{ d }}s</option>
                   </select>
+                  <span class="gs-row-resizer" @mousedown.stop="startRowResize(item.rowKey, $event)"></span>
                   <span v-if="isGsFillHandleCell(item.flatIdx, 1)" class="gs-fill-handle"
                         @mousedown="startGsFillDrag($event)"></span>
                 </td>
@@ -3193,6 +3214,7 @@ window.Panel_track = (() => {
                     <option value="frames">🎞️ 首尾帧</option>
                     <option value="ingredients">🧩 素材</option>
                   </select>
+                  <span class="gs-row-resizer" @mousedown.stop="startRowResize(item.rowKey, $event)"></span>
                   <span v-if="isGsFillHandleCell(item.flatIdx, 2)" class="gs-fill-handle"
                         @mousedown="startGsFillDrag($event)"></span>
                 </td>
@@ -3213,11 +3235,12 @@ window.Panel_track = (() => {
                     <option value="bridge">首尾帧</option>
                     <option value="chain">接龙</option>
                   </select>
+                  <span class="gs-row-resizer" @mousedown.stop="startRowResize(item.rowKey, $event)"></span>
                   <span v-if="isGsFillHandleCell(item.flatIdx, 3)" class="gs-fill-handle"
                         @mousedown="startGsFillDrag($event)"></span>
                 </td>
 
-                <!-- Col 4: 文案 -->
+                <!-- Col 4: 文案（默认单行溢出截断，用户手动拉高行高后自动多行显示，编辑不跳行高） -->
                 <td :class="{
                       'gs-cell-in-range': isGsCellInRange(item.flatIdx, 4),
                       'gs-cell-active': isGsCellActive(item.flatIdx, 4),
@@ -3226,13 +3249,17 @@ window.Panel_track = (() => {
                     @mousedown="onGsCellMouseDown(item.flatIdx, 4, $event)"
                     @mouseenter="onGsCellMouseEnter(item.flatIdx, 4)"
                     @contextmenu.prevent="openGsCellMenu(item, 4, $event)">
-                  <textarea class="trk-inline-input"
-                            style="width:100%;min-height:28px;height:100%;resize:none;line-height:1.4;white-space:pre-wrap"
-                            rows="1"
-                            :value="item.seg.text || ''"
-                            placeholder="输入或粘贴本段文案…"
-                            @change="onSegFieldUpdate(item.taskId, item.seg, 'text', $event.target.value)"
-                            @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'text', $event)"></textarea>
+                  <div class="trk-cell-fixed-box"
+                       :class="{'is-row-tall': (rowHeights[item.rowKey] || 38) > 46}"
+                       :style="{height: Math.max(28, (rowHeights[item.rowKey] || 38) - 6) + 'px'}">
+                    <textarea class="trk-inline-input trk-fixed-textarea"
+                              rows="1"
+                              :value="item.seg.text || ''"
+                              placeholder="输入或粘贴本段文案…"
+                              @change="onSegFieldUpdate(item.taskId, item.seg, 'text', $event.target.value)"
+                              @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'text', $event)"></textarea>
+                  </div>
+                  <span class="gs-row-resizer" @mousedown.stop="startRowResize(item.rowKey, $event)"></span>
                   <span v-if="isGsFillHandleCell(item.flatIdx, 4)" class="gs-fill-handle"
                         @mousedown="startGsFillDrag($event)"></span>
                 </td>
@@ -3251,11 +3278,12 @@ window.Panel_track = (() => {
                     <option value="">— 无预设 (清空) —</option>
                     <option v-for="p in allPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
                   </select>
+                  <span class="gs-row-resizer" @mousedown.stop="startRowResize(item.rowKey, $event)"></span>
                   <span v-if="isGsFillHandleCell(item.flatIdx, 5)" class="gs-fill-handle"
                         @mousedown="startGsFillDrag($event)"></span>
                 </td>
 
-                <!-- Col 6: 提示词覆盖内容（始终保留红色【人物说的话】动态变量对应左侧文案，绝不把文案写死进去；手动输入后自动清空前面预设） -->
+                <!-- Col 6: 提示词覆盖内容（默认溢出截断单行紧凑显示，进入编辑绝不跳行高，始终保留红色【人物说的话】动态变量对应左侧文案） -->
                 <td :class="{
                       'gs-cell-in-range': isGsCellInRange(item.flatIdx, 6),
                       'gs-cell-active': isGsCellActive(item.flatIdx, 6),
@@ -3265,34 +3293,38 @@ window.Panel_track = (() => {
                     @mouseenter="onGsCellMouseEnter(item.flatIdx, 6)"
                     @dblclick="startEditSegPrompt(item, $event)"
                     @contextmenu.prevent="openGsCellMenu(item, 6, $event)">
-                  <textarea v-if="editingPromptKey === item.rowKey"
-                            :data-prompt-edit="item.rowKey"
-                            class="trk-inline-input"
-                            style="width:100%;min-height:48px;height:100%;resize:vertical;line-height:1.45;white-space:pre-wrap"
-                            rows="2"
-                            :value="getSegPromptDisplay(item.seg)"
-                            placeholder="手动输入提示词模板（最大换行处自动作为【人物说的话】变量插槽，自动清空预设）…"
-                            @input="onSegCustomPromptInput(item.taskId, item.seg, $event.target.value, false)"
-                            @change="onSegCustomPromptInput(item.taskId, item.seg, $event.target.value, true)"
-                            @blur="stopEditSegPrompt()"
-                            @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'custom_prompt', $event)"></textarea>
-                  <div v-else
-                       class="gs-cell-text trk-prompt-slot-view"
-                       style="cursor:text;min-height:28px;line-height:1.45;padding:2px 4px"
-                       title="单击选中（可右键批量套用给同图的所有段），双击进入编辑（换行处自动作为【人物说的话】动态变量对应左侧文案）"
-                       @click="isGsCellActive(item.flatIdx, 6) && startEditSegPrompt(item, $event)">
-                    <template v-if="!getSegPromptDisplay(item.seg)">
-                      <span class="muted" style="font-size:11.5px" @click.stop="startEditSegPrompt(item, $event)">点击输入提示词模板（换行处为【人物说的话】变量）…</span>
-                    </template>
-                    <template v-else-if="analyzeSegPromptSlot(item.seg).hasNewline">
-                      <span>{{ analyzeSegPromptSlot(item.seg).prefix }}</span>
-                      <span class="speech-slot-badge" :title="'动态变量：对应左侧文案「' + (item.seg.text || '人物说的话') + '」，仅在提交 Flow 与收片时合成'">人物说的话</span>
-                      <span>{{ analyzeSegPromptSlot(item.seg).suffix }}</span>
-                    </template>
-                    <template v-else>
-                      <span>{{ getSegPromptDisplay(item.seg) }}</span>
-                    </template>
+                  <div class="trk-cell-fixed-box"
+                       :class="{'is-row-tall': (rowHeights[item.rowKey] || 38) > 46}"
+                       :style="{height: Math.max(28, (rowHeights[item.rowKey] || 38) - 6) + 'px'}">
+                    <textarea v-if="editingPromptKey === item.rowKey"
+                              :data-prompt-edit="item.rowKey"
+                              class="trk-inline-input trk-fixed-textarea is-editing"
+                              rows="1"
+                              :value="getSegPromptDisplay(item.seg)"
+                              placeholder="手动输入提示词模板（最大换行处自动作为【人物说的话】变量插槽，自动清空预设）…"
+                              @input="onSegCustomPromptInput(item.taskId, item.seg, $event.target.value, false)"
+                              @change="onSegCustomPromptInput(item.taskId, item.seg, $event.target.value, true)"
+                              @blur="stopEditSegPrompt()"
+                              @paste="onSegPaste(item.taskId, (item.taskObj && item.taskObj.segments) || segments, item.sIdx, 'custom_prompt', $event)"></textarea>
+                    <div v-else
+                         class="gs-cell-text trk-prompt-slot-view"
+                         :class="(rowHeights[item.rowKey] || 38) > 46 ? 'wrap' : 'clip'"
+                         title="单击进入编辑或选中（可右键批量套用给同图的所有段；拖拽行底边可手动拉高行高）"
+                         @click="startEditSegPrompt(item, $event)">
+                      <template v-if="!getSegPromptDisplay(item.seg)">
+                        <span class="muted" style="font-size:11.5px">点击输入提示词模板（换行处为【人物说的话】变量）…</span>
+                      </template>
+                      <template v-else-if="analyzeSegPromptSlot(item.seg).hasNewline">
+                        <span>{{ analyzeSegPromptSlot(item.seg).prefix }}</span>
+                        <span class="speech-slot-badge" :title="'动态变量：对应左侧文案「' + (item.seg.text || '人物说的话') + '」，仅在提交 Flow 与收片时合成'">人物说的话</span>
+                        <span>{{ analyzeSegPromptSlot(item.seg).suffix }}</span>
+                      </template>
+                      <template v-else>
+                        <span>{{ getSegPromptDisplay(item.seg) }}</span>
+                      </template>
+                    </div>
                   </div>
+                  <span class="gs-row-resizer" @mousedown.stop="startRowResize(item.rowKey, $event)"></span>
                   <span v-if="isGsFillHandleCell(item.flatIdx, 6)" class="gs-fill-handle"
                         @mousedown="startGsFillDrag($event)"></span>
                 </td>

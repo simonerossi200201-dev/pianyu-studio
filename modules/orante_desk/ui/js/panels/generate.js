@@ -2126,7 +2126,7 @@ window.Panel_generate = (() => {
                      @pick="applyMode"></gen-mode-pick>
       <span class="g-mode-hint" v-if="modeHint">{{ modeHint }}</span>
     </div>
-    <button class="btn sm g-bench-btn" @click="openBench">{{ t('gen.bench') }}</button>
+    <button class="btn sm tog g-bench-btn" :class="{on: bench.on}" @click="openBench">{{ t('gen.bench') }}</button>
     <span class="spacer"></span>
     <div class="g-archbar">
       <button class="btn sm" :disabled="!selected.length" @click="exportSelected">{{ t('gen.archive.export_sel') }}</button>

@@ -4864,9 +4864,9 @@ window.Panel_tasks = (() => {
               <button type="button" class="btn" @click="addRows">{{ t('tasks.add_row') }}</button>
               <input class="tg-add-n" v-model="addN" maxlength="4" @keydown.enter.prevent="addRows" inputmode="numeric">
             </div>
-            <button type="button" class="btn tg-den" v-show="!foldDen" @click="toggleDensity">{{ density==='compact' ? t('tasks.density.compact') : t('tasks.density.comfy') }}</button>
+            <button type="button" class="btn tg-den tog" :class="{on: density==='compact'}" v-show="!foldDen" @click="toggleDensity">{{ density==='compact' ? t('tasks.density.compact') : t('tasks.density.comfy') }}</button>
             <div class="tg-more" ref="moreEl">
-              <button type="button" class="btn tg-more-btn" :title="t('tasks.more')" @click.stop="toggleMore">⋯</button>
+              <button type="button" class="btn tg-more-btn" :class="{on: moreOpen}" :title="t('tasks.more')" @click.stop="toggleMore">⋯</button>
               <div v-if="moreOpen" class="tg-more-menu" @click.stop>
                 <button v-if="foldDen" type="button" class="mi" @click="menuDensity">{{ density==='compact' ? t('tasks.density.compact') : t('tasks.density.comfy') }}</button>
                 <div v-if="foldAdd" class="tg-more-add">
