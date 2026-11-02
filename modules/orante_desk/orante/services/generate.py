@@ -319,6 +319,7 @@ def _gen_fail_of(m: Manifest, p: str) -> int:
 
     不算 planned 段上残留的 fail_count——换图打回 planned 后那些是旧账，
     不然会刚补完又立刻再标 blocked。
+    也不算「真人操作卡在…」这类本地网页点击/超时报错——那是浏览器界面没点上，不是图的问题。
     """
     im = m.image(p) or {}
     stored = int(im.get("gen_fail") or 0)
@@ -326,7 +327,8 @@ def _gen_fail_of(m: Manifest, p: str) -> int:
         1 for sg in m.segments
         if sg.get("image") == p
         and sg.get("status") in ("failed", "blocked")
-        and not (sg.get("takes") or []))
+        and not (sg.get("takes") or [])
+        and "真人操作卡在" not in str(sg.get("error") or ""))
     return max(stored, n_failed)
 
 

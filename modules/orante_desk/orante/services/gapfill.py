@@ -14,6 +14,11 @@ from pathlib import Path
 
 from ..errors import OranteError
 from ..models import Manifest
+try:
+    from .refresh import reload_runtime_modules as _reload_rt
+    _reload_rt()
+except Exception:
+    pass
 
 GROUP_RE = re.compile(r"【组\s*(T\d+)】", re.I)
 GAP_RE = re.compile(r"缺失\d+\s*\(\s*文案第\s*(\d+)\s*~\s*(\d+)\s*词\s*\)")

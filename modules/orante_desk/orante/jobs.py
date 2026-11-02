@@ -124,6 +124,11 @@ def _check_run_account(kind: str, task_id: str, t: dict, account_id: str | None)
 
 
 def start(kind: str, task_id: str | None, **args):
+    try:
+        from .services.refresh import reload_runtime_modules
+        reload_runtime_modules()
+    except Exception:
+        pass
     fn = REGISTRY.get(kind)
     if not fn:
         raise OranteError(f"未知的任务类型 {kind}", f"可用: {', '.join(sorted(REGISTRY))}")

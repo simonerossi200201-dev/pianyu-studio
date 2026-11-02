@@ -12,6 +12,39 @@ from .. import accounts, tasks as taskmod
 from ..errors import OranteError
 
 
+def reload_runtime_modules() -> list[str]:
+    """热重载核心引擎与服务模块，使运行中的窗口无需重启即可生效最新代码。"""
+    import importlib
+    import sys
+    reloaded: list[str] = []
+    mod_names = (
+        "orante.engines.flow_api",
+        "orante.services.describe",
+        "orante.services.simple86",
+        "orante.services.prompt_presets",
+        "orante.services.arrange",
+        "orante.jobs",
+        "orante.services.generate",
+    )
+    for name in mod_names:
+        mod = sys.modules.get(name)
+        if mod is not None:
+            try:
+                importlib.reload(mod)
+                reloaded.append(name)
+            except Exception:
+                pass
+    try:
+        from ..engines import shared as _sh, flow_api as _fa
+        for sh in list(getattr(_sh, "_registry", {}).values()):
+            eng = getattr(sh, "_eng", None)
+            if eng is not None and getattr(eng, "name", "") == "flow":
+                eng.__class__ = _fa.FlowEngine
+    except Exception:
+        pass
+    return reloaded
+
+
 def _task_dir(tid: str) -> Path | None:
     """任务没准备或目录不在了 → None，刷新整体不因此失败。"""
     try:
@@ -113,6 +146,7 @@ def run(deep: bool = False, tid: str | None = None) -> dict:
     """
     import time as _time
     t0 = _time.perf_counter()
+    reloaded = reload_runtime_modules()
     tid = (tid or "").strip() or None
     files_rescanned = rescan_files(tid) if tid else 0
     ahash_dropped = 0
@@ -139,4 +173,5 @@ def run(deep: bool = False, tid: str | None = None) -> dict:
         "frames_recomputed": frames,
         "deep": bool(deep),
         "ms": ms,
+        "reloaded": len(reloaded),
     }

@@ -188,17 +188,29 @@ ASSET_STATE_JS = r"""(name) => {
   const opts = [...pane.querySelectorAll('[role="option"]')];
   const title = o => { const t = o.querySelector('.asset-title'); return t ? t.textContent.trim() : ''; };
   const mine = opts.filter(o => title(o) === name);
-  const busy = o => /Uploading/i.test(o.innerText || '');
+  const busy = o => Boolean(
+    o.disabled ||
+    o.getAttribute('disabled') !== null ||
+    o.querySelector('mat-spinner, mat-progress-spinner, [role="progressbar"]') ||
+    /Uploading|Caricamento|上传中/i.test((o.innerText || '') + ' ' + (o.textContent || ''))
+  );
+  // 11-02 实测（20261030.00_p2）：首尾帧模式（单选）点中时 aria-selected="true" 且带 asset-item-active；
+  // 素材模式（Ingredients，aria-multiselectable="true"）点中一项时 aria-selected 仍是 "false"，
+  // 但该项会加上 class "asset-item-active" 并在右侧预览区激活「Add to prompt」。
+  const isAct = o => (
+    o.classList.contains('asset-item-active') ||
+    o.getAttribute('aria-selected') === 'true'
+  );
   const imgOk = o => [...o.querySelectorAll('img')].some(i => i.complete && i.naturalWidth > 0);
   return {
     pane: true, n: opts.length, mine: mine.length,
     uploading: mine.some(busy),
     // 09-28 实测：刚传完的图在弹窗里只显示一个 image 图标，缩略图要重开弹窗才出来——
-    // 所以"传完"只看不再显示 Uploading，不等缩略图（原来等缩略图，白等 90 秒）
+    // 所以"传完"只看不再处于 busy/spinner，不等缩略图（原来等缩略图，白等 90 秒）
     ready: mine.filter(o => !busy(o)).length,
     thumb: mine.filter(o => imgOk(o)).length,
-    selected: mine.some(o => o.getAttribute('aria-selected') === 'true'),
-    selected_names: opts.filter(o => o.getAttribute('aria-selected') === 'true').map(title)
+    selected: mine.some(isAct),
+    selected_names: opts.filter(isAct).map(title)
   };
 }"""
 
@@ -322,10 +334,16 @@ def _model_base(name: str) -> str:
     return re.sub(r"\s*[\[（(].*$", "", name or "").strip().lower()
 
 
+# 11-02 实测（20261030.00_p2）：Flow 视频生成按子模式（单首帧 / 首尾帧 / 素材参考图 / 扩展等）
+# 会走不同的 batchexecute rpcid，但回包结构完全一致（eS protobuf：[null, slot1, workflows, recs]）。
+VIDEO_GEN_RPCS = ("eb1hJf", "MZZa6b", "fZytfe", "nprQif", "YhhmEf", "p0UkFb", "jIps6", "IJhj9c")
+
+
 def _parse_batchexecute(text: str, rpc: str) -> dict:
     """真点「开始生成」之后用 page.expect_response 拿到的原始响应体，
     按 RPC_JS 里同一套规则解析（])}'\\n\\n<len>\\n[[...]] 这种格式）。"""
-    out = {"payload": None, "err": None, "raw": (text or "")[:400]}
+    match_rpcs = VIDEO_GEN_RPCS if rpc == "eb1hJf" else (rpc,)
+    out = {"payload": None, "err": None, "raw": (text or "")[:400], "rpc": rpc}
     for line in (text or "").split("\n"):
         if not line.startswith("[["):
             continue
@@ -336,7 +354,8 @@ def _parse_batchexecute(text: str, rpc: str) -> dict:
         for it in parsed_line:
             if not isinstance(it, list) or not it:
                 continue
-            if it[0] == "wrb.fr" and len(it) > 1 and it[1] == rpc:
+            if it[0] == "wrb.fr" and len(it) > 1 and it[1] in match_rpcs:
+                out["rpc"] = it[1]
                 try:
                     out["payload"] = json.loads(it[2]) if it[2] else None
                 except Exception:
@@ -1676,6 +1695,12 @@ class FlowEngine(Engine):
         点作曲区右上角那个 ×（aria-label = Clear prompt）整个清空——人也是这么做的，
         不刷新页面。Agent 模式开着作曲区是另一套按钮，顺手关掉。"""
         try:
+            if page.locator('.cdk-overlay-pane [role="option"], .cdk-overlay-backdrop').count() > 0:
+                page.keyboard.press("Escape")
+                self._ui_pace(0.2, 0.4)
+        except Exception:
+            pass
+        try:
             agent = page.locator("button.agent-mode-chip").first
             if agent.count() > 0 and agent.get_attribute("aria-pressed") == "true":
                 agent.click(timeout=UI_CLICK_TIMEOUT)
@@ -1986,6 +2011,7 @@ class FlowEngine(Engine):
         # 「Add to prompt」。两种都认——点的是按名字认准的这一项，挂进去的一定是这张图。
         t0 = time.time()
         direct = False
+        reclicked = False
         while True:
             if attached():
                 direct = True
@@ -1993,7 +2019,13 @@ class FlowEngine(Engine):
             st = self._ui_asset_state(page, name)
             if st.get("selected") and set(st.get("selected_names") or []) == {name}:
                 break
-            if time.time() - t0 > 6:
+            if not reclicked and time.time() - t0 > 1.5:
+                reclicked = True
+                try:
+                    opt.click(timeout=3000)
+                except Exception:
+                    pass
+            if time.time() - t0 > 8:
                 raise OranteError(
                     f"弹窗里选不中刚传的 {Path(img).name}",
                     f"现在选中的是：{'、'.join(st.get('selected_names') or []) or '没有'}。这一次没交。")
@@ -2166,7 +2198,14 @@ class FlowEngine(Engine):
                                   "图或提示词可能没真的放进作曲区。")
             time.sleep(0.3)
         self._ui_step("点生成")
-        with page.expect_response(lambda r: f"rpcids={rpc}" in r.url, timeout=timeout) as resp_info:
+        match_rpcs = VIDEO_GEN_RPCS if rpc == "eb1hJf" else (rpc,)
+        with page.expect_response(
+            lambda r: "batchexecute" in r.url and any(
+                f"rpcids={x}" in r.url or f"%2C{x}" in r.url or f",{x}" in r.url
+                for x in match_rpcs
+            ),
+            timeout=timeout,
+        ) as resp_info:
             btn.click(timeout=UI_CLICK_TIMEOUT)
         self._ui_step("等回包")
         resp = resp_info.value
@@ -2256,6 +2295,12 @@ class FlowEngine(Engine):
                               last_image: Path | None, aspect: str, silent: bool = False,
                               flow_mode: str = "frames") -> dict:
         eff_mode = normalize_flow_mode(flow_mode, default="frames")
+        # 11-02 实测（20261030.00_p2）：Flow 的 Veo 3.1 在 Ingredients（素材 / VIDEO_REFERENCES）
+        # 子模式下仅支持 8s 时长；选 4s 或 6s 时素材卡片会报 DURATION_NOT_SUPPORTED 且「Start generation」
+        # 按钮一直置灰。因此 4s/6s 或带尾帧时自动改用 Frames（首尾帧）模式，保证按实际时长出片。
+        if eff_mode == "ingredients" and (int(duration) != 8 or last_image is not None):
+            self.log(f"  · Flow 素材模式仅支持单图 8s，本段 {int(duration)}s 自动改用首尾帧（Frames）模式提交")
+            eff_mode = "frames"
         self._ui_step("清场")
         self._ui_clear_composer(page)
         self._ui_step("设无声开关")

@@ -187,6 +187,32 @@ class TestNov2HistoryAndVariableSlots(unittest.TestCase):
         self.assertEqual(t["counts"]["desc_missing"], 0)
         self.assertEqual(simple86.missing_desc_for_no_copy(t, m), [])
 
+    def test_flow_ui_ingredients_rpc_and_gen_fail_fixes(self):
+        from orante import models
+        from orante.engines import flow_api
+        from orante.services import generate
+
+        d = self._create_sample_task("T0199")
+        m = models.Manifest.load(d)
+        # Simulate 3 segments failing with local UI automation error ("真人操作卡在...")
+        for sg in m.segments:
+            sg["image"] = "p01"
+            sg["status"] = "failed"
+            sg["error"] = "真人操作卡在「挂素材图」：弹窗里选不中刚传的 p01.jpg"
+        # Should NOT count toward _gen_fail_of!
+        self.assertEqual(generate._gen_fail_of(m, "p01"), 0)
+
+        # Verify _parse_batchexecute matches all VIDEO_GEN_RPCS when rpc == "eb1hJf"
+        sample_resp = ')]}\'\n\n120\n[["wrb.fr","YhhmEf","[null,21669,[],[[\\"gen-12345678\\"]]]",null,null,null,"generic"]]\n'
+        parsed = flow_api._parse_batchexecute(sample_resp, "eb1hJf")
+        self.assertEqual(parsed["rpc"], "YhhmEf")
+        self.assertEqual(parsed["payload"][1], 21669)
+        self.assertEqual(parsed["payload"][3][0][0], "gen-12345678")
+
+        # Verify ASSET_STATE_JS checks asset-item-active and mat-spinner
+        self.assertIn("asset-item-active", flow_api.ASSET_STATE_JS)
+        self.assertIn("mat-spinner", flow_api.ASSET_STATE_JS)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -14,6 +14,13 @@ from pathlib import Path
 
 from .. import __version__, db, events, tasks as taskmod
 from ..errors import OranteError
+try:
+    import importlib as _il
+    from . import refresh as _refresh_mod
+    _il.reload(_refresh_mod)
+    _refresh_mod.reload_runtime_modules()
+except Exception:
+    pass
 
 FORMAT = 1
 # 工程文件名：2026-09-09A.orproj.json，和 AutoSub 的 .asproj.json 一个风格

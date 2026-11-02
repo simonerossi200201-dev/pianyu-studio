@@ -27,6 +27,13 @@ import re
 from .. import config
 from ..errors import OranteError
 from . import prompts
+try:
+    import importlib as _il
+    from . import refresh as _refresh_mod
+    _il.reload(_refresh_mod)
+    _refresh_mod.reload_runtime_modules()
+except Exception:
+    pass
 
 # 目标语种。code 只用来记在设置里；真正给 ChatGPT 看的是 name。
 LANGS = [
