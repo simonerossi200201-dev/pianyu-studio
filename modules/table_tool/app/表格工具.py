@@ -55,6 +55,16 @@ RCLONE_CANDIDATES = [
 
 MAX_BODY = 32 * 1024 * 1024
 
+_DANGEROUS_OPEN_EXTS = {
+    ".exe", ".bat", ".cmd", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh",
+    ".ps1", ".scr", ".msi", ".com", ".hta", ".cpl", ".reg", ".dll", ".lnk", ".pif",
+}
+
+
+def _is_unc_path(p):
+    s = str(p or "").strip()
+    return s.startswith("\\\\") or s.startswith("//")
+
 
 def sanitize(name):
     name = ILLEGAL_CHARS.sub('', name)
@@ -2038,6 +2048,8 @@ class App:
         }
 
     def _switch_dir(self, new_dir, payload=None):
+        if _is_unc_path(new_dir):
+            return {"ok": False, "message": "安全保护：不支持直接打开远程共享 UNC 路径"}
         new_dir = os.path.abspath(new_dir)
         if not os.path.isdir(new_dir):
             return {"ok": False, "message": "文件夹不存在：%s" % new_dir}
@@ -2059,7 +2071,7 @@ class App:
             return self.downloader.snapshot()
         if path == "/api/mklist":
             dest = (payload.get("dest") or self.dir).strip().strip('"')
-            if not os.path.isdir(dest):
+            if _is_unc_path(dest) or not os.path.isdir(dest):
                 return {"ok": False, "message": "文件夹不存在：%s" % dest, "names": []}
             try:
                 names = os.listdir(dest)
@@ -2068,7 +2080,7 @@ class App:
             return {"ok": True, "names": names}
         if path == "/api/mkdirs":
             dest = (payload.get("dest") or self.dir).strip().strip('"')
-            if not os.path.isdir(dest):
+            if _is_unc_path(dest) or not os.path.isdir(dest):
                 return {"ok": False, "message": "要建在哪里的那个文件夹不存在：%s" % dest}
             items = payload.get("items") or []
             if not items:
@@ -2084,13 +2096,13 @@ class App:
             return {"ok": True, "results": res}
         if path == "/api/mkundo":
             dest = (payload.get("dest") or self.dir).strip().strip('"')
-            if not os.path.isdir(dest):
+            if _is_unc_path(dest) or not os.path.isdir(dest):
                 return {"ok": False, "message": "文件夹不存在：%s" % dest}
             removed, kept = remove_empty_folders(dest, payload.get("names") or [])
             return {"ok": True, "removed": removed, "kept": kept}
         if path == "/api/openpath":
             pth = (payload.get("path") or "").strip().strip('"')
-            if not os.path.isdir(pth):
+            if _is_unc_path(pth) or not os.path.isdir(pth):
                 return {"ok": False, "message": "文件夹不存在"}
             try:
                 if os.name == "nt":
@@ -2200,6 +2212,8 @@ class App:
                 raw = (payload.get("path") or "").strip().strip('"')
                 if not raw:
                     return {"ok": False, "message": "没有路径"}
+                if _is_unc_path(raw):
+                    return {"ok": False, "message": "安全保护：不支持直接打开远程共享 UNC 路径"}
                 if os.path.isfile(raw):
                     raw = os.path.dirname(raw)
                 if not os.path.isdir(raw):
@@ -2322,6 +2336,8 @@ class App:
                     picked = win_pick("save", self.dir, "导出工程文件", default_name)
                 if not picked:
                     return {"ok": False, "cancelled": True}
+                if _is_unc_path(picked) or not str(picked).lower().endswith(".json"):
+                    return {"ok": False, "message": "安全校验：工程导出文件必须为本地 .json 文件"}
                 if payload.get("grid") is not None:
                     self.project.data["grid"] = payload["grid"]
                 blob = self.project.export_payload()
@@ -2337,6 +2353,8 @@ class App:
                     picked = win_pick("open", self.dir, "导入工程文件")
                 if not picked:
                     return {"ok": False, "cancelled": True}
+                if _is_unc_path(picked) or not str(picked).lower().endswith(".json"):
+                    return {"ok": False, "message": "安全校验：工程导入文件必须为本地 .json 文件"}
                 try:
                     with open(picked, "r", encoding="utf-8") as f:
                         data = json.load(f)
@@ -2410,6 +2428,9 @@ class App:
                 name = payload.get("file") or ""
                 if not entry_name_ok(name):
                     return {"ok": False, "message": "文件名不合法"}
+                ext = os.path.splitext(name)[1].lower()
+                if ext in _DANGEROUS_OPEN_EXTS:
+                    return {"ok": False, "message": "出于安全保护，不在预览中直接运行可执行程序或脚本（%s），请使用『在文件夹中显示』查看。" % ext}
                 path_arg = os.path.join(self.dir, name)
                 if not os.path.exists(path_arg):
                     return {"ok": False, "message": "文件不存在"}
@@ -2472,7 +2493,7 @@ class App:
                 return {"ok": True, "plan": len(items)}
             if path == "/api/dlrename":
                 dest = (payload.get("dest") or "").strip().strip('"')
-                if not dest or not os.path.isdir(dest):
+                if not dest or _is_unc_path(dest) or not os.path.isdir(dest):
                     return {"ok": False, "message": "下载文件夹不存在：%s" % dest}
                 plan = []
                 for p in payload.get("plan") or []:
@@ -2487,7 +2508,7 @@ class App:
                 return do_rename(dest, plan)
             if path == "/api/download":
                 dest = (payload.get("dest") or self.dir).strip().strip('"')
-                if not os.path.isdir(dest):
+                if _is_unc_path(dest) or not os.path.isdir(dest):
                     return {"ok": False, "message": "保存位置不存在：%s" % dest}
                 items = []
                 for it in payload.get("items") or []:
@@ -2546,6 +2567,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(body)
@@ -7671,48 +7695,236 @@ init();
 """
 
 
-# ============================================================ 启动
+# ============================================================ 启动与全栈黑匣子接入
+def _hook_table_tool_stdio():
+    """在 pythonw.exe 下 sys.stdout/stderr 为 None，接管并落盘到 data/logs/table_tool.log，同时挂载 faulthandler。"""
+    import faulthandler
+    import tempfile
+
+    log_dir = os.path.join(_LTX_ROOT_DIR, "data", "logs")
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "table_tool.log")
+    except Exception:
+        log_path = os.path.join(tempfile.gettempdir(), "pianyu_table_tool.log")
+
+    try:
+        logf = open(log_path, "a", encoding="utf-8", buffering=1)
+    except Exception:
+        return
+
+    try:
+        faulthandler.enable(file=logf)
+    except Exception:
+        pass
+
+    class _Tee(object):
+        encoding = "utf-8"
+        errors = "replace"
+
+        def __init__(self, orig, extra):
+            self._s = orig
+            self._e = extra
+
+        def write(self, data):
+            if self._s is not None:
+                try:
+                    self._s.write(data)
+                    self._s.flush()
+                except Exception:
+                    pass
+            if self._e is not None:
+                try:
+                    self._e.write(data)
+                    self._e.flush()
+                except Exception:
+                    pass
+
+        def flush(self):
+            for x in (self._s, self._e):
+                if x is not None:
+                    try:
+                        x.flush()
+                    except Exception:
+                        pass
+
+        def isatty(self):
+            return False
+
+    sys.stdout = _Tee(getattr(sys, "stdout", None), logf)
+    sys.stderr = _Tee(getattr(sys, "stderr", None), logf)
+
+
+def _emit_table_launch_state(stage, error="", detail=None):
+    try:
+        if os.path.isdir(_LTX_ROOT_DIR) and _LTX_ROOT_DIR not in sys.path:
+            sys.path.insert(0, _LTX_ROOT_DIR)
+        from core.launch_state import write_launch_state
+        write_launch_state(stage, app_name="table_tool", error=error, detail=detail or {})
+    except Exception:
+        pass
+
+
+def _sanitize_arg_dir(raw_arg):
+    """清理 Windows 资源管理器右键菜单 "%V" 在磁盘根目录产生的尾随反斜杠或引号粘连（如 'D:"' -> 'D:\\'）。"""
+    s = (raw_arg or "").strip().strip('"').strip()
+    if os.name == "nt" and len(s) == 2 and s[1] == ":":
+        s = s + "\\"
+    if s and not _is_unc_path(s):
+        try:
+            abs_p = os.path.abspath(s)
+            if os.path.isfile(abs_p):
+                abs_p = os.path.dirname(abs_p)
+            if os.path.isdir(abs_p):
+                return abs_p
+        except Exception:
+            pass
+    for fallback in (
+        os.path.join(_LTX_ROOT_DIR, "modules", "orante_desk", "workspace"),
+        os.path.expanduser("~/Desktop"),
+        os.getcwd(),
+    ):
+        if os.path.isdir(fallback):
+            return os.path.abspath(fallback)
+    return os.getcwd()
+
+
+def _bind_table_win_icon(window):
+    """Windows：窗口出现后强制显式显示（防父进程 SW_HIDE 导致窗口隐藏）并贴上片语品牌图标。"""
+    if os.name != "nt":
+        return
+    ico_path = os.path.join(_LTX_ROOT_DIR, "resources", "brand", "app.ico")
+
+    def _apply(_=None):
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            pid = ctypes.windll.kernel32.GetCurrentProcessId()
+            found = []
+            WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+            @WNDENUMPROC
+            def _cb(hwnd, _lp):
+                proc = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc))
+                if proc.value != pid:
+                    return True
+                buf = ctypes.create_unicode_buffer(512)
+                user32.GetWindowTextW(hwnd, buf, 512)
+                if APP_NAME in (buf.value or ""):
+                    found.append(int(hwnd))
+                    return False
+                return True
+
+            user32.EnumWindows(_cb, 0)
+            if not found:
+                return
+            hwnd = found[0]
+            if not user32.IsWindowVisible(hwnd):
+                user32.ShowWindow(hwnd, 5)
+                user32.ShowWindow(hwnd, 9)
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+            if os.path.isfile(ico_path):
+                IMAGE_ICON = 1
+                LR_LOADFROMFILE = 0x0010
+                LR_DEFAULTSIZE = 0x0040
+                WM_SETICON = 0x0080
+                h_big = user32.LoadImageW(None, ico_path, IMAGE_ICON, 32, 32, LR_LOADFROMFILE | LR_DEFAULTSIZE)
+                h_sm = user32.LoadImageW(None, ico_path, IMAGE_ICON, 16, 16, LR_LOADFROMFILE | LR_DEFAULTSIZE)
+                if h_big:
+                    user32.SendMessageW(hwnd, WM_SETICON, 1, h_big)
+                if h_sm:
+                    user32.SendMessageW(hwnd, WM_SETICON, 0, h_sm)
+        except Exception:
+            pass
+
+    try:
+        ev = getattr(window, "events", None)
+        shown = getattr(ev, "shown", None) if ev is not None else None
+        if shown is not None:
+            shown += _apply
+        threading.Timer(0.4, _apply).start()
+    except Exception:
+        pass
+
+
 def main():
-    target = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
-    target = os.path.abspath(target)
-    if not os.path.isdir(target):
-        target = os.getcwd()
+    import atexit
+    import traceback
+
+    _hook_table_tool_stdio()
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("LTXStudio.TableTool.3.0")
+        except Exception:
+            pass
+
+    raw_arg = sys.argv[1] if len(sys.argv) > 1 and not str(sys.argv[1]).startswith("--") else ""
+    target = _sanitize_arg_dir(raw_arg)
+    force_browser = "--browser" in sys.argv
+    _emit_table_launch_state("BOOTSTRAP_START", detail={"target": target, "argv": sys.argv[1:]})
 
     Handler.token = secrets.token_urlsafe(32)
     Handler.app = App(target)
 
+    ThreadingHTTPServer.allow_reuse_address = True
+    ThreadingHTTPServer.daemon_threads = True
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % port
+    _emit_table_launch_state("SERVER_READY", detail={"port": port, "target": target})
+    atexit.register(lambda: _emit_table_launch_state("PROCESS_EXIT", detail={"port": port}))
 
-    try:
-        import webview  # pywebview：原生窗口，体验最好
-        prefs = load_prefs()
-        win = webview.create_window(
-            "%s — %s" % (APP_NAME, target), url,
-            width=int(prefs.get("width") or 1320),
-            height=int(prefs.get("height") or 860),
-            min_size=(900, 560),
-        )
-        def _save_win():
+    if not force_browser:
+        try:
+            import webview  # pywebview：原生窗口，体验最好
+            prefs = load_prefs()
+            win = webview.create_window(
+                "%s — %s" % (APP_NAME, target), url,
+                width=int(prefs.get("width") or 1320),
+                height=int(prefs.get("height") or 860),
+                min_size=(900, 560),
+            )
+            _bind_table_win_icon(win)
+
+            def _on_shown():
+                _emit_table_launch_state("MAIN_WINDOW_READY", detail={"port": port, "mode": "pywebview", "target": target})
+
+            def _save_win():
+                try:
+                    save_prefs({"width": int(win.width or 1320), "height": int(win.height or 860)})
+                except Exception:
+                    pass
+                _emit_table_launch_state("PROCESS_EXIT", detail={"port": port, "mode": "pywebview"})
+
             try:
-                save_prefs({"width": int(win.width or 1320), "height": int(win.height or 860)})
+                win.events.shown += _on_shown
+            except Exception:
+                threading.Timer(0.5, _on_shown).start()
+            try:
+                win.events.closing += _save_win
             except Exception:
                 pass
-        try:
-            win.events.closing += _save_win
-        except Exception:
-            pass
-        webview.start()
-        os._exit(0)
-    except ImportError:
-        webbrowser.open(url)
-        try:
-            while True:
-                time.sleep(3600)
-        except KeyboardInterrupt:
-            pass
+            webview.start()
+            os._exit(0)
+        except Exception as exc:
+            # 无论因缺失 pywebview 还是 Windows 缺少 Edge WebView2 Runtime / .NET 初始化异常，
+            # 均记录日志并自动无缝降级为默认浏览器打开，确保用户 100% 能打开表格工具！
+            sys.stderr.write("[table_tool] pywebview 窗口模式降级为系统浏览器: %s\n" % exc)
+            traceback.print_exc()
+
+    _emit_table_launch_state("MAIN_WINDOW_READY", detail={"port": port, "mode": "browser_fallback", "target": target})
+    webbrowser.open(url)
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":

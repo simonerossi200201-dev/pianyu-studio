@@ -27,6 +27,19 @@ from . import paths, db, config
 _window = None
 APP_USER_MODEL_ID = "Orante.Studio"
 
+
+def _emit_orante_launch_state(stage: str, error: str = "", detail: dict | None = None) -> None:
+    """向全工作室黑匣子汇报 Orante 2.0 制片台的生命周期阶段。"""
+    try:
+        ltx_root = paths.ROOT.parent.parent
+        if str(ltx_root) not in sys.path:
+            sys.path.insert(0, str(ltx_root))
+        from core.launch_state import write_launch_state
+        write_launch_state(stage, error=error, detail=detail or {}, app_name="orante")
+    except Exception:
+        pass
+
+
 # /api/state 里用来认「这是 Orante」的键。少一个就当别人占着端口。
 ORANTE_STATE_KEYS = (
     "ok", "version", "accounts", "tasks", "settings", "jobs", "root", "flow_models",
@@ -207,8 +220,10 @@ def load_when_ready(window, url: str, timeout: float = BOOT_TIMEOUT,
     if ok:
         print(f"后端就绪，load_url {url}", flush=True)
         window.load_url(url)
+        _emit_orante_launch_state("MAIN_WINDOW_READY", detail={"url": url, "mode": "pywebview"})
         return True
     print("等待后端超时，窗口改走错误页", flush=True)
+    _emit_orante_launch_state("STARTUP_FAILED", error="等待后端 /api/ping 超时", detail={"url": url})
     _window_load_html(window, boot_error_html(url, error="等待后端超时"))
     return False
 
@@ -937,6 +952,7 @@ def open_ui(url: str, port: int, browser: bool = False) -> int:
         print("等待后端 /api/ping …", flush=True)
         if wait_api_ready(api):
             webbrowser.open(url)
+            _emit_orante_launch_state("BROWSER_FALLBACK_READY", detail={"url": url, "port": port, "mode": "browser"})
             print("关掉这个窗口即停止服务。", flush=True)
             try:
                 while True:
@@ -944,6 +960,7 @@ def open_ui(url: str, port: int, browser: bool = False) -> int:
             except KeyboardInterrupt:
                 return 0
             return 0
+        _emit_orante_launch_state("STARTUP_FAILED", error="等待后端超时 (browser)", detail={"url": url, "port": port})
         return show_boot_error_window(url, error="等待后端超时", browser=True)
 
     try:
@@ -982,8 +999,9 @@ def main(argv=None) -> int:
     """入口。启动期任何异常都进 orante.log，pythonw 下也落盘。"""
     try:
         return _run(argv)
-    except Exception:
+    except Exception as exc:
         traceback.print_exc()
+        _emit_orante_launch_state("STARTUP_FAILED", error=str(exc))
         return 1
 
 
@@ -991,6 +1009,8 @@ def _run(argv=None) -> int:
     # pythonw 下 stdout 为 None，先接上日志再登记 ID（都在创建窗口之前）
     _hook_stdio()
     _set_app_user_model_id()
+    _emit_orante_launch_state("BOOTSTRAP_START", detail={"argv": list(argv or sys.argv[1:])})
+    atexit.register(lambda: _emit_orante_launch_state("PROCESS_EXIT"))
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--browser", action="store_true")

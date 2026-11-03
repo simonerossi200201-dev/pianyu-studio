@@ -100,6 +100,31 @@
 - **严重级别**：**Low (低危)**
 - **修复方案（已修复）**：改为标准的 Python 模块导入 `from orante.engines.grok import _BLOCK_FALSE as FALSE, _BLOCK_RE as BLOCK`，彻底消除 `exec()` 调用。
 
+### [SEC-09] 右键表格工具本地 HTTP 服务 (`127.0.0.1`) UNC 路径哈希泄露拦截、文件后缀强约束与可执行文件打开熔断
+- **位置**：[`modules/table_tool/app/表格工具.py:293-702`](./modules/table_tool/app/表格工具.py#L293-L702)
+- **风险与利用条件**：
+  1. 若传入 `\\attacker_ip\share` 等远程 UNC 路径给 `_switch_dir`、`/api/openpath`、`/api/export`、`/api/import`，Windows SMB 客户端可能向外部 IP 发送当前用户的 NTLMv2 哈希。
+  2. `/api/export` 与 `/api/import` 若未强制限制 `.json` 扩展名，可能被滥用于覆盖或探测非项目 JSON 文件。
+  3. `/api/openfile` 若直接调用 `os.startfile()` 打开 `.exe`/`.bat`/`.ps1`/`.vbs` 等脚本，存在误触发可执行程序运行的风险。
+- **严重级别**：**Medium (中危 / 纵深防御)**
+- **修复方案（已修复）**：
+  1. 新增 `_is_unc_path()` 在全部目录/文件接口（`_switch_dir`、`/api/mklist`、`/api/mkdirs`、`/api/mkundo`、`/api/openpath`、`/api/droppath`、`/api/export`、`/api/import`、`/api/dlrename`、`/api/download`）中拦截远程 UNC 路径。
+  2. `/api/export` 与 `/api/import` 强制校验 `.json` 扩展名。
+  3. `/api/openfile` 增加 `_DANGEROUS_OPEN_EXTS` 黑名单，禁止直接启动 `.exe`、`.bat`、`.cmd`、`.ps1`、`.vbs`、`.command`、`.app` 等可执行脚本。
+  4. HTTP 响应统一注入 `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY` 与 `Referrer-Policy: no-referrer` 安全头，配合单实例一次性随机令牌 `X-Rct-Token` + `Host`/`Origin` 双重校验。
+
+### [SEC-10] 全工作室黑匣子与诊断导出器 (`blackbox.py` / `收集卡死诊断信息.ps1`) 零隐私泄露加固
+- **位置**：
+  - [`modules/cutora_editor/cutora/core/log.py:26-72`](./modules/cutora_editor/cutora/core/log.py#L26-L72)
+  - [`modules/cutora_editor/cutora/core/blackbox.py:1895-2040`](./modules/cutora_editor/cutora/core/blackbox.py#L1895-L2040)
+  - [`core/launch_state.py:42-78`](./core/launch_state.py#L42-L78)
+  - [`收集卡死诊断信息.ps1:19-54`](./收集卡死诊断信息.ps1#L19-L54)
+- **风险与利用条件**：用户向技术支持发送黑匣子 `.zip` 诊断包时，若直接打包原始日志文件、计算机名 (`socket.gethostname()`)、操作系统用户名路径 (`C:\Users\<Name>\` / `/Users/<Name>/`) 或 Orante 浏览器 Cookie/OAuth Token，可能导致个人隐私或账号凭据外泄。
+- **严重级别**：**Medium (隐私合规与凭据防护)**
+- **修复方案（已修复）**：
+  1. 在 `redact_text()` 与 `scrub_privacy_text()` 中扩展全量正则脱敏规则：自动掩码 Google OAuth (`ya29.*` / `1//*`)、Session Cookie (`__Secure-1PSID`、`SID`、`SAPISID`、`orante_session`、`X-Rct-Token`)、各类云端 API Key (`AIza*`、`sk-*`、`xai-*`、`gsk_*`、`hf_*`、`ghp_*`)，并将操作系统用户主目录统一匿名化为 `C:\Users\<USER>\` 或 `/Users/<USER>/`。
+  2. `export_blackbox_zip()` 对主机名采用不可逆短哈希匿名化 (`HOST_<6位哈希>`)，且所有进入 `.zip` 的日志、JSON 状态与报告均经过 `_write_redacted_file_to_zip()` 强制内存脱敏写出，绝不打包 `orante.db`（含账号 Cookie）或原始 `settings`/`jobs` 目录。
+
 ---
 
 ## 三、密钥与凭据泄露排查 (Secrets & Credentials Audit)

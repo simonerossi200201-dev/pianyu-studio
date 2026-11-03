@@ -28,10 +28,10 @@ if str(LTX_ROOT) not in sys.path:
 
 from core import resolve_python_exe
 from core.portable import rewrite_pyvenv_cfg
-from core.shortcut import ensure_shortcuts
+from core.shortcut import ensure_shortcuts, ensure_table_tool_registered
 from core.hardware_guard import get_hardware_guard
 from core.spine_db import get_spine_db, _resolve_workspace_root
-from core.launch_state import read_launch_state
+from core.launch_state import read_launch_state, write_launch_state
 from core.table_sync import (
     call_cutora_api,
     is_cutora_running as _table_sync_is_cutora_running,
@@ -43,9 +43,17 @@ from core.delivery_worker import get_delivery_worker
 
 
 def _bootstrap_studio_env() -> None:
-    """在受保护上下文中修正便携路径与快捷方式，不在模块导入顶层裸跑，避免权限异常无日志退出。"""
+    """在受保护上下文中修正便携路径、快捷方式与右键表格工具注册（并自动清理旧版回收站残影键）。"""
+    try:
+        write_launch_state("BOOTSTRAP_START", app_name="launcher")
+    except Exception:
+        pass
     try:
         rewrite_pyvenv_cfg(LTX_ROOT)
+    except Exception:
+        pass
+    try:
+        ensure_table_tool_registered(LTX_ROOT, quiet=True)
     except Exception:
         pass
     try:
@@ -175,12 +183,25 @@ def launch_orante(start_node: str = "") -> bool:
     cmd = [_python_exe(gui=True), "-m", "orante"]
     if orante_instance_count() > 0:
         cmd.append("--new")
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(orante_dir),
-        env=env,
-        **_detached_popen_kwargs(),
-    )
+    log_dir = LTX_ROOT / "data" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    out_fh = open(log_dir / "orante_stdout.log", "ab")
+    err_fh = open(log_dir / "orante_stderr.log", "ab")
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(orante_dir),
+            env=env,
+            stdout=out_fh,
+            stderr=err_fh,
+            **_detached_popen_kwargs(),
+        )
+    finally:
+        try:
+            out_fh.close()
+            err_fh.close()
+        except Exception:
+            pass
     _MODULE_PROCS["orante"] = proc
     _ORANTE_PROCS.append(proc)
     get_spine_db().emit_event("launcher.orante_started", "launcher", "orante", {"start_node": start_node})
@@ -249,7 +270,24 @@ def launch_table_tool(target_dir: str | None = None) -> bool:
         ws_root = _resolve_workspace_root()
         if ws_root.is_dir():
             cmd.append(str(ws_root))
-    proc = subprocess.Popen(cmd, cwd=str(script.parent), **_detached_popen_kwargs())
+    log_dir = LTX_ROOT / "data" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    out_fh = open(log_dir / "table_tool_stdout.log", "ab")
+    err_fh = open(log_dir / "table_tool_stderr.log", "ab")
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(script.parent),
+            stdout=out_fh,
+            stderr=err_fh,
+            **_detached_popen_kwargs(),
+        )
+    finally:
+        try:
+            out_fh.close()
+            err_fh.close()
+        except Exception:
+            pass
     _MODULE_PROCS["table"] = proc
     get_spine_db().emit_event("launcher.table_tool_started", "launcher", "table_tool", {})
     return True
@@ -985,6 +1023,10 @@ def run_gui(screenshot_path: str | None = None) -> None:
             self._status_timer.start()
 
             self.refresh_status(silent=True)
+            try:
+                write_launch_state("MAIN_WINDOW_READY", app_name="launcher")
+            except Exception:
+                pass
 
         def _build_ui(self, brand_dir: Path) -> None:
             root = QVBoxLayout(self)
@@ -1077,13 +1119,17 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
             root.addStretch(1)
 
-            # 4. 底部小按钮：释放系统内存
+            # 4. 底部小按钮：释放系统内存 + 一键导出全工作室黑匣子
             bottom_bar = QHBoxLayout()
             bottom_bar.setContentsMargins(0, 8, 0, 0)
+            bottom_bar.setSpacing(8)
             bottom_bar.addStretch(1)
             self._btn_purge_mem = AnimatedGoldButton("🧹 释放系统内存", primary=False, compact=True, parent=self)
             self._btn_purge_mem.clicked.connect(self._on_purge_system_memory)
             bottom_bar.addWidget(self._btn_purge_mem)
+            self._btn_export_bb = AnimatedGoldButton("📦 导出黑匣子", primary=False, compact=True, parent=self)
+            self._btn_export_bb.clicked.connect(self._on_export_blackbox)
+            bottom_bar.addWidget(self._btn_export_bb)
             bottom_bar.addStretch(1)
             root.addLayout(bottom_bar)
 
@@ -1140,6 +1186,19 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 self._toast.show_toast(f"已执行系统内存深度回收 · 当前总内存 {int(round(prof.ram_total_gb))}GB 守护中")
             except Exception as e:
                 self._toast.show_toast(f"内存整理完成：{e}")
+
+        def _on_export_blackbox(self) -> None:
+            self._toast.show_toast("⏳ 正在汇总全工作室三款软件运行记录并生成脱敏黑匣子诊断包…")
+            try:
+                cutora_dir = LTX_ROOT / "modules" / "cutora_editor"
+                if str(cutora_dir) not in sys.path:
+                    sys.path.insert(0, str(cutora_dir))
+                from cutora.core.blackbox import export_blackbox_zip
+                info = export_blackbox_zip(include_win_events=True)
+                zp = Path(str(info.get("zip_path") or "")).name
+                self._toast.show_toast(f"✓ 已导出全工作室黑匣子至桌面：{zp}")
+            except Exception as exc:
+                self._toast.show_toast(f"导出黑匣子异常：{exc}")
 
         def _on_open_orante(self, start_node: str = "") -> None:
             self._sync_module_locks()
@@ -1536,6 +1595,10 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p.end()
 
         def closeEvent(self, event) -> None:
+            try:
+                write_launch_state("PROCESS_EXIT", app_name="launcher")
+            except Exception:
+                pass
             try:
                 if hasattr(self, "_pulse_timer") and self._pulse_timer.isActive():
                     self._pulse_timer.stop()

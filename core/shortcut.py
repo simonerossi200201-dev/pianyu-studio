@@ -260,11 +260,13 @@ def ensure_shortcuts(root: Path | None = None, *, force: bool = False, quiet: bo
         if created_mac:
             stamp.parent.mkdir(parents=True, exist_ok=True)
             stamp.write_text("created\n", encoding="utf-8")
+        ensure_table_tool_registered(base, quiet=quiet)
         return created_mac
 
     if os.name != "nt":
         return []
 
+    ensure_table_tool_registered(base, quiet=quiet)
     menu = start_menu_dir()
     main_lnk = desk / f"{APP_NAME}.lnk"
 
@@ -317,6 +319,14 @@ def ensure_shortcuts(root: Path | None = None, *, force: bool = False, quiet: bo
             "icon": ico_orante if ico_orante.is_file() else ico_studio,
             "desc": "直接打开 Orante 2.0 批量制片台",
         },
+        {
+            "path": menu / "右键表格工具.lnk",
+            "target": pyw,
+            "args": f'"{base / "modules" / "table_tool" / "app" / "表格工具.py"}"',
+            "workdir": base / "modules" / "table_tool" / "app",
+            "icon": ico_studio,
+            "desc": "直接打开片语工作室 - 右键表格工具",
+        },
     ]
 
     created: list[Path] = []
@@ -332,6 +342,106 @@ def ensure_shortcuts(root: Path | None = None, *, force: bool = False, quiet: bo
         stamp.parent.mkdir(parents=True, exist_ok=True)
         stamp.write_text("created\n", encoding="utf-8")
     return created
+
+
+def _delete_reg_tree_quiet(root_key, subkey: str) -> bool:
+    if os.name != "nt":
+        return False
+    import winreg
+    removed = False
+    for child in (f"{subkey}\\command", subkey):
+        try:
+            winreg.DeleteKey(root_key, child)
+            removed = True
+        except OSError:
+            pass
+    return removed
+
+
+def ensure_table_tool_registered(root: Path | None = None, *, quiet: bool = False) -> bool:
+    """统一注册『片语工作室 - 表格工具』右键菜单，并自动清理旧版残留项（如带回收站图标的 RightClickTableTool / VisualRenamer）。"""
+    import shutil
+    from . import resolve_python_exe
+    from .portable import rewrite_pyvenv_cfg
+
+    base = Path(root).resolve() if root else LTX_ROOT
+    script = base / "modules" / "table_tool" / "app" / "表格工具.py"
+    if not script.is_file():
+        return False
+
+    try:
+        rewrite_pyvenv_cfg(base)
+    except Exception:
+        pass
+
+    if sys.platform == "darwin":
+        try:
+            from modules.table_tool.install import install_macos_finder_integration
+            py_exe = resolve_python_exe(gui=True, root=base)
+            install_macos_finder_integration(str(script), python_exe=py_exe)
+            return True
+        except Exception as e:
+            if not quiet:
+                print(f"[WARN] macOS Finder 快速操作注册跳过: {e}")
+            return False
+
+    if os.name != "nt":
+        return False
+
+    try:
+        import winreg
+
+        # 1. 彻底清理旧版重复/失效右键菜单项（RightClickTableTool / VisualRenamer）
+        for legacy_name in ("RightClickTableTool", "VisualRenamer"):
+            for shell_base in (
+                r"Software\Classes\Directory\Background\shell",
+                r"Software\Classes\Directory\shell",
+                r"Software\Classes\Drive\shell",
+            ):
+                _delete_reg_tree_quiet(winreg.HKEY_CURRENT_USER, f"{shell_base}\\{legacy_name}")
+                _delete_reg_tree_quiet(winreg.HKEY_LOCAL_MACHINE, f"{shell_base}\\{legacy_name}")
+                # 若 HKLM 中残留旧键且当前非管理员无法删除，则在 HKCU 写入 LegacyDisable 屏蔽显示
+                try:
+                    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, f"{shell_base}\\{legacy_name}"):
+                        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"{shell_base}\\{legacy_name}") as dk:
+                            winreg.SetValueEx(dk, "LegacyDisable", 0, winreg.REG_SZ, "")
+                except OSError:
+                    pass
+            for hkcr_base in (
+                r"Directory\Background\shell",
+                r"Directory\shell",
+                r"Drive\shell",
+            ):
+                _delete_reg_tree_quiet(winreg.HKEY_CLASSES_ROOT, f"{hkcr_base}\\{legacy_name}")
+
+        # 清理旧版在 %LOCALAPPDATA%\RightClickTableTool 留下的孤立副本，确保全局唯一指向工作室目录
+        legacy_dir = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")) / "RightClickTableTool"
+        if legacy_dir.is_dir():
+            shutil.rmtree(legacy_dir, ignore_errors=True)
+
+        # 2. 解析当前有效的便携 pythonw.exe 与品牌图标
+        pyw = base / "runtime" / "venv" / "Scripts" / "pythonw.exe"
+        if not pyw.is_file():
+            pyw = Path(resolve_python_exe(gui=True, root=base))
+        ico = base / "resources" / "brand" / "app.ico"
+        icon_val = str(ico if ico.is_file() else pyw)
+
+        # 3. 注册唯一权威右键菜单项 LTXStudioTableTool（注意 "%V " 末尾带空格以防磁盘根目录 D:\ 反斜杠转义双引号）
+        for reg_path, arg in [
+            (r"Software\Classes\Directory\Background\shell\LTXStudioTableTool", "%V "),
+            (r"Software\Classes\Directory\shell\LTXStudioTableTool", "%1 "),
+            (r"Software\Classes\Drive\shell\LTXStudioTableTool", "%1 "),
+        ]:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, reg_path) as k:
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "片语工作室 - 表格工具")
+                winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, icon_val)
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, reg_path + r"\command") as ck:
+                winreg.SetValueEx(ck, "", 0, winreg.REG_SZ, f'"{pyw}" "{script}" "{arg}"')
+        return True
+    except Exception as e:
+        if not quiet:
+            print(f"[WARN] 右键菜单注册失败: {e}")
+        return False
 
 
 if __name__ == "__main__":

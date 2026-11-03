@@ -22,13 +22,11 @@ foreach ($ud in @($userData, $portable)) {
     if (Test-Path $ud) {
         $dst = Join-Path $out ("UserData_" + (Split-Path $ud -Leaf))
         New-Item -ItemType Directory -Path $dst -Force | Out-Null
-        Copy-Item (Join-Path $ud "logs") $dst -Recurse -Force
-        Copy-Item (Join-Path $ud "settings") $dst -Recurse -Force
-        Copy-Item (Join-Path $ud "jobs") $dst -Recurse -Force
+        # 仅通过已脱敏的黑匣子导出引擎收集日志，禁止裸拷贝 settings / jobs 原始目录以保护用户隐私与凭据
         Copy-Item (Join-Path $ud "export_state.json") $dst -Force
     }
 }
-foreach ($p in @("data\logs", "data\install_health_report.json", "logs")) {
+foreach ($p in @("data\install_health_report.json")) {
     $src = Join-Path $root $p
     if (Test-Path $src) { Copy-Item $src (Join-Path $out ("studio_" + ($p -replace '[\\/]', '_'))) -Recurse -Force }
 }
@@ -49,7 +47,7 @@ $app | Select-Object TimeCreated, Id, ProviderName, Message |
 
 Write-Host "[3/5] 硬件与驱动信息..."
 $hw = @()
-$hw += "电脑名: $env:COMPUTERNAME"
+$hw += "设备标识: HOST_REDACTED"
 $os = Get-CimInstance Win32_OperatingSystem
 $hw += "系统: $($os.Caption) $($os.Version) build $($os.BuildNumber)"
 $hw += "上次开机: $($os.LastBootUpTime)"

@@ -14,8 +14,9 @@ if os.name == "nt":
 else:
     winreg = None
 
-APP_NAME = "右键表格工具"
-REG_KEY = "RightClickTableTool"
+APP_NAME = "片语工作室 - 表格工具"
+REG_KEY = "LTXStudioTableTool"
+LEGACY_REG_KEYS = ("RightClickTableTool", "VisualRenamer")
 if sys.platform == "darwin":
     DEST = os.path.expanduser("~/Library/Application Support/RightClickTableTool")
 elif os.name == "nt":
@@ -28,9 +29,17 @@ def here():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def studio_root():
+    cand = os.path.abspath(os.path.join(here(), "..", ".."))
+    if os.path.isfile(os.path.join(cand, "studio_launcher.py")):
+        return cand
+    return ""
+
+
 def find_pythonw():
+    s_root = studio_root()
     if os.name != "nt":
-        ltx_root = os.path.abspath(os.path.join(here(), "..", ".."))
+        ltx_root = s_root or os.path.abspath(os.path.join(here(), "..", ".."))
         for rel in (
             os.path.join("runtime", "venv", "bin", "python3"),
             os.path.join("runtime", "venv", "bin", "python"),
@@ -43,6 +52,12 @@ def find_pythonw():
         return sys.executable or shutil.which("python3") or "python3"
 
     cands = []
+    if s_root:
+        cands += [
+            os.path.join(s_root, "runtime", "venv", "Scripts", "pythonw.exe"),
+            os.path.join(s_root, "runtime", "python", "pythonw.exe"),
+            os.path.join(s_root, "runtime", "venv", "Scripts", "python.exe"),
+        ]
     exe = sys.executable
     if exe:
         d = os.path.dirname(exe)
@@ -462,6 +477,19 @@ def register(pythonw):
 
 def main():
     print("======== %s 安装 ========" % APP_NAME)
+    s_root = studio_root()
+    if s_root:
+        if s_root not in sys.path:
+            sys.path.insert(0, s_root)
+        try:
+            from core.shortcut import ensure_table_tool_registered
+            ok = ensure_table_tool_registered(s_root, quiet=False)
+            if ok:
+                print("已通过片语工作室统一便携环境完成右键菜单注册（并自动清理旧版残留项）。")
+                print("  在任意文件夹空白处或文件夹图标上点右键，选择「%s」即可打开。" % APP_NAME)
+                return 0
+        except Exception as e:
+            print("工作室统一注册回退至标准流程：", e)
     pythonw = find_pythonw()
     if not pythonw:
         print("没有找到 Python。请先安装 Python 3.10 或更高版本：")

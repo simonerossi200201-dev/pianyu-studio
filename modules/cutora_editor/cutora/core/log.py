@@ -26,10 +26,22 @@ from collections import deque
 _REDACT_RES = (
     re.compile(r"Bearer\s+\S+", re.IGNORECASE),
     re.compile(r"api[_-]?key\s*[=:]\s*\S+", re.IGNORECASE),
-    re.compile(r"(?:xai-|sk-|sk-ant-|AIza)[A-Za-z0-9_\-]{8,}"),
-    re.compile(r"(?:key|token|secret)\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{8,}", re.IGNORECASE),
+    re.compile(r"(?:xai-|sk-|sk-ant-|AIza|gsk_|hf_|ghp_)[A-Za-z0-9_\-]{8,}"),
+    re.compile(r"ya29\.[A-Za-z0-9_\-\.]{16,}"),
+    re.compile(r"1//[A-Za-z0-9_\-]{20,}"),
+    re.compile(
+        r"(?:__Secure-[13]PSID[A-Z]*|SID|HSID|SSID|APISID|SAPISID|orante_session|X-Rct-Token)\s*[=:]\s*['\"]?[A-Za-z0-9_\-\./+=]{8,}",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'("(?:api_key|apikey|token|access_token|refresh_token|secret|password|cookie|cookies|authorization)"\s*:\s*")([^"]+)(")',
+        re.IGNORECASE,
+    ),
+    re.compile(r"(?:key|token|secret|password|cookie)\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{8,}", re.IGNORECASE),
     re.compile(r"key=[A-Za-z0-9_\-]{8,}", re.IGNORECASE),
 )
+_USER_HOME_WIN_RE = re.compile(r"([A-Za-z]:[\\/]+Users[\\/]+)([^\\/\"'\s]+)", re.IGNORECASE)
+_USER_HOME_POSIX_RE = re.compile(r"(/Users/|/home/)([^/\"'\s]+)")
 
 LOG_MAX_BYTES = 4 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
@@ -61,12 +73,17 @@ _stdio_guard = threading.local()
 
 
 def redact_text(text: str) -> str:
-    """Replace credential-like substrings with ``***``."""
+    """Replace credential-like substrings with ``***`` and anonymize OS user home paths."""
     if not text:
         return text
     out = text
     for cre in _REDACT_RES:
-        out = cre.sub("***", out)
+        if cre.groups >= 3:
+            out = cre.sub(r"\1***\3", out)
+        else:
+            out = cre.sub("***", out)
+    out = _USER_HOME_WIN_RE.sub(r"\1<USER>", out)
+    out = _USER_HOME_POSIX_RE.sub(r"\1<USER>", out)
     return out
 
 

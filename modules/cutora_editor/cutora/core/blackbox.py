@@ -1720,10 +1720,62 @@ def analyze_post_mortem(
             "explanation": "会话 `%s` 已启动但未到达主界面展示阶段即触发退出，请检查启动期依赖或单实例锁状态。" % cur_session_data.get("session_id", ""),
         })
 
+    # Check 6: Full-Studio Three Applications Snapshot (Orante 2.0 + CUTORA + 右键表格工具 + 总控台)
+    studio_apps_snapshot: dict[str, Any] = {}
+    try:
+        if ltx_root not in sys.path:
+            sys.path.insert(0, ltx_root)
+        from core.launch_state import collect_studio_apps_snapshot
+        studio_apps_snapshot = collect_studio_apps_snapshot(ltx_root)
+    except Exception:
+        studio_apps_snapshot = {}
+
+    apps_map = studio_apps_snapshot.get("apps") or {}
+    for app_key, app_label in (
+        ("orante", "Orante 2.0 制片台"),
+        ("table_tool", "右键表格工具"),
+        ("launcher", "片语工作室总控台"),
+    ):
+        ainfo = apps_map.get(app_key) or {}
+        lstate = ainfo.get("launch_state") or {}
+        astage = str(lstate.get("stage") or "")
+        aerr = str(lstate.get("error") or "")
+        if astage in ("ENV_CHECK_FAILED", "STARTUP_FAILED", "LOCK_FAILED"):
+            root_causes.append({
+                "confidence": "极高 (全工作室启动信标)",
+                "code": "%s_%s" % (app_key.upper(), astage),
+                "summary": "%s在启动阶段报错 (%s): %s" % (app_label, astage, aerr or "启动未通过"),
+                "explanation": "来自 `data/logs/%s_launch_state.json` 的记录：`%s`" % (
+                    app_key,
+                    redact_text(json.dumps(lstate.get("detail") or {}, ensure_ascii=False)),
+                ),
+            })
+
+    tb_reg = (apps_map.get("table_tool") or {}).get("registry_check") or {}
+    if IS_WINDOWS and tb_reg:
+        if tb_reg.get("legacy_recycle_bin_found"):
+            root_causes.append({
+                "confidence": "高 (Windows 右键注册表巡检)",
+                "code": "TABLE_TOOL_LEGACY_CONTEXT_MENU",
+                "summary": "检测到旧版残留的『打开表格工具 (回收站图标)』右键菜单项",
+                "explanation": "残留注册表路径：`%s`，启动总控台或运行 `install_studio.py` 即可自动清除。" % ", ".join(tb_reg.get("legacy_keys") or []),
+            })
+        elif not tb_reg.get("canonical_registered", True):
+            root_causes.append({
+                "confidence": "中 (Windows 右键注册表巡检)",
+                "code": "TABLE_TOOL_NOT_REGISTERED",
+                "summary": "Windows 右键菜单尚未注册『片语工作室 - 表格工具』或目标解释器缺失",
+                "explanation": "当前注册状态：`%s`" % redact_text(json.dumps(tb_reg, ensure_ascii=False)),
+            })
+
     has_any_valid_session = bool(
         cur_session_data.get("main_window_ready")
         or any(b.get("event") == "MAIN_WINDOW_READY" for b in breadcrumbs)
         or launch_state_data.get("main_window_ready")
+        or any(
+            ((apps_map.get(k) or {}).get("launch_state") or {}).get("main_window_ready")
+            for k in ("orante", "cutora", "table_tool", "launcher")
+        )
     )
 
     if not root_causes:
@@ -1732,12 +1784,12 @@ def analyze_post_mortem(
             summary_text = "检测到上次会话未正常走完退出流程（可能被外部终止或主面板未完成初始化），未发现底层崩溃栈。"
         elif not has_any_valid_session:
             status = "NO_SESSION_DATA"
-            summary_text = "尚未记录到已完成主面板初始化的剪辑台运行会话（无有效会话记录，不能据此判定软件曾正常启动或正常关闭）。"
+            summary_text = "尚未记录到已完成主面板初始化的工作室运行会话（无有效会话记录，不能据此判定软件曾正常启动或正常关闭）。"
         else:
             status = "CLEAN"
-            summary_text = "当前及上次已就绪的剪辑台会话均正常退出，未检测到崩溃或硬锁死事故。"
+            summary_text = "全工作室三款核心软件（Orante 2.0 制片台 / 片语剪辑台 CUTORA / 右键表格工具）运行正常，未检测到崩溃或硬锁死事故。"
     else:
-        if any(rc.get("code") in ("ENV_CHECK_FAILED", "STARTUP_FAILED", "LOCK_FAILED", "MISSING_DEPENDENCY_ON_STARTUP") for rc in root_causes):
+        if any("FAILED" in str(rc.get("code", "")) or "MISSING_DEPENDENCY" in str(rc.get("code", "")) for rc in root_causes):
             status = "STARTUP_FAILED"
         else:
             status = "CRASH_OR_FREEZE_DETECTED"
@@ -1754,6 +1806,7 @@ def analyze_post_mortem(
         "recent_breadcrumbs": breadcrumbs[-30:],
         "windows_crash_events": win_events,
         "has_native_crash_stack": bool(native_crash),
+        "studio_apps": studio_apps_snapshot,
     }
 
     try:
@@ -1851,7 +1904,72 @@ def format_post_mortem_markdown(diagnosis: dict[str, Any]) -> str:
             )
         lines.append("")
 
+    studio_apps = (diagnosis.get("studio_apps") or {}).get("apps") or {}
+    if studio_apps:
+        lines.extend([
+            "## 五、全工作室三款核心软件与总控台运行档案 (Orante 2.0 / CUTORA / 右键表格工具)",
+            "| 软件模块 | 最近生命周期阶段 | 主界面已就绪 | 最近更新时间 | 错误/补充说明 |",
+            "| :--- | :--- | :---: | :--- | :--- |",
+        ])
+        for k in ("launcher", "orante", "cutora", "table_tool"):
+            item = studio_apps.get(k) or {}
+            ls = item.get("launch_state") or {}
+            st_stage = ls.get("stage") or "未启动/无记录"
+            ready_flag = "✅ 是" if ls.get("main_window_ready") else "—"
+            upd_at = ls.get("updated_at") or "—"
+            err_or_detail = ls.get("error") or json.dumps(ls.get("detail") or {}, ensure_ascii=False)
+            lines.append(
+                "| **%s** (`%s`) | `%s` | %s | `%s` | %s |" % (
+                    item.get("label", k),
+                    k,
+                    st_stage,
+                    ready_flag,
+                    upd_at,
+                    redact_text(str(err_or_detail)[:140]),
+                )
+            )
+        lines.append("")
+        orante_db = (studio_apps.get("orante") or {}).get("db_health") or {}
+        if orante_db:
+            lines.append(
+                "- **Orante 2.0 数据库与作业摘要**：数据库存在=`%s` ｜ 最近作业数=`%d` ｜ 最近异常段数=`%d`"
+                % (
+                    orante_db.get("db_exists", False),
+                    len(orante_db.get("recent_jobs") or []),
+                    len(orante_db.get("recent_failed_shots") or []),
+                )
+            )
+        tb_reg = (studio_apps.get("table_tool") or {}).get("registry_check") or {}
+        if tb_reg:
+            lines.append(
+                "- **右键表格工具注册表体检**：标准右键菜单已注册=`%s` ｜ 目标解释器存在=`%s` ｜ 旧版回收站残影键已清零=`%s`"
+                % (
+                    tb_reg.get("canonical_registered", False),
+                    tb_reg.get("target_python_exists", False),
+                    not bool(tb_reg.get("legacy_recycle_bin_found", False)),
+                )
+            )
+        lines.append("")
+
     return "\n".join(lines)
+
+
+def _write_redacted_file_to_zip(zf: zipfile.ZipFile, src_path: str, arc_name: str, max_bytes: int = 4 * 1024 * 1024) -> bool:
+    """Read a text/log/JSON file, scrub all secrets/cookies/tokens/user paths, and write to zip."""
+    if not os.path.isfile(src_path):
+        return False
+    try:
+        size = os.path.getsize(src_path)
+        with open(src_path, "rb") as fh:
+            if size > max_bytes:
+                fh.seek(size - max_bytes)
+            raw = fh.read()
+        text = raw.decode("utf-8", errors="replace")
+        clean_text = redact_text(text)
+        zf.writestr(arc_name, clean_text.encode("utf-8"))
+        return True
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -1865,8 +1983,10 @@ def export_blackbox_zip(
     include_win_events: bool = True,
 ) -> dict[str, Any]:
     """Generate fresh hardware optimization + post-mortem reports and package all
-    blackbox telemetry, logs, and crash forensics into a single `.zip` archive.
+    blackbox telemetry, logs, and crash forensics for all 3 studio apps into a single `.zip` archive.
+    All logs, JSONs, and paths are privacy-scrubbed before writing to the zip.
     """
+    import hashlib
     log_dir = base_logs_dir or user_logs_dir()
     bdir = blackbox_dir(log_dir)
 
@@ -1883,31 +2003,40 @@ def export_blackbox_zip(
         dest_dir = bdir
     os.makedirs(dest_dir, exist_ok=True)
 
-    host = socket.gethostname() or "PC"
-    safe_host = "".join(c if (c.isalnum() or c in "-_") else "_" for c in host)
+    raw_host = socket.gethostname() or "PC"
+    anon_host = "HOST_" + hashlib.sha256(raw_host.encode("utf-8", errors="ignore")).hexdigest()[:6].upper()
     stamp = datetime.now(TZ8).strftime("%Y%m%d_%H%M%S")
-    zip_name = "片语工作室_黑匣子_%s_%s.zip" % (safe_host, stamp)
+    zip_name = "片语工作室_黑匣子_%s_%s.zip" % (anon_host, stamp)
     zip_path = os.path.join(dest_dir, zip_name)
 
-    combined_md = "\n\n---\n\n".join([
+    combined_md = redact_text("\n\n---\n\n".join([
         format_hardware_advisor_markdown(hw_report),
         format_post_mortem_markdown(pm_report),
-    ])
+    ]))
 
     files_added: list[str] = []
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("00_【必看】黑匣子总览与根源诊断报告.md", combined_md.encode("utf-8"))
         files_added.append("00_【必看】黑匣子总览与根源诊断报告.md")
 
-        # Include all files in blackbox/
+        # Include full-studio 3-apps snapshot JSON
+        studio_apps_data = pm_report.get("studio_apps") or {}
+        if studio_apps_data:
+            zf.writestr(
+                "01_全工作室三款软件运行档案_studio_apps.json",
+                redact_text(json.dumps(studio_apps_data, ensure_ascii=False, indent=2)).encode("utf-8"),
+            )
+            files_added.append("01_全工作室三款软件运行档案_studio_apps.json")
+
+        # Include all files in blackbox/ (privacy-redacted)
         for fname in sorted(os.listdir(bdir)):
             fpath = os.path.join(bdir, fname)
             if os.path.isfile(fpath) and not fname.endswith(".tmp"):
                 arc = "blackbox/" + fname
-                zf.write(fpath, arc)
-                files_added.append(arc)
+                if _write_redacted_file_to_zip(zf, fpath, arc):
+                    files_added.append(arc)
 
-        # Include standard logs (cutora.log, faulthandler.log, commands.jsonl, seek_trace.jsonl)
+        # Include CUTORA standard logs (privacy-redacted)
         for lname in (
             "cutora.log",
             "cutora.log.1",
@@ -1917,11 +2046,11 @@ def export_blackbox_zip(
         ):
             lpath = os.path.join(log_dir, lname)
             if os.path.isfile(lpath):
-                arc = "logs/" + lname
-                zf.write(lpath, arc)
-                files_added.append(arc)
+                arc = "cutora_logs/" + lname
+                if _write_redacted_file_to_zip(zf, lpath, arc):
+                    files_added.append(arc)
 
-        # Include studio parent-child stdout/stderr & launch state logs in <LTX_ROOT>/data/logs and <LTX_ROOT>/logs
+        # Include studio parent-child stdout/stderr, launch states & unified breadcrumbs in <LTX_ROOT>/data/logs and <LTX_ROOT>/logs
         ltx_root = os.path.abspath(os.path.join(REPO_ROOT, "..", ".."))
         for sub_dir, arc_prefix in (
             (os.path.join(ltx_root, "data", "logs"), "studio_logs/"),
@@ -1929,11 +2058,18 @@ def export_blackbox_zip(
         ):
             if os.path.isdir(sub_dir):
                 for sname in (
+                    "studio_flight_breadcrumbs.jsonl",
+                    "launcher_launch_state.json",
+                    "orante_launch_state.json",
+                    "cutora_launch_state.json",
+                    "table_tool_launch_state.json",
                     "cutora_stdout.log",
                     "cutora_stderr.log",
-                    "cutora_launch_state.json",
                     "orante_stdout.log",
                     "orante_stderr.log",
+                    "table_tool.log",
+                    "table_tool_stdout.log",
+                    "table_tool_stderr.log",
                     "macos_install.log",
                     "macos_app_launch.log",
                     "launcher_error.log",
@@ -1941,7 +2077,17 @@ def export_blackbox_zip(
                     spath = os.path.join(sub_dir, sname)
                     if os.path.isfile(spath):
                         arc = arc_prefix + sname
-                        zf.write(spath, arc)
+                        if _write_redacted_file_to_zip(zf, spath, arc):
+                            files_added.append(arc)
+
+        # Include Orante 2.0 dedicated logs (modules/orante_desk/data/logs/orante.log & crash.log)
+        orante_logs_dir = os.path.join(ltx_root, "modules", "orante_desk", "data", "logs")
+        if os.path.isdir(orante_logs_dir):
+            for oname in ("orante.log", "orante.log.1", "crash.log", "faulthandler.log"):
+                opath = os.path.join(orante_logs_dir, oname)
+                if os.path.isfile(opath):
+                    arc = "orante_logs/" + oname
+                    if _write_redacted_file_to_zip(zf, opath, arc):
                         files_added.append(arc)
 
         # Include install health report from <LTX_ROOT>/data or REPO_ROOT
@@ -1951,18 +2097,18 @@ def export_blackbox_zip(
             (os.path.join(REPO_ROOT, "黑匣子_安装体检报告.txt"), "install/黑匣子_安装体检报告.txt"),
         ):
             if os.path.isfile(rpath) and arc not in files_added:
-                zf.write(rpath, arc)
-                files_added.append(arc)
+                if _write_redacted_file_to_zip(zf, rpath, arc):
+                    files_added.append(arc)
 
-        # Include sanitized app_settings.json & worker_rss.json / nvenc_probe.json
+        # Include sanitized runtime_state files
         try:
             udata = resolve_user_data()
             for uname in ("worker_rss.json", "nvenc_probe.json", "export_state.json"):
                 upath = os.path.join(udata, uname)
                 if os.path.isfile(upath):
                     arc = "runtime_state/" + uname
-                    zf.write(upath, arc)
-                    files_added.append(arc)
+                    if _write_redacted_file_to_zip(zf, upath, arc):
+                        files_added.append(arc)
         except Exception:
             pass
 

@@ -26,46 +26,13 @@ except Exception:
     pass
 
 from core.portable import rewrite_pyvenv_cfg
-from core.shortcut import ensure_shortcuts
+from core.shortcut import ensure_shortcuts, ensure_table_tool_registered
 from core.hardware_guard import get_hardware_guard
 from core.spine_db import get_spine_db
 
 
 def register_context_menu() -> bool:
-    script = LTX_ROOT / "modules" / "table_tool" / "app" / "表格工具.py"
-    if sys.platform == "darwin":
-        try:
-            from core import resolve_python_exe
-            from modules.table_tool.install import install_macos_finder_integration
-
-            py_exe = resolve_python_exe(gui=True, root=LTX_ROOT)
-            install_macos_finder_integration(str(script), python_exe=py_exe)
-            return True
-        except Exception as e:
-            print(f"  [提示] macOS Finder 快速操作注册跳过: {e}")
-            return False
-    if os.name != "nt":
-        return False
-    try:
-        import winreg
-        pyw = LTX_ROOT / "runtime" / "venv" / "Scripts" / "pythonw.exe"
-        if not pyw.is_file():
-            pyw = Path(sys.executable)
-        ico = LTX_ROOT / "resources" / "brand" / "app.ico"
-
-        for reg_path, arg in [
-            (r"Software\Classes\Directory\Background\shell\LTXStudioTableTool", "%V"),
-            (r"Software\Classes\Directory\shell\LTXStudioTableTool", "%1"),
-        ]:
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, reg_path) as k:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "片语工作室 - 表格工具")
-                winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, str(ico if ico.is_file() else pyw))
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, reg_path + r"\command") as ck:
-                winreg.SetValueEx(ck, "", 0, winreg.REG_SZ, f'"{pyw}" "{script}" "{arg}"')
-        return True
-    except Exception as e:
-        print(f"  [提示] 右键菜单注册跳过: {e}")
-        return False
+    return ensure_table_tool_registered(LTX_ROOT, quiet=False)
 
 
 def verify_no_minimax_h3() -> list[str]:

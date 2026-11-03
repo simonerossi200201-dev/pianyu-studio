@@ -46,15 +46,12 @@ def main():
                 print("已移除", p)
     elif os.name == "nt" and winreg is not None:
         hkcu = winreg.HKEY_CURRENT_USER
-        _del_key(hkcu, r"Software\Classes\Directory\Background\shell\%s" % REG_KEY)
-        _del_key(hkcu, r"Software\Classes\Directory\shell\%s" % REG_KEY)
-        _del_key(hkcu, r"Software\Classes\Directory\Background\shell\VisualRenamer")
-        _del_key(hkcu, r"Software\Classes\Directory\shell\VisualRenamer")
-        try:
-            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\VisualRenamer\command")
-            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\VisualRenamer")
-        except OSError:
-            pass
+        for kname in ("RightClickTableTool", "LTXStudioTableTool", "VisualRenamer"):
+            _del_key(hkcu, r"Software\Classes\Directory\Background\shell\%s" % kname)
+            _del_key(hkcu, r"Software\Classes\Directory\shell\%s" % kname)
+            _del_key(hkcu, r"Software\Classes\Drive\shell\%s" % kname)
+            _del_key(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\%s" % kname)
+            _del_key(winreg.HKEY_CLASSES_ROOT, r"Directory\shell\%s" % kname)
     if os.path.isdir(DEST):
         shutil.rmtree(DEST, ignore_errors=True)
         print("已删除", DEST)
