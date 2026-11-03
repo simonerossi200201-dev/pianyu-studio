@@ -74,7 +74,7 @@ def _group_prompts(prompts):
 # ───────────────────────────── 设备 ─────────────────────────────
 
 def pick_device():
-    """(device_str, dtype_str, note_zh)。没有 CUDA 就用 CPU（慢 10–20×，UI 要明示）。"""
+    """(device_str, dtype_str, note_zh)。优先 CUDA -> Apple Silicon Metal MPS -> CPU。"""
     try:
         import torch
     except Exception:
@@ -87,7 +87,12 @@ def pick_device():
             return "cuda", dtype, name
     except Exception:
         pass
-    return "cpu", "float32", "无 NVIDIA 显卡，用 CPU"
+    try:
+        if hasattr(torch, "backends") and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps", "float16", "Apple Silicon Metal MPS"
+    except Exception:
+        pass
+    return "cpu", "float32", "无可用 GPU 加速，用 CPU"
 
 
 def vram_free_gb() -> float | None:
@@ -96,6 +101,9 @@ def vram_free_gb() -> float | None:
         if torch.cuda.is_available():
             free, _total = torch.cuda.mem_get_info()
             return free / (1024 ** 3)
+        if hasattr(torch, "backends") and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            import psutil
+            return psutil.virtual_memory().available / (1024 ** 3)
     except Exception:
         return None
     return None

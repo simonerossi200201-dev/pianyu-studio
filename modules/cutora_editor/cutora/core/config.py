@@ -210,6 +210,8 @@ LANGUAGE = "en"
 # ========================================================
 
 from cutora.core.paths import (
+    FFMPEG,
+    FFPROBE,
     REPO_ROOT,
     RUNTIME_DIR,
     MODELS as _RUNTIME_MODELS_DIR,
@@ -217,21 +219,8 @@ from cutora.core.paths import (
 _REPO_ROOT = REPO_ROOT
 _RUNTIME_FFMPEG_DIR = os.path.join(RUNTIME_DIR, "ffmpeg")
 
-def _first_existing(*candidates):
-    for p in candidates:
-        if p and os.path.exists(p):
-            return p
-    return None
-
-# 优先 runtime/ffmpeg，再查 PATH
-local_ffmpeg = _first_existing(
-    os.path.join(_RUNTIME_FFMPEG_DIR, "ffmpeg.exe"),
-    os.path.join(_RUNTIME_FFMPEG_DIR, "ffmpeg"),
-)
-local_ffprobe = _first_existing(
-    os.path.join(_RUNTIME_FFMPEG_DIR, "ffprobe.exe"),
-    os.path.join(_RUNTIME_FFMPEG_DIR, "ffprobe"),
-)
+local_ffmpeg = FFMPEG if (FFMPEG and os.path.isfile(FFMPEG)) else None
+local_ffprobe = FFPROBE if (FFPROBE and os.path.isfile(FFPROBE)) else None
 
 if local_ffmpeg:
     FFMPEG_PATH = local_ffmpeg
@@ -240,14 +229,7 @@ else:
 
 
 def ensure_ffmpeg_on_path() -> None:
-    """把内置 runtime/ffmpeg 放到 PATH 最前面（幂等）。
-
-    Q132：whisperx.load_audio() 直接 spawn 裸名「ffmpeg」，不读 FFMPEG_PATH。
-    CUTORA.bat 会 set PATH，但 Q106 之后桌面图标走 CUTORA.vbs →
-    ``pythonw -m cutora``，根本不经过 bat —— 机器上没装系统 ffmpeg 时，
-    自动字幕就是「[WinError 2] 系统找不到指定的文件」。放在 config 导入时
-    做，GUI / CLI / 渲染子进程 / 队列重启，任何入口都一样。
-    """
+    """把内置 runtime/bin 与 runtime/ffmpeg/bin 放到 PATH 最前面（幂等）。"""
     if not local_ffmpeg:
         return
     d = os.path.dirname(local_ffmpeg)

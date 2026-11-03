@@ -81,7 +81,21 @@ if __name__ == "__main__":
         from cutora.core.doctor import run_cli
         raise SystemExit(run_cli())
     from cutora.core.command_cli import dispatch_late, is_commands_argv
-    if "--check-runtime" not in sys.argv and "--selftest" not in sys.argv and "--self-test" not in sys.argv and not is_commands_argv(sys.argv):
+    _is_gui_launch = (
+        "--check-runtime" not in sys.argv
+        and "--selftest" not in sys.argv
+        and "--self-test" not in sys.argv
+        and not is_commands_argv(sys.argv)
+    )
+    if _is_gui_launch:
+        try:
+            _ltx_root = os.path.abspath(os.path.join(_REPO_ROOT, "..", ".."))
+            if _ltx_root not in sys.path and os.path.isdir(os.path.join(_ltx_root, "core")):
+                sys.path.insert(0, _ltx_root)
+            from core.launch_state import write_launch_state
+            write_launch_state("BOOTSTRAP_START", app_name="cutora")
+        except Exception:
+            pass
         from cutora.core.single_instance import acquire_single_instance_or_exit
         acquire_single_instance_or_exit()
     from cutora.core.runtime import init_torch_runtime  # 此时 sys.modules 里不得有任何 PySide6.*

@@ -31,16 +31,27 @@ from core.portable import rewrite_pyvenv_cfg
 from core.shortcut import ensure_shortcuts
 from core.hardware_guard import get_hardware_guard
 from core.spine_db import get_spine_db, _resolve_workspace_root
+from core.launch_state import read_launch_state
 from core.table_sync import (
+    call_cutora_api,
     is_cutora_running as _table_sync_is_cutora_running,
     launch_cutora_room,
+    launch_cutora_room_detailed,
     prepare_cutora_stitch_handoff,
 )
 from core.delivery_worker import get_delivery_worker
 
-# 启动即自动修正便携 Python 路径并确保桌面快捷方式指向当前目录（macOS 上仅在未创建或内容变更时写入，避免运行中重写 .app 破坏签名）
-rewrite_pyvenv_cfg(LTX_ROOT)
-ensure_shortcuts(LTX_ROOT, force=(os.name == "nt"), quiet=True)
+
+def _bootstrap_studio_env() -> None:
+    """在受保护上下文中修正便携路径与快捷方式，不在模块导入顶层裸跑，避免权限异常无日志退出。"""
+    try:
+        rewrite_pyvenv_cfg(LTX_ROOT)
+    except Exception:
+        pass
+    try:
+        ensure_shortcuts(LTX_ROOT, force=(os.name == "nt"), quiet=True)
+    except Exception:
+        pass
 
 # ─────────────────────── CUTORA Roma-Gold 色彩令牌 ───────────────────────
 BG0 = "#141210"         # 暖玄武岩黑
@@ -72,24 +83,32 @@ import time
 _CUTORA_LAUNCH_ACCEPTED = False
 _MODULE_CLICK_ACCEPTED: set[str] = set()
 _CUTORA_PROC: subprocess.Popen | None = None
+_CUTORA_SESSION_ID: str = ""
 _CUTORA_START_TS: float = 0.0
 _MODULE_PROCS: dict[str, subprocess.Popen] = {}
 _MODULE_START_TS: dict[str, float] = {}
 
 
 def is_cutora_running() -> bool:
-    """检查系统内是否已有正在运行的 CUTORA 实例（支持 Windows 命名互斥体与 macOS cutora.lock）。"""
+    """检查系统内是否已有正在运行的 CUTORA 实例（支持 Windows 命名互斥体与 macOS flock）。"""
     return _table_sync_is_cutora_running()
 
 
 def is_cutora_active() -> bool:
-    """判断 CUTORA 是否正在启动中或正在运行中。若进程已退出且超过启动防抖窗口，自动解锁。"""
+    """判断 CUTORA 是否正在启动中或正在运行中。
+    若子进程已经退出（如缺少依赖报错退出），立即解除锁定，绝不死等 8 秒防抖。
+    """
     global _CUTORA_LAUNCH_ACCEPTED
     if is_cutora_running():
         return True
-    if _CUTORA_PROC is not None and _CUTORA_PROC.poll() is None:
-        return True
-    if _CUTORA_START_TS > 0.0 and (time.monotonic() - _CUTORA_START_TS) < 8.0:
+    if _CUTORA_PROC is not None:
+        if _CUTORA_PROC.poll() is None:
+            return True
+        # 子进程已退出且未持有全局单实例锁 -> 立即解锁
+        _CUTORA_LAUNCH_ACCEPTED = False
+        _MODULE_CLICK_ACCEPTED.discard("cutora")
+        return False
+    if _CUTORA_START_TS > 0.0 and (time.monotonic() - _CUTORA_START_TS) < 4.0:
         return True
     _CUTORA_LAUNCH_ACCEPTED = False
     _MODULE_CLICK_ACCEPTED.discard("cutora")
@@ -169,8 +188,8 @@ def launch_orante(start_node: str = "") -> bool:
 
 
 def launch_cutora(room: str = "") -> bool:
-    """启动 CUTORA（防误触单次点击保护 + 全局单实例限制；当 CUTORA 退出或关闭后可重新启动）。"""
-    global _CUTORA_LAUNCH_ACCEPTED, _CUTORA_PROC, _CUTORA_START_TS
+    """启动 CUTORA（保存真实 Popen 句柄与 session_id；仅在收到 MAIN_WINDOW_READY 后才上报 started 事件）。"""
+    global _CUTORA_LAUNCH_ACCEPTED, _CUTORA_PROC, _CUTORA_SESSION_ID, _CUTORA_START_TS
     if is_cutora_active():
         _CUTORA_LAUNCH_ACCEPTED = True
         _MODULE_CLICK_ACCEPTED.add("cutora")
@@ -181,14 +200,21 @@ def launch_cutora(room: str = "") -> bool:
     try:
         if room == "stitch":
             prepare_cutora_stitch_handoff(auto_start=True, auto_ai=True, source="launcher")
-        launch_cutora_room(room=room or "preview")
+        res = launch_cutora_room_detailed(room=room or "preview")
+        _CUTORA_PROC = res.get("proc")
+        _CUTORA_SESSION_ID = str(res.get("session_id") or "")
+        if res.get("already_running"):
+            get_spine_db().emit_event("launcher.cutora_focused", "launcher", "cutora", {"room": room})
+        return bool(res.get("ok", True))
     except Exception:
         if is_cutora_running():
             return False
         cutora_dir = LTX_ROOT / "modules" / "cutora_editor"
+        _CUTORA_SESSION_ID = f"cutora-{int(time.time() * 1000)}"
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         env["CUTORA_RUNTIME"] = str(LTX_ROOT / "runtime")
+        env["CUTORA_LAUNCH_SESSION_ID"] = _CUTORA_SESSION_ID
         env["PATH"] = os.pathsep.join(
             [
                 str(LTX_ROOT / "runtime" / "bin"),
@@ -206,8 +232,7 @@ def launch_cutora(room: str = "") -> bool:
             env=env,
             **_detached_popen_kwargs(),
         )
-    get_spine_db().emit_event("launcher.cutora_started", "launcher", "cutora", {"room": room})
-    return True
+        return True
 
 
 def launch_table_tool(target_dir: str | None = None) -> bool:
@@ -310,9 +335,9 @@ def run_gui(screenshot_path: str | None = None) -> None:
     def make_font(px: int, weight: QFont.Weight = QFont.Weight.Normal, mono: bool = False, letter_spacing: float = 0.0) -> QFont:
         f = QFont()
         if mono:
-            f.setFamilies(["JetBrains Mono", "Consolas", "Microsoft YaHei UI"])
+            f.setFamilies(["JetBrains Mono", "Menlo", "SF Mono", "Consolas", "PingFang SC", "Microsoft YaHei UI"])
         else:
-            f.setFamilies(["Inter", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei"])
+            f.setFamilies(["Inter", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Heiti SC", "Microsoft YaHei UI", "Microsoft YaHei"])
         f.setPixelSize(px)
         f.setWeight(weight)
         if letter_spacing:
@@ -1139,23 +1164,100 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
         def _on_open_cutora(self, room: str = "") -> None:
             self._sync_module_locks()
-            if "cutora" in self._accepted_clicks:
-                self._toast.show_toast("CUTORA 已接受过启动点击，第二次误点不被接受（防误触锁定）")
-                return
             if is_cutora_running():
                 self._accepted_clicks.add("cutora")
                 self._card_cutora.set_locked(True, "✓ 已在运行 · 再次点击无效")
-                self._toast.show_toast("CUTORA 已在运行中（全局仅允许同时启动 1 个 CUTORA，重复点击已忽略）")
+                try:
+                    call_cutora_api("ui.focus", {"panel": room or "preview"})
+                except Exception:
+                    pass
+                self._toast.show_toast("CUTORA 已在运行中，已为您尝试唤醒聚焦已有剪辑台窗口")
+                return
+            if "cutora" in self._accepted_clicks:
+                self._toast.show_toast("正在启动 CUTORA 剪辑台，请稍候…")
                 return
             self._accepted_clicks.add("cutora")
-            self._card_cutora.set_locked(True, "✓ 已启动 · 再次点击无效")
+            self._card_cutora.set_locked(True, "⏳ 正在启动剪辑台…")
             ok = launch_cutora(room)
             if not ok:
-                self._toast.show_toast("CUTORA 已接受过启动或正在运行，重复点击不被接受")
+                self._accepted_clicks.discard("cutora")
+                self._card_cutora.set_locked(False)
+                self._toast.show_toast("CUTORA 启动请求未能发起，请重试")
                 return
             label = {"stitch": "片段智能拼接", "ai_studio": "AI 工坊"}.get(room, "片语剪辑台")
-            self._toast.show_toast(f"已接受点击并打开 CUTORA · {label}（后续重复点击已锁定忽略）")
+            self._toast.show_toast(f"正在加载 CUTORA · {label}，等待主面板就绪…")
+            self._start_cutora_supervisor(room=room)
             self.refresh_status(silent=True)
+
+        def _start_cutora_supervisor(self, room: str = "") -> None:
+            if not hasattr(self, "_cutora_watch_timer"):
+                self._cutora_watch_timer = QTimer(self)
+                self._cutora_watch_timer.setInterval(300)
+                self._cutora_watch_timer.timeout.connect(self._poll_cutora_startup)
+            self._cutora_watch_room = room
+            self._cutora_watch_started_at = time.monotonic()
+            self._cutora_watch_timer.start()
+
+        def _poll_cutora_startup(self) -> None:
+            global _CUTORA_LAUNCH_ACCEPTED
+            state = read_launch_state("cutora")
+            same_sess = (not _CUTORA_SESSION_ID) or (state.get("session_id") == _CUTORA_SESSION_ID)
+            stage = str(state.get("stage") or "") if same_sess else ""
+
+            if stage == "MAIN_WINDOW_READY" or (same_sess and state.get("main_window_ready")):
+                self._cutora_watch_timer.stop()
+                self._card_cutora.set_locked(True, "✓ 已在运行 · 再次点击无效")
+                get_spine_db().emit_event("launcher.cutora_started", "launcher", "cutora", {"room": getattr(self, "_cutora_watch_room", "")})
+                self._toast.show_toast("✓ 片语剪辑台 (CUTORA) 主面板已就绪！")
+                self.refresh_status(silent=True)
+                return
+
+            if stage == "EXISTING_INSTANCE_FOCUSED":
+                self._cutora_watch_timer.stop()
+                self._card_cutora.set_locked(True, "✓ 已在运行 · 再次点击无效")
+                self._toast.show_toast("✓ 已切换到正在运行的片语剪辑台窗口")
+                self.refresh_status(silent=True)
+                return
+
+            proc = _CUTORA_PROC
+            if proc is not None and proc.poll() is not None:
+                rc = proc.returncode
+                self._cutora_watch_timer.stop()
+                _CUTORA_LAUNCH_ACCEPTED = False
+                self._accepted_clicks.discard("cutora")
+                self._card_cutora.set_locked(False)
+                err_msg = str(state.get("error") or "") if same_sess else ""
+                if not err_msg:
+                    try:
+                        out_log = LTX_ROOT / "data" / "logs" / "cutora_stdout.log"
+                        err_log = LTX_ROOT / "data" / "logs" / "cutora_stderr.log"
+                        tail_lines = []
+                        for lp in (out_log, err_log):
+                            if lp.is_file():
+                                tail_lines.extend(lp.read_text(encoding="utf-8", errors="ignore").splitlines()[-8:])
+                        err_msg = " | ".join(ln.strip() for ln in tail_lines if ln.strip())[-200:]
+                    except Exception:
+                        err_msg = f"进程提前退出 (退出码 {rc})"
+                repair_script = "安装与体检.command" if sys.platform == "darwin" else "安装与体检.bat"
+                get_spine_db().emit_event(
+                    "launcher.cutora_startup_failed",
+                    "launcher",
+                    "cutora",
+                    {"returncode": rc, "stage": stage, "error": err_msg},
+                )
+                self._toast.show_toast(
+                    f"❌ 剪辑台未能启动 (码 {rc}): {err_msg or stage} · 请运行《{repair_script}》或查看 data/logs/cutora_stdout.log"
+                )
+                return
+
+            # 超过 45 秒仍未收到就绪信号则停止高频轮询，保持进程继续加载但允许用户查看状态
+            if time.monotonic() - getattr(self, "_cutora_watch_started_at", 0.0) > 45.0:
+                self._cutora_watch_timer.stop()
+                if is_cutora_running():
+                    self._card_cutora.set_locked(True, "✓ 已在运行 · 再次点击无效")
+                else:
+                    self._accepted_clicks.discard("cutora")
+                    self._card_cutora.set_locked(False)
 
         def _on_open_table(self) -> None:
             self._sync_module_locks()
@@ -1492,6 +1594,7 @@ def run_gui(screenshot_path: str | None = None) -> None:
 
 if __name__ == "__main__":
     try:
+        _bootstrap_studio_env()
         if "--patrol-once" in sys.argv:
             print(json.dumps({"ok": True, "spine": get_spine_db().get_dashboard_summary()}, ensure_ascii=False, indent=2))
         elif "--status" in sys.argv:

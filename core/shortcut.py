@@ -181,9 +181,22 @@ def write_macos_app_bundle(
 </plist>
 """
     script_txt = f"""#!/bin/bash
-cd "{workdir}" || exit 1
+TARGET_DIR="{workdir}"
+if [ ! -d "$TARGET_DIR" ]; then
+    for CAND in "$HOME/Downloads/片语/片语工作室" "$HOME/Downloads/片语工作室" "$HOME/Desktop/片语工作室" "$HOME/Applications/片语工作室" "$HOME/PianyuStudio"; do
+        if [ -d "$CAND" ] && [ -f "$CAND/studio_launcher.py" ]; then
+            TARGET_DIR="$CAND"
+            break
+        fi
+    done
+fi
+if [ ! -d "$TARGET_DIR" ]; then
+    osascript -e 'display alert "片语工作室目录已移动" message "未找到原安装目录：{workdir}\\n\\n请在新位置打开文件夹并双击运行一次《安装与体检.command》以自动更新桌面图标。" as warning' >/dev/null 2>&1 || true
+    exit 1
+fi
+cd "$TARGET_DIR" || exit 1
 export PYTHONUTF8=1
-export PATH="{workdir}/runtime/bin:{workdir}/runtime/ffmpeg/bin:{workdir}/runtime/ffmpeg:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$TARGET_DIR/runtime/bin:$TARGET_DIR/runtime/ffmpeg/bin:$TARGET_DIR/runtime/ffmpeg:/opt/homebrew/bin:/usr/local/bin:$PATH"
 ARGS=()
 for arg in "$@"; do
     case "$arg" in
@@ -191,8 +204,8 @@ for arg in "$@"; do
         *) ARGS+=("$arg") ;;
     esac
 done
-mkdir -p "{workdir}/logs" 2>/dev/null || true
-exec {exec_cmd} "${{ARGS[@]}}" >> "{workdir}/logs/macos_app_launch.log" 2>&1
+mkdir -p "$TARGET_DIR/logs" "$TARGET_DIR/data/logs" 2>/dev/null || true
+exec {exec_cmd} "${{ARGS[@]}}" >> "$TARGET_DIR/logs/macos_app_launch.log" 2>&1
 """
     changed = False
     if not plist_path.is_file() or plist_path.read_text(encoding="utf-8", errors="ignore") != plist_xml:

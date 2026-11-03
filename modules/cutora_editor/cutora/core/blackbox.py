@@ -312,7 +312,8 @@ def _macos_gpu_snapshot() -> dict[str, Any] | None:
             m_mem = re.search(r'"In use system memory"\s*=\s*(\d+)', io_out)
             if m_mem:
                 used_gb = round(int(m_mem.group(1)) / (1024.0 ** 3), 2)
-                free_gb = round(max(0.0, tot_gb - used_gb), 2)
+                # Apple Silicon 统一内存：可用 GPU 内存绝不能超过当前系统真实可用物理内存 (ram_avail_gb)
+                free_gb = round(min(max(0.0, tot_gb - used_gb), mem.get("ram_avail_gb", 0.0)), 2)
         except Exception:
             pass
         return {
@@ -476,12 +477,14 @@ class FlightRecorder:
                         pass
                 _trim_jsonl_file(self.anomalies_path, max_lines=300)
 
+            self._main_window_ready = False
             state = {
                 "session_id": self.session_id,
                 "pid": self.pid,
                 "hostname": socket.gethostname(),
                 "started_at": self.started_at,
                 "last_heartbeat": _now_iso(),
+                "main_window_ready": False,
                 "clean_exit": False,
                 "active_ops": [],
                 "ui_stall_count": 0,
@@ -542,6 +545,30 @@ class FlightRecorder:
         except Exception:
             return None
 
+    def mark_main_window_ready(self) -> None:
+        self._main_window_ready = True
+        with self._lock:
+            try:
+                state = {}
+                if os.path.isfile(self.session_state_path):
+                    with open(self.session_state_path, "r", encoding="utf-8") as fh:
+                        state = json.load(fh) or {}
+                state["main_window_ready"] = True
+                state["main_window_ready_at"] = _now_iso()
+                _fsync_write_json(self.session_state_path, state)
+                _fsync_append_jsonl(
+                    self.breadcrumbs_path,
+                    {
+                        "ts": _now_iso(),
+                        "session_id": self.session_id,
+                        "event": "MAIN_WINDOW_READY",
+                        "pid": self.pid,
+                    },
+                    sync=True,
+                )
+            except Exception:
+                pass
+
     def mark_clean_exit(self, reason: str = "normal") -> None:
         self._monitor_stop.set()
         with self._lock:
@@ -550,9 +577,15 @@ class FlightRecorder:
                 if os.path.isfile(self.session_state_path):
                     with open(self.session_state_path, "r", encoding="utf-8") as fh:
                         state = json.load(fh) or {}
-                state["clean_exit"] = True
+                if state.get("clean_exit") and reason == "atexit":
+                    return
+                main_ready = bool(getattr(self, "_main_window_ready", False) or state.get("main_window_ready"))
+                # 若仅由 atexit 触发但主窗口从未就绪，不能算作正常 GUI 会话退出
+                is_clean = True if (reason != "atexit" or main_ready) else False
+                eff_reason = reason if is_clean else "atexit_before_main_window_ready"
+                state["clean_exit"] = is_clean
                 state["ended_at"] = _now_iso()
-                state["exit_reason"] = reason
+                state["exit_reason"] = eff_reason
                 state["active_ops"] = []
                 state["ui_stall_count"] = self._ui_stall_count
                 state["max_ui_stall_s"] = round(self._max_ui_stall_s, 2)
@@ -563,8 +596,8 @@ class FlightRecorder:
                     {
                         "ts": _now_iso(),
                         "session_id": self.session_id,
-                        "event": "SESSION_CLEAN_EXIT",
-                        "reason": reason,
+                        "event": "SESSION_CLEAN_EXIT" if is_clean else "SESSION_EARLY_EXIT",
+                        "reason": eff_reason,
                         "res": compact_resource_snapshot(include_gpu=False),
                     },
                     sync=True,
@@ -749,6 +782,7 @@ class FlightRecorder:
                 "hostname": socket.gethostname(),
                 "started_at": self.started_at,
                 "last_heartbeat": _now_iso(),
+                "main_window_ready": getattr(self, "_main_window_ready", False),
                 "clean_exit": False,
                 "active_ops": active_list,
                 "ui_stall_count": self._ui_stall_count,
@@ -1026,22 +1060,23 @@ def analyze_hardware_and_advise(base_logs_dir: str | None = None) -> dict[str, A
     if is_apple_silicon:
         if ram_total >= 32:
             tier = "S (Apple Silicon 旗舰工作站级 · Unified Memory + VideoToolbox)"
-            rec_workers = min(4, max(2, int((ram_avail - 4.0) // 2.8)))
+            rec_workers = 1 if ram_avail < 6.0 else min(4, max(1, int((ram_avail - 4.0) // 3.0)))
             rec_nvenc_slots = rec_workers
             rec_preview_fps = 30
-            rec_asr_batch = 16
+            rec_asr_batch = 8 if ram_avail < 8.0 else 16
         elif ram_total >= 16:
-            tier = "A (Apple Silicon 高性能主力级 · Unified Memory + VideoToolbox)"
-            rec_workers = min(3, max(2, int((ram_avail - 4.0) // 3.0)))
+            tier = "A (Apple Silicon 16GB 统一内存均衡级 · Unified Memory + VideoToolbox)"
+            # 16GB 统一内存机型严格按当前可用内存预算调度，可用内存 < 6.5GB 时锁定单 worker，防止并发挤压交换区
+            rec_workers = 1 if ram_avail < 6.5 else min(2, max(1, int((ram_avail - 4.0) // 3.0)))
             rec_nvenc_slots = rec_workers
-            rec_preview_fps = 30
-            rec_asr_batch = 12
+            rec_preview_fps = 24 if ram_avail < 4.0 else 30
+            rec_asr_batch = 4 if ram_avail < 4.5 else 8
         else:
             tier = "B (Apple Silicon 紧凑统一内存级 · 8GB Unified Memory + VideoToolbox)"
             rec_workers = 1
             rec_nvenc_slots = 1
             rec_preview_fps = 24
-            rec_asr_batch = 8
+            rec_asr_batch = 4
     elif ram_total >= 32 and vram_total >= 12 and cc_float >= 8.0:
         tier = "S (旗舰工作站级)"
         rec_workers = min(4, max(2, int((ram_avail - 6.0) // 3.0)))
@@ -1088,15 +1123,15 @@ def analyze_hardware_and_advise(base_logs_dir: str | None = None) -> dict[str, A
         dev_findings.append({
             "severity": "INFO",
             "category": "GPU_ARCH_APPLE_SILICON",
-            "title": "检测到 Apple Silicon 统一内存架构 (%s, 统一内存 %.1f GB)" % (gpu_name, ram_total),
+            "title": "检测到 Apple Silicon 统一内存架构 (%s, 总内存 %.1f GB / 当前可用 %.2f GB)" % (gpu_name, ram_total, ram_avail),
             "hardware_adapt": (
-                "已启用分离式异构加速架构：导出与跳帧解码采用 Apple Media Engine (h264_videotoolbox / hevc_videotoolbox / prores_videotoolbox)，"
-                "PyTorch 特效/对齐采用 Metal MPS 加速，CTranslate2/faster-whisper 锁定 ARM NEON int8（可选 mlx-whisper 金属加速）。"
+                "已启用分离式异构加速架构：导出编码优先调用 Apple Media Engine (h264_videotoolbox / hevc_videotoolbox)，"
+                "PyTorch 分割/对齐按需调用 Metal MPS，CTranslate2/faster-whisper 采用 ARM64 NEON/Accelerate CPU int8。"
             ),
             "developer_advice": (
-                "【开发者优化方向】Apple Silicon 零拷贝统一内存 (Unified Memory) 与独立硬件媒体引擎具备极高能效比："
-                "① 导出全程使用 `-c:v h264_videotoolbox -realtime 0 -prio_speed true -allow_sw 1` 并配合分段并行导出将吞吐推向 250-400+ fps；"
-                "② 对齐后及时调用 `torch.mps.empty_cache()` 归还 Metal wired 内存页。"
+                "【开发者优化方向】Apple Silicon 统一内存 (Unified Memory) 由 CPU 与 GPU 共享物理内存池："
+                "① 16GB 机型在可用内存低于 6GB 时应保持单 worker 导出与较低 ASR batch (%d)，避免多进程模型同时驻留触发内存压缩；"
+                "② 对齐或分割完成后及时调用 `torch.mps.empty_cache()` 归还 Metal 缓存页。" % rec_asr_batch
             ),
         })
     elif primary_gpu and 0 < cc_float < 7.0:
@@ -1155,16 +1190,27 @@ def analyze_hardware_and_advise(base_logs_dir: str | None = None) -> dict[str, A
 
     # 3. Rust Core Acceleration check
     if not rust_status.get("loaded"):
-        dev_findings.append({
-            "severity": "HIGH",
-            "category": "RUST_CORE_MISSING",
-            "title": "Rust 高性能计算核心 (cutora_core) 未加载",
-            "hardware_adapt": "当前已自动回退至 Python/NumPy 后备实现。",
-            "developer_advice": (
-                "【开发者优化方向】当前机器未能加载 `cutora_core.pyd` (%s)，这会导致时间线波形重采样、字幕 ROI 合成与哈希计算退回 Python 循环。"
-                "请检查目标机器 Python ABI 版本与 MSVC 运行库是否匹配。" % rust_status.get("error", "")
-            ),
-        })
+        if IS_MACOS:
+            dev_findings.append({
+                "severity": "INFO",
+                "category": "RUST_CORE_OPTIONAL",
+                "title": "可选 Rust 原生扩展 (cutora_core) 未加载 · 已使用标准 Python/NumPy 引擎",
+                "hardware_adapt": "macOS 环境下已自动启用标准 Python/NumPy 矢量化后备实现，不影响主面板启动与剪辑导出。",
+                "developer_advice": (
+                    "【开发者优化方向】如需在 macOS ARM64 上进一步加速时间线重采样，可针对 `aarch64-apple-darwin` 与 Python 3.11 构建 `.so` 扩展包。"
+                ),
+            })
+        else:
+            dev_findings.append({
+                "severity": "HIGH",
+                "category": "RUST_CORE_MISSING",
+                "title": "Rust 高性能计算核心 (cutora_core) 未加载",
+                "hardware_adapt": "当前已自动回退至 Python/NumPy 后备实现。",
+                "developer_advice": (
+                    "【开发者优化方向】当前机器未能加载 `cutora_core.pyd` (%s)，这会导致时间线波形重采样、字幕 ROI 合成与哈希计算退回 Python 循环。"
+                    "请检查目标机器 Python ABI 版本与 MSVC 运行库是否匹配。" % rust_status.get("error", "")
+                ),
+            })
     else:
         dev_findings.append({
             "severity": "INFO",
@@ -1378,11 +1424,17 @@ def _query_macos_crash_events(max_events: int = 10) -> list[dict[str, Any]]:
         for mtime, fname, fpath in entries[:max_events]:
             try:
                 with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
-                    head = fh.read(1500)
+                    head = fh.read(2500)
+                low_head = head.lower()
+                is_our_proc = any(
+                    marker in low_head
+                    for marker in ("片语工作室", "cutora", "runtime/venv", "runtime/python", "orante")
+                )
                 out.append({
-                    "id": "MACOS_IPS",
+                    "id": "MACOS_IPS_STUDIO" if is_our_proc else "MACOS_IPS_EXTERNAL",
                     "provider": "DiagnosticReports",
-                    "level": "Error",
+                    "level": "Error" if is_our_proc else "Info",
+                    "associated": is_our_proc,
                     "time": datetime.fromtimestamp(mtime, TZ8).isoformat(timespec="seconds"),
                     "message": redact_text(("%s: %s" % (fname, head.strip()))[:350]),
                 })
@@ -1583,12 +1635,12 @@ def analyze_post_mortem(
             break
 
     for ev in win_events:
-        if ev.get("id") == "MACOS_IPS":
+        if ev.get("id") == "MACOS_IPS_STUDIO":
             root_causes.append({
-                "confidence": "高 (macOS DiagnosticReports)",
+                "confidence": "高 (macOS DiagnosticReports · 已关联本软件解释器)",
                 "code": "MACOS_DIAGNOSTIC_CRASH_REPORT",
-                "summary": "检测到 macOS 崩溃诊断报告 (.ips / .crash)",
-                "explanation": "macOS DiagnosticReports 记录了近期相关进程异常崩溃：%s" % ev.get("message", "")[:240],
+                "summary": "检测到与片语工作室关联的 macOS 原生崩溃报告 (.ips / .crash)",
+                "explanation": "macOS DiagnosticReports 记录了本软件内置进程异常崩溃：%s" % ev.get("message", "")[:240],
             })
             break
 
@@ -1605,15 +1657,90 @@ def analyze_post_mortem(
             ),
         })
 
+    # Check 5: Parent-child launch state & child stdout/stderr startup failures (e.g., missing pandas before install_blackbox)
+    ltx_root = os.path.abspath(os.path.join(REPO_ROOT, "..", ".."))
+    launch_state_path = os.path.join(ltx_root, "data", "logs", "cutora_launch_state.json")
+    child_stdout_path = os.path.join(ltx_root, "data", "logs", "cutora_stdout.log")
+    launch_state_data: dict[str, Any] = {}
+    if os.path.isfile(launch_state_path):
+        try:
+            with open(launch_state_path, "r", encoding="utf-8", errors="ignore") as fh:
+                launch_state_data = json.load(fh) or {}
+        except Exception:
+            launch_state_data = {}
+
+    if launch_state_data.get("stage") in ("ENV_CHECK_FAILED", "STARTUP_FAILED", "LOCK_FAILED"):
+        root_causes.append({
+            "confidence": "极高 (启动状态信标直接记录)",
+            "code": str(launch_state_data.get("stage")),
+            "summary": "剪辑台在启动阶段提前退出 (%s): %s" % (
+                launch_state_data.get("stage"),
+                launch_state_data.get("error") or "启动自检未通过",
+            ),
+            "explanation": "来自 `data/logs/cutora_launch_state.json` 的记录：`%s`" % json.dumps(
+                launch_state_data.get("detail") or {}, ensure_ascii=False
+            ),
+        })
+    elif os.path.isfile(child_stdout_path):
+        try:
+            with open(child_stdout_path, "r", encoding="utf-8", errors="ignore") as fh:
+                tail_txt = fh.read()[-4000:]
+            if "CRITICAL ERROR: Environment is missing packages!" in tail_txt and not launch_state_data.get("main_window_ready"):
+                import re as _re
+                m_miss = _re.findall(r"Missing:\s*([^\r\n]+)", tail_txt)
+                miss_str = m_miss[-1].strip() if m_miss else "未知依赖"
+                root_causes.append({
+                    "confidence": "极高 (子进程标准输出原始日志)",
+                    "code": "MISSING_DEPENDENCY_ON_STARTUP",
+                    "summary": "剪辑台因缺少核心依赖包 (%s) 在启动自检阶段退出 (退出码 1)" % miss_str,
+                    "explanation": "在 `data/logs/cutora_stdout.log` 中捕获到 `CRITICAL ERROR: Environment is missing packages! Missing: %s`。" % miss_str,
+                })
+        except Exception:
+            pass
+
+    cur_session_path = os.path.join(bdir, SESSION_STATE_FILE)
+    cur_session_data: dict[str, Any] = {}
+    if os.path.isfile(cur_session_path):
+        try:
+            with open(cur_session_path, "r", encoding="utf-8") as fh:
+                cur_session_data = json.load(fh) or {}
+        except Exception:
+            cur_session_data = {}
+
+    if (
+        cur_session_data
+        and not cur_session_data.get("clean_exit", True)
+        and not cur_session_data.get("main_window_ready", False)
+        and cur_session_data.get("exit_reason") == "atexit_before_main_window_ready"
+    ):
+        root_causes.append({
+            "confidence": "极高 (会话生命周期记录)",
+            "code": "STARTUP_FAILED",
+            "summary": "剪辑台进程在主窗口就绪 (MAIN_WINDOW_READY) 前提前退出",
+            "explanation": "会话 `%s` 已启动但未到达主界面展示阶段即触发退出，请检查启动期依赖或单实例锁状态。" % cur_session_data.get("session_id", ""),
+        })
+
+    has_any_valid_session = bool(
+        cur_session_data.get("main_window_ready")
+        or any(b.get("event") == "MAIN_WINDOW_READY" for b in breadcrumbs)
+        or launch_state_data.get("main_window_ready")
+    )
+
     if not root_causes:
-        status = "CLEAN" if unclean_session is None else "UNCLEAN_NO_SPECIFIC_FAULT"
-        summary_text = (
-            "当前及上次会话均正常退出，未检测到崩溃或硬锁死事故。"
-            if unclean_session is None
-            else "检测到上次会话未正常走完退出流程（可能被任务管理器结束或外部关闭），未发现底层崩溃栈。"
-        )
+        if unclean_session is not None:
+            status = "UNCLEAN_NO_SPECIFIC_FAULT"
+            summary_text = "检测到上次会话未正常走完退出流程（可能被外部终止或主面板未完成初始化），未发现底层崩溃栈。"
+        elif not has_any_valid_session:
+            status = "NO_SESSION_DATA"
+            summary_text = "尚未记录到已完成主面板初始化的剪辑台运行会话（无有效会话记录，不能据此判定软件曾正常启动或正常关闭）。"
+        else:
+            status = "CLEAN"
+            summary_text = "当前及上次已就绪的剪辑台会话均正常退出，未检测到崩溃或硬锁死事故。"
     else:
-        status = "CRASH_OR_FREEZE_DETECTED"
+        if any(rc.get("code") in ("ENV_CHECK_FAILED", "STARTUP_FAILED", "LOCK_FAILED", "MISSING_DEPENDENCY_ON_STARTUP") for rc in root_causes):
+            status = "STARTUP_FAILED"
+        else:
+            status = "CRASH_OR_FREEZE_DETECTED"
         summary_text = "；".join(rc["summary"] for rc in root_causes)
 
     diagnosis = {
@@ -1794,11 +1921,36 @@ def export_blackbox_zip(
                 zf.write(lpath, arc)
                 files_added.append(arc)
 
-        # Include install health report if present in repo root
-        for rname in ("install_health_report.json", "黑匣子_安装体检报告.txt"):
-            rpath = os.path.join(REPO_ROOT, rname)
-            if os.path.isfile(rpath):
-                arc = "install/" + rname
+        # Include studio parent-child stdout/stderr & launch state logs in <LTX_ROOT>/data/logs and <LTX_ROOT>/logs
+        ltx_root = os.path.abspath(os.path.join(REPO_ROOT, "..", ".."))
+        for sub_dir, arc_prefix in (
+            (os.path.join(ltx_root, "data", "logs"), "studio_logs/"),
+            (os.path.join(ltx_root, "logs"), "launcher_logs/"),
+        ):
+            if os.path.isdir(sub_dir):
+                for sname in (
+                    "cutora_stdout.log",
+                    "cutora_stderr.log",
+                    "cutora_launch_state.json",
+                    "orante_stdout.log",
+                    "orante_stderr.log",
+                    "macos_install.log",
+                    "macos_app_launch.log",
+                    "launcher_error.log",
+                ):
+                    spath = os.path.join(sub_dir, sname)
+                    if os.path.isfile(spath):
+                        arc = arc_prefix + sname
+                        zf.write(spath, arc)
+                        files_added.append(arc)
+
+        # Include install health report from <LTX_ROOT>/data or REPO_ROOT
+        for rpath, arc in (
+            (os.path.join(ltx_root, "data", "install_health_report.json"), "install/install_health_report.json"),
+            (os.path.join(REPO_ROOT, "install_health_report.json"), "install/cutora_install_health_report.json"),
+            (os.path.join(REPO_ROOT, "黑匣子_安装体检报告.txt"), "install/黑匣子_安装体检报告.txt"),
+        ):
+            if os.path.isfile(rpath) and arc not in files_added:
                 zf.write(rpath, arc)
                 files_added.append(arc)
 

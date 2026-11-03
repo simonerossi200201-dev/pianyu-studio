@@ -33,14 +33,18 @@ RUNTIME_DIR = (
 FFMPEG_DIR = os.path.join(RUNTIME_DIR, "ffmpeg")
 
 
-def _resolve_ffmpeg_tool(name: str) -> str:
+def resolve_ffmpeg_tool(name: str) -> str:
+    """Unified cross-platform resolver for ffmpeg / ffprobe.
+    Checks runtime/bin, runtime/ffmpeg/bin, runtime/ffmpeg, and system PATH,
+    verifying executable permissions on POSIX.
+    """
     exe = f"{name}.exe" if os.name == "nt" else name
     for cand in (
-        os.path.join(FFMPEG_DIR, exe),
-        os.path.join(FFMPEG_DIR, "bin", exe),
         os.path.join(RUNTIME_DIR, "bin", exe),
+        os.path.join(FFMPEG_DIR, "bin", exe),
+        os.path.join(FFMPEG_DIR, exe),
     ):
-        if os.path.isfile(cand):
+        if os.path.isfile(cand) and (os.name == "nt" or os.access(cand, os.X_OK)):
             return cand
     import shutil
     found = shutil.which(name)
@@ -49,8 +53,9 @@ def _resolve_ffmpeg_tool(name: str) -> str:
     return os.path.join(FFMPEG_DIR, exe)
 
 
-FFMPEG = _resolve_ffmpeg_tool("ffmpeg")
-FFPROBE = _resolve_ffmpeg_tool("ffprobe")
+_resolve_ffmpeg_tool = resolve_ffmpeg_tool
+FFMPEG = resolve_ffmpeg_tool("ffmpeg")
+FFPROBE = resolve_ffmpeg_tool("ffprobe")
 MODELS = os.path.join(RUNTIME_DIR, "models")
 RESOURCES = os.path.join(REPO_ROOT, "resources")
 BRAND_DIR = os.path.join(RESOURCES, "brand")
@@ -78,6 +83,21 @@ def is_portable() -> bool:
 
 
 def default_local_appdata() -> str:
+    if sys.platform == "darwin":
+        mac_support = os.path.join(
+            os.path.expanduser("~"), "Library", "Application Support", LOCAL_APPDATA_LEAF
+        )
+        legacy_appdata = os.path.join(
+            os.path.expanduser("~"), "AppData", "Local", LOCAL_APPDATA_LEAF
+        )
+        if os.path.isdir(legacy_appdata) and not os.path.isdir(mac_support):
+            try:
+                import shutil
+                os.makedirs(os.path.dirname(mac_support), exist_ok=True)
+                shutil.copytree(legacy_appdata, mac_support, dirs_exist_ok=True)
+            except Exception:
+                return legacy_appdata
+        return mac_support
     base = os.environ.get("LOCALAPPDATA") or os.path.join(
         os.path.expanduser("~"), "AppData", "Local")
     return os.path.join(base, LOCAL_APPDATA_LEAF)

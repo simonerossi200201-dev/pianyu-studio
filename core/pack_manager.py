@@ -185,7 +185,14 @@ def evaluate_all_packs(profile: HardwareProfile | None = None, root: Path = LTX_
         installed, inst_gb = is_pack_installed(pdef, root=root)
         min_vram = float(pdef.get("min_vram_gb", 0.0))
         cpu_ok = bool(pdef.get("cpu_supported", False))
-        hw_ok = cpu_ok or (prof.has_nvidia_gpu and prof.vram_total_gb >= min_vram)
+        is_cuda_only_pack = pid == "pack-engine-comfyui"
+        if is_cuda_only_pack and not prof.has_nvidia_gpu:
+            hw_ok = False
+        elif prof.mps_available:
+            # Apple Silicon 统一内存机型：16GB 机型仅推荐安装 CPU/轻量扩展包，36GB+ 机型才推荐重型生成模型包
+            hw_ok = cpu_ok or (prof.ram_total_gb >= 36.0 and prof.vram_total_gb >= min_vram)
+        else:
+            hw_ok = cpu_ok or (prof.has_nvidia_gpu and prof.vram_total_gb >= min_vram)
 
         inbox_arch = find_inbox_archive(pid)
         inbox_name = inbox_arch.name if inbox_arch else ""
@@ -193,11 +200,13 @@ def evaluate_all_packs(profile: HardwareProfile | None = None, root: Path = LTX_
         if installed and hw_ok:
             badge = "🟢 已安装 · 随时可用"
         elif installed and not hw_ok:
-            badge = f"🟡 已安装 · 需 {min_vram}GB 独显"
+            badge = "🟡 已安装 · 当前平台/内存不支持加速" if is_cuda_only_pack else f"🟡 已安装 · 需 {min_vram}GB 显存/36GB+统一内存"
+        elif is_cuda_only_pack and not prof.has_nvidia_gpu:
+            badge = "☁️ Windows NVIDIA CUDA 专属包 (Mac 免装，直接用云端/内置引擎)"
         elif inbox_name:
             badge = "📦 已就绪待装 (可一键安装)"
         elif not hw_ok:
-            badge = f"☁️ 未安装 (建议用云端 / 需 {min_vram}GB 显卡)"
+            badge = f"☁️ 未安装 (建议用云端 / 需 {min_vram}GB 独显或 36GB+ 内存)"
         else:
             badge = "🧩 可选扩展包 (按需一键安装)"
 

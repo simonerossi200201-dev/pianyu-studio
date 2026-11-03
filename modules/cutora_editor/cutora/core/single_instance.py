@@ -167,13 +167,27 @@ def release_single_instance() -> None:
         pass
 
 
+def _record_lock_state(stage: str, error: str = "") -> None:
+    try:
+        ltx_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+        if ltx_root not in sys.path:
+            sys.path.insert(0, ltx_root)
+        from core.launch_state import write_launch_state
+        write_launch_state(stage, app_name="cutora", error=error)
+    except Exception:
+        pass
+
+
 def acquire_single_instance_or_exit() -> bool:
     """Acquire the single-instance lock for the CUTORA GUI process.
 
     If another CUTORA GUI process is already running, focuses the existing
     window and raises ``SystemExit(0)`` immediately.
+    Distinguishes real lock contention (EAGAIN/EACCES) from unexpected I/O errors,
+    and never truncates the PID file before the lock is held.
     """
     import atexit
+    import errno
     global _MUTEX_HANDLE, _LOCK_FILE_FH
     if _MUTEX_HANDLE is not None or _LOCK_FILE_FH is not None:
         return True
@@ -189,6 +203,7 @@ def acquire_single_instance_or_exit() -> bool:
         if last_err == ERROR_ALREADY_EXISTS:
             kernel32.CloseHandle(handle)
             focus_existing_cutora_window()
+            _record_lock_state("EXISTING_INSTANCE_FOCUSED")
             raise SystemExit(0)
         _MUTEX_HANDLE = handle
         atexit.register(release_single_instance)
@@ -197,20 +212,43 @@ def acquire_single_instance_or_exit() -> bool:
                 fh.write(str(os.getpid()))
         except Exception:
             pass
+        _record_lock_state("LOCK_ACQUIRED")
         return True
 
     # Non-Windows (macOS / Linux) using flock on a single persistent file descriptor
-    try:
-        import fcntl
-        fh = open(_pid_file_path(), "a+", encoding="utf-8")
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fh.seek(0)
-        fh.truncate()
-        fh.write(str(os.getpid()))
-        fh.flush()
-        _LOCK_FILE_FH = fh
-        atexit.register(release_single_instance)
-        return True
-    except Exception:
-        focus_existing_cutora_window()
-        raise SystemExit(0)
+    import fcntl
+    fh = None
+    lock_candidates = [
+        _pid_file_path(),
+        os.path.join(os.path.expanduser("~"), ".cutora_single_instance.pid"),
+    ]
+    for cand_path in lock_candidates:
+        fh = None
+        try:
+            fh = open(cand_path, "a+", encoding="utf-8")
+        except OSError:
+            continue
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fh.seek(0)
+            fh.truncate()
+            fh.write(str(os.getpid()))
+            fh.flush()
+            _LOCK_FILE_FH = fh
+            atexit.register(release_single_instance)
+            _record_lock_state("LOCK_ACQUIRED")
+            return True
+        except OSError as exc:
+            try:
+                fh.close()
+            except Exception:
+                pass
+            if exc.errno in (errno.EAGAIN, errno.EACCES, getattr(errno, "EWOULDBLOCK", errno.EAGAIN)):
+                focus_existing_cutora_window()
+                _record_lock_state("EXISTING_INSTANCE_FOCUSED")
+                raise SystemExit(0)
+            # Other I/O error on this path -> try fallback candidate
+            continue
+
+    _record_lock_state("LOCK_FAILED", error="Unable to open or lock any single-instance lockfile")
+    return True

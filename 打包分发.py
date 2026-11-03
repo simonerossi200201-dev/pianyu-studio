@@ -108,6 +108,7 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "SECURITY_AUDIT_REPORT.md",
     "MODEL_LICENSE_COMPLIANCE.md",
     "requirements.txt",
+    "requirements-macos-arm64.lock",
     ".env.example",
 ]
 

@@ -46,11 +46,14 @@ class HardwareProfile:
     vram_free_gb: float
     vram_used_gb: float
     driver_version: str
-    recommended_tier: int  # 1 = 纯CPU极速档, 2 = 轻量GPU/32GB-CPU降级档, 3 = 16GB重型GPU全开档
+    recommended_tier: int  # 1 = 纯CPU极速档, 2 = 轻量GPU/16GB统一内存主流档, 3 = 16GB重型GPU/36GB+统一内存全开档
+    gpu_backend: str = "cpu"         # "cuda" | "mps" | "cpu"
+    mps_available: bool = False
+    is_unified_memory: bool = False
 
     @property
     def gpu_available(self) -> bool:
-        return self.has_nvidia_gpu
+        return bool(self.has_nvidia_gpu or self.mps_available)
 
     @property
     def gpu_vram_total_gb(self) -> float:
@@ -62,6 +65,10 @@ class HardwareProfile:
 
     @property
     def tier_label(self) -> str:
+        if self.is_unified_memory:
+            if self.recommended_tier >= 3:
+                return f"Tier 3 (Apple Silicon {int(round(self.ram_total_gb))}GB 旗舰统一内存模式)"
+            return f"Tier 2 (Apple Silicon {int(round(self.ram_total_gb))}GB 统一内存均衡模式 · 可用 {self.ram_avail_gb}GB)"
         if self.recommended_tier >= 3:
             return "Tier 3 (16GB重型GPU全开模式)"
         if self.recommended_tier == 2:
@@ -185,8 +192,9 @@ def query_nvidia_gpu() -> dict[str, Any]:
             except Exception:
                 pass
             ram_total_gb, ram_avail_gb, _ = query_system_memory()
+            # Apple Silicon 统一内存：推荐工作集上限约为总内存的 75%，但当前实际可分配余量严格受当前系统可用物理内存 (ram_avail_gb) 约束！
             unified_total_gb = round(ram_total_gb * 0.75, 2)
-            unified_free_gb = round(min(unified_total_gb, ram_avail_gb * 0.85), 2)
+            unified_free_gb = round(min(unified_total_gb, max(0.5, ram_avail_gb - 1.0)), 2)
             unified_used_gb = round(max(0.0, unified_total_gb - unified_free_gb), 2)
             if ram_total_gb >= 36.0:
                 hw_tier = "tier_1_flagship"
@@ -269,18 +277,23 @@ def probe_hardware() -> HardwareProfile:
     else:
         tier = 1
 
+    backend = str(gpu.get("backend") or "cpu")
+    is_mac_arm = bool(gpu.get("is_apple_silicon"))
     return HardwareProfile(
         cpu_cores=cores,
         ram_total_gb=ram_total,
         ram_avail_gb=ram_avail,
         ram_load_pct=ram_pct,
-        has_nvidia_gpu=gpu["has_gpu"],
+        has_nvidia_gpu=bool(backend == "cuda"),
         gpu_name=gpu["name"],
         vram_total_gb=gpu["vram_total_gb"],
         vram_free_gb=gpu["vram_free_gb"],
         vram_used_gb=gpu["vram_used_gb"],
         driver_version=gpu["driver"],
         recommended_tier=tier,
+        gpu_backend=backend,
+        mps_available=is_mac_arm,
+        is_unified_memory=is_mac_arm,
     )
 
 
@@ -346,33 +359,47 @@ def evaluate_model_capability(model_id: str, profile: HardwareProfile | None = N
     except Exception:
         pass
 
-    accel_dev = "mps" if prof.driver_version == "Metal/MPS" else "cuda"
+    accel_dev = "mps" if prof.mps_available else ("cuda" if prof.has_nvidia_gpu else "cpu")
+
+    # CTranslate2 (faster-whisper) 在 Apple Silicon 上使用 ARM64 NEON / Accelerate CPU int8 路线，不走 PyTorch MPS
+    if "faster-whisper" in model_id.lower() or "whisper" in model_id.lower() or "ct2" in model_id.lower():
+        if prof.mps_available:
+            return CapabilityVerdict(
+                model_id=model_id,
+                name=name,
+                tier=1,
+                can_run=True,
+                execution_device="cpu (ARM64 int8)",
+                badge="🟢 Apple Silicon ARM64 int8 加速",
+                user_message="采用 CTranslate2 ARM64 NEON/Accelerate int8 原生 CPU 路线运行（内存开销低、无需占用 Metal 显存）。",
+                cloud_fallback_available=False,
+            )
 
     # Tier 1: 原生支持 CPU 极速运行
     if tier == 1:
-        dev = accel_dev if (prof.has_nvidia_gpu and prof.vram_free_gb >= 3.0) else "cpu"
+        dev = accel_dev if (prof.gpu_available and prof.vram_free_gb >= 2.5) else "cpu"
         return CapabilityVerdict(
             model_id=model_id,
             name=name,
             tier=1,
             can_run=True,
             execution_device=dev,
-            badge="🟢 32GB+CPU 原生流畅",
-            user_message="支持在 32GB 内存 + CPU 电脑上全速运行。" if dev == "cpu" else f"已启用 {prof.gpu_name} 加速运行。",
+            badge="🟢 原生流畅就绪",
+            user_message="支持在当前 CPU / 统一内存下流畅运行。" if dev == "cpu" else f"已启用 {prof.gpu_name} ({dev.upper()}) 加速运行。",
             cloud_fallback_available=False,
         )
 
-    # Tier 2: 有 GPU 用 GPU，无 GPU 或显存不足时自动让 CPU 坚持运行
+    # Tier 2: 有 GPU/MPS 用 GPU/MPS，无 GPU 或空闲内存不足时自动让 CPU 坚持运行
     if tier == 2 or cpu_ok:
-        if prof.has_nvidia_gpu and prof.vram_total_gb >= min_vram:
+        if prof.gpu_available and prof.vram_total_gb >= min_vram and prof.vram_free_gb >= max(2.0, min_vram * 0.4):
             return CapabilityVerdict(
                 model_id=model_id,
                 name=name,
                 tier=tier,
                 can_run=True,
                 execution_device=accel_dev,
-                badge="🟢 GPU 硬件加速",
-                user_message=f"检测到 {prof.gpu_name} ({prof.vram_total_gb}GB)，使用显卡高速推理。",
+                badge=f"🟢 {accel_dev.upper()} 硬件加速",
+                user_message=f"检测到 {prof.gpu_name} (预算 {prof.vram_total_gb}GB / 当前可用 {prof.vram_free_gb}GB)，使用 {accel_dev.upper()} 推理。",
                 cloud_fallback_available=False,
             )
         return CapabilityVerdict(
@@ -383,22 +410,21 @@ def evaluate_model_capability(model_id: str, profile: HardwareProfile | None = N
             execution_device="cpu",
             badge="🟡 CPU 兼容模式 (自动降级)",
             user_message=(
-                f"当前未检测到 >= {min_vram}GB 显存的独立显卡，已自动切换至 32GB 内存 + CPU 模式坚持运行；"
-                "耗时会比显卡略长，后台处理期间不影响您继续其他操作。"
+                f"当前可用显存/统一内存余量 ({prof.vram_free_gb}GB) 低于推荐阈值 ({min_vram}GB)，已自动切换至 CPU 兼容模式运行。"
             ),
             cloud_fallback_available=False,
         )
 
-    # Tier 3: 必须依赖大显存显卡 (如 LTX-2.5 22B / FLUX.2 klein / IC-LoRA)
-    if prof.has_nvidia_gpu and prof.vram_total_gb >= min_vram:
+    # Tier 3: 重型本地生成大模型 (LTX-2.5 22B / FLUX.2 klein / IC-LoRA)，需要 NVIDIA 12~16GB+ CUDA 或 36GB+ Apple Silicon
+    if (prof.has_nvidia_gpu and prof.vram_total_gb >= min_vram) or (prof.mps_available and prof.ram_total_gb >= 36.0 and prof.vram_total_gb >= min_vram):
         return CapabilityVerdict(
             model_id=model_id,
             name=name,
             tier=3,
             can_run=True,
             execution_device=accel_dev,
-            badge=f"⚡ 16GB GPU 独享算力 ({min_vram}GB+)",
-            user_message=f"将通过 VRAMBroker 自动清空其他显存占用，独享 {prof.gpu_name} 全速生成。",
+            badge=f"⚡ 大算力本地推理 ({min_vram}GB+)",
+            user_message=f"满足本地大模型运行条件 ({prof.gpu_name})。",
             cloud_fallback_available=True,
         )
 

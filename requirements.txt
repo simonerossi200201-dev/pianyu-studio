@@ -35,7 +35,14 @@ opencv-python==4.9.0.80
 pillow==12.3.0
 imageio-ffmpeg==0.6.0
 
-# --- 5. 加密、凭据管理与基础工具 ---
+# --- 5. 数据表、加密、凭据管理与基础工具 ---
+pandas==2.2.3
+openpyxl==3.1.5
+tokenizers==0.21.1
+soundfile==0.13.1
+psutil==6.1.1
+fonttools==4.56.0
 cryptography==50.0.1
 PyYAML==6.0.3
 Jinja2==3.1.6
+# 注：macOS Apple Silicon (ARM64) 独立依赖锁见同目录 requirements-macos-arm64.lock

@@ -10,9 +10,23 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+_LTX_ROOT = os.path.abspath(os.path.join(_REPO_ROOT, "..", ".."))
+if _LTX_ROOT not in sys.path and os.path.isdir(os.path.join(_LTX_ROOT, "core")):
+    sys.path.insert(0, _LTX_ROOT)
+
+
+def _emit_launch_stage(stage: str, *, returncode: int | None = None, error: str = "", detail: dict | None = None) -> None:
+    try:
+        from core.launch_state import write_launch_state
+        write_launch_state(stage, app_name="cutora", returncode=returncode, error=error, detail=detail)
+    except Exception:
+        pass
+
+
 # === 启动前环境自检 (防止依赖缺失导致闪退) ===
 def self_check_dependencies():
     import importlib.util
+    _emit_launch_stage("ENV_CHECK_START")
     missing = []
     errors = {}
     # 使用 find_spec 毫秒级探测核心依赖包是否存在，避免在闪屏弹出前同步 import pandas/transformers 造成 2 秒冷启动卡顿
@@ -32,23 +46,46 @@ def self_check_dependencies():
             errors[pkg_pip] = str(_e)
 
     if missing:
-        print("=" * 60)
-        print("CRITICAL ERROR: Environment is missing packages!")
-        print(f"Missing: {', '.join(missing)}")
+        repair_script = "安装与体检.command" if sys.platform == "darwin" else "安装与体检.bat"
+        err_summary = f"Missing packages: {', '.join(missing)}"
+        _emit_launch_stage(
+            "ENV_CHECK_FAILED",
+            returncode=1,
+            error=err_summary,
+            detail={"missing": missing, "errors": errors, "repair_script": repair_script},
+        )
+        print("=" * 60, flush=True)
+        print("CRITICAL ERROR: Environment is missing packages!", flush=True)
+        print(f"MISSING_DEPENDENCY={','.join(missing)}", flush=True)
+        print(f"Missing: {', '.join(missing)}", flush=True)
         for pkg, err in errors.items():
-            print(f"  {pkg}: {err}")
-        print()
-        print("Repair: run CUTORA_Install.bat (runtime pip install is not allowed).")
-        print("=" * 60)
+            print(f"  {pkg}: {err}", flush=True)
+        print(flush=True)
+        print(f"Repair: run {repair_script} in the studio root directory.", flush=True)
+        print("=" * 60, flush=True)
+        if sys.platform == "darwin" and not os.environ.get("CUTORA_LAUNCH_SESSION_ID"):
+            try:
+                import subprocess
+                msg = (
+                    f"片语剪辑台未启动：缺少核心依赖 ({', '.join(missing)})。\\n\\n"
+                    f"请双击运行安装目录下的《{repair_script}》自动补齐依赖，或查看 data/logs/cutora_stdout.log。"
+                )
+                subprocess.run(
+                    ["osascript", "-e", f'display alert "片语剪辑台启动自检未通过" message "{msg}" as critical'],
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+            except Exception:
+                pass
         # [v6.1] 只有交互式终端才等用户按回车。
-        # 渲染子进程的 stdin 是 DEVNULL，这里若无条件调用 input() 会抛异常
-        # 甚至挂起，必须先确认 stdin 真的可用。
         try:
             if sys.stdin is not None and sys.stdin.isatty():
                 input("Press Enter to exit...")
         except Exception:
             pass
         sys.exit(1)
+    _emit_launch_stage("ENV_CHECK_OK")
 
 def run_self_test():
     from cutora.core.utils import clean_text, format_time_ass
@@ -375,6 +412,7 @@ def main(argv=None):
     _set_app_user_model_id()
     apply_ui_locale()
     app = QApplication(sys.argv)
+    _emit_launch_stage("QT_READY")
     _apply_app_identity(app)
     raise SystemExit(run_gui_startup(app, queue_continue=_queue_continue))
 
@@ -560,6 +598,7 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
         import traceback
         from cutora.core.log import get_logger
         get_logger("cutora.app").exception("main window failed")
+        _emit_launch_stage("STARTUP_FAILED", returncode=1, error=f"MainWindow init failed: {exc}")
         startup_error(
             "启动失败",
             "主界面没能建起来：%s\n\n"
@@ -571,6 +610,13 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
     w.show()
     w.raise_()
     w.activateWindow()
+    _emit_launch_stage("MAIN_WINDOW_READY")
+    try:
+        from cutora.core.blackbox import get_recorder
+        get_recorder().mark_main_window_ready()
+    except Exception:
+        pass
+    print("MAIN_WINDOW_READY", flush=True)
 
     # 主窗口展示后，利用空闲时间片分批渐进注册剩余内置字体（每 35ms 加载 4 个家族，主界面零卡顿）
     if window_factory is None or getattr(window_factory, "__name__", "") == "MainWindow":
@@ -770,6 +816,7 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
         get_recorder().mark_clean_exit("gui_quit_rc_%s" % rc)
     except Exception:
         pass
+    _emit_launch_stage("PROCESS_EXIT", returncode=rc)
     try:
         from cutora.core.single_instance import release_single_instance
         release_single_instance()

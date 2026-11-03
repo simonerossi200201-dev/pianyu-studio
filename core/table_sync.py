@@ -957,6 +957,7 @@ def is_cutora_running() -> bool:
     # macOS / POSIX: 检测单实例 flock 文件锁（绝不仅凭残留 PID 数字误判，必须真实持有 flock 才算运行中）
     for lock_cand in (
         Path(tempfile.gettempdir()) / "cutora_single_instance.pid",
+        Path.home() / ".cutora_single_instance.pid",
         Path.home() / "Library" / "Application Support" / "CUTORA" / "cutora.lock",
     ):
         if not lock_cand.is_file():
@@ -973,14 +974,18 @@ def is_cutora_running() -> bool:
         except Exception:
             pass
 
-    # 兜底探测本地控制 API (127.0.0.1:47321)
+    # 兜底探测本地控制 API (127.0.0.1:47321)，必须校验服务身份为 CUTORA，防止端口被其他程序占用误判
     try:
-        import socket
+        import urllib.request
 
-        with socket.create_connection(("127.0.0.1", 47321), timeout=0.35):
-            return True
+        req = urllib.request.Request("http://127.0.0.1:47321/v1/health", method="GET")
+        with urllib.request.urlopen(req, timeout=0.35) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+            if "cutora" in raw.lower() or '"ok"' in raw.lower():
+                return True
     except Exception:
-        return False
+        pass
+    return False
 
 
 def call_cutora_api(command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1026,18 +1031,25 @@ def _has_unconsumed_handoff() -> bool:
         return False
 
 
-def launch_cutora_room(
+_LAST_CUTORA_LAUNCH: dict[str, Any] = {}
+
+
+def get_last_cutora_launch() -> dict[str, Any]:
+    return dict(_LAST_CUTORA_LAUNCH)
+
+
+def launch_cutora_room_detailed(
     room: str = "stitch",
     project_path: str = "",
     prepare_handoff: bool = False,
-) -> bool:
-    """启动或切换聚焦 CUTORA 到指定功能房间 (stitch=智能拼接 / batch=批量自动剪辑 / preview=主剪辑台)。
-    支持 Windows (Local\\CUTORA_SingleInstance_Mutex_v1) 与 macOS (~/Library/Application Support/CUTORA/cutora.lock)。
-    """
+) -> dict[str, Any]:
+    """启动或切换聚焦 CUTORA 到指定功能房间，返回包含 Popen 句柄、session_id 与日志路径的结构化 LaunchResult。"""
     import os
     import subprocess
     import time
+    from .launch_state import write_launch_state
 
+    global _LAST_CUTORA_LAUNCH
     room = (room or "stitch").strip().lower()
     if room == "stitch":
         try:
@@ -1064,12 +1076,23 @@ def launch_cutora_room(
         except Exception:
             pass
         _bring_window_foreground_by_keywords(("CUTORA", "片段拼接", "智能拼接"), app_activate_name="CUTORA")
-        return True
+        res = {
+            "ok": True,
+            "already_running": True,
+            "proc": None,
+            "session_id": "",
+            "stdout_path": str(LTX_ROOT / "data" / "logs" / "cutora_stdout.log"),
+            "stderr_path": str(LTX_ROOT / "data" / "logs" / "cutora_stderr.log"),
+        }
+        _LAST_CUTORA_LAUNCH = res
+        return res
 
+    session_id = f"cutora-{int(time.time() * 1000)}"
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env["CUTORA_RUNTIME"] = str(LTX_ROOT / "runtime")
     env["CUTORA_START_ROOM"] = room
+    env["CUTORA_LAUNCH_SESSION_ID"] = session_id
     if room == "stitch":
         env["CUTORA_SYNC_ORANTE"] = "1"
     if project_path:
@@ -1084,10 +1107,15 @@ def launch_cutora_room(
     py_exe = resolve_python_exe(gui=True)
     log_dir = LTX_ROOT / "data" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path = log_dir / "cutora_stdout.log"
+    stderr_path = log_dir / "cutora_stderr.log"
+    write_launch_state("BOOTSTRAP_START", app_name="cutora", session_id=session_id, detail={"room": room, "python": py_exe})
     with (
-        open(log_dir / "cutora_stdout.log", "a", encoding="utf-8") as stdout_log,
-        open(log_dir / "cutora_stderr.log", "a", encoding="utf-8") as stderr_log,
+        open(stdout_path, "a", encoding="utf-8") as stdout_log,
+        open(stderr_path, "a", encoding="utf-8") as stderr_log,
     ):
+        stdout_log.write(f"\n=== [{time.strftime('%Y-%m-%d %H:%M:%S')}] LAUNCH {session_id} (room={room}) ===\n")
+        stdout_log.flush()
         popen_kwargs: dict[str, Any] = {
             "cwd": str(LTX_ROOT / "modules" / "cutora_editor"),
             "env": env,
@@ -1099,7 +1127,27 @@ def launch_cutora_room(
         else:
             popen_kwargs["start_new_session"] = True
             popen_kwargs["close_fds"] = True
-        subprocess.Popen([py_exe, "-m", "cutora"], **popen_kwargs)
-    time.sleep(0.6)
-    return True
+        proc = subprocess.Popen([py_exe, "-m", "cutora"], **popen_kwargs)
+
+    res = {
+        "ok": True,
+        "already_running": False,
+        "proc": proc,
+        "pid": proc.pid,
+        "session_id": session_id,
+        "stdout_path": str(stdout_path),
+        "stderr_path": str(stderr_path),
+    }
+    _LAST_CUTORA_LAUNCH = res
+    return res
+
+
+def launch_cutora_room(
+    room: str = "stitch",
+    project_path: str = "",
+    prepare_handoff: bool = False,
+) -> bool:
+    """启动或切换聚焦 CUTORA 到指定功能房间 (兼容返回 bool)。"""
+    res = launch_cutora_room_detailed(room=room, project_path=project_path, prepare_handoff=prepare_handoff)
+    return bool(res.get("ok"))
 
