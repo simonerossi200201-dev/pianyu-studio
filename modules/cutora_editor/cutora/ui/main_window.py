@@ -2302,6 +2302,8 @@ class MainWindow(CommandBodies, QMainWindow):
         if badge is not None:
             try:
                 badge.hide()
+                badge.close()
+                badge.deleteLater()
             except Exception:
                 pass
         offscreen = (os.environ.get("QT_QPA_PLATFORM") or "").lower() == "offscreen"

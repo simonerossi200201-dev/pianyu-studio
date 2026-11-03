@@ -68,45 +68,57 @@ if [ ! -x "$DIR/runtime/ffmpeg/bin/ffmpeg" ]; then
 fi
 
 # 4. 检测并初始化 macOS Apple Silicon 原生 Python 虚拟环境 (runtime/venv/bin/python3)
+if [ -d "$DIR/runtime/venv/Scripts" ] && [ ! -d "$DIR/runtime/venv/bin" ]; then
+    rm -rf "$DIR/runtime/venv"
+fi
+
+BASE_PY=""
+if [ -x "$DIR/runtime/python/bin/python3.11" ]; then
+    BASE_PY="$DIR/runtime/python/bin/python3.11"
+elif [ -x "$DIR/runtime/python/bin/python3" ]; then
+    BASE_PY="$DIR/runtime/python/bin/python3"
+else
+    for P in /opt/homebrew/bin/python3.11 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
+        if command -v "$P" >/dev/null 2>&1; then
+            BASE_PY="$(command -v "$P")"
+            break
+        fi
+    done
+fi
+
 if [ ! -x "$DIR/runtime/venv/bin/python3" ]; then
-    echo "[2/4] 正在初始化 macOS Apple Silicon 原生 Python 3.11 虚拟环境 (runtime/venv)..."
-    if [ -d "$DIR/runtime/venv/Scripts" ] && [ ! -d "$DIR/runtime/venv/bin" ]; then
-        rm -rf "$DIR/runtime/venv"
-    fi
-
-    BASE_PY=""
-    if [ -x "$DIR/runtime/python/bin/python3.11" ]; then
-        BASE_PY="$DIR/runtime/python/bin/python3.11"
-    elif [ -x "$DIR/runtime/python/bin/python3" ]; then
-        BASE_PY="$DIR/runtime/python/bin/python3"
-    else
-        for P in /opt/homebrew/bin/python3.11 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
-            if command -v "$P" >/dev/null 2>&1; then
-                BASE_PY="$(command -v "$P")"
-                break
-            fi
-        done
-    fi
-
+    echo "[2/4] 正在初始化 macOS Apple Silicon 原生 Python 虚拟环境 (runtime/venv)..."
     if [ -x "$DIR/runtime/bin/uv" ] && [ -n "$BASE_PY" ]; then
         "$DIR/runtime/bin/uv" venv "$DIR/runtime/venv" --python "$BASE_PY" --seed
-        echo "[3/4] 正在通过内置 uv 极速安装 Apple Silicon AI 与界面依赖库..."
-        "$DIR/runtime/bin/uv" pip install --python "$DIR/runtime/venv/bin/python3" \
-            PySide6 fastapi uvicorn httpx pydantic openpyxl cryptography \
-            numpy Pillow opencv-python-headless psutil soundfile scipy \
-            faster-whisper torch torchvision torchaudio transformers \
-            mediapipe demucs playwright || true
+    else
+        "$BASE_PY" -m venv "$DIR/runtime/venv"
+    fi
+fi
+
+# 每次运行《安装与体检.command》均校验核心依赖（避免上次断网或可选包冲突导致漏装 PyYAML / pandas / tokenizers 等）
+if ! "$DIR/runtime/venv/bin/python3" -c "import PySide6, yaml, pandas, transformers, tokenizers, fastapi, uvicorn, httpx, openpyxl, PIL, cv2" >/dev/null 2>&1; then
+    echo "[3/4] 正在安装/修复 Apple Silicon 核心界面与 AI 依赖库..."
+    CORE_PKGS=(
+        PySide6 pywebview PyYAML pandas tokenizers safetensors ctranslate2
+        fastapi starlette uvicorn pydantic httpx aiohttp requests urllib3 certifi
+        openpyxl cryptography Jinja2 fonttools imageio-ffmpeg
+        numpy Pillow opencv-python-headless psutil soundfile scipy
+        faster-whisper torch torchvision torchaudio transformers
+    )
+    if [ -x "$DIR/runtime/bin/uv" ]; then
+        "$DIR/runtime/bin/uv" pip install --python "$DIR/runtime/venv/bin/python3" "${CORE_PKGS[@]}"
+        "$DIR/runtime/bin/uv" pip install --python "$DIR/runtime/venv/bin/python3" playwright || true
+        "$DIR/runtime/bin/uv" pip install --python "$DIR/runtime/venv/bin/python3" mediapipe || true
+        "$DIR/runtime/bin/uv" pip install --python "$DIR/runtime/venv/bin/python3" demucs || true
         if [ "$(uname -m)" = "arm64" ]; then
             "$DIR/runtime/bin/uv" pip install --python "$DIR/runtime/venv/bin/python3" mlx-whisper || true
         fi
     else
-        "$BASE_PY" -m venv "$DIR/runtime/venv"
         "$DIR/runtime/venv/bin/python3" -m pip install --upgrade pip wheel setuptools
-        "$DIR/runtime/venv/bin/python3" -m pip install \
-            PySide6 fastapi uvicorn httpx pydantic openpyxl cryptography \
-            numpy Pillow opencv-python-headless psutil soundfile scipy \
-            faster-whisper torch torchvision torchaudio transformers \
-            mediapipe demucs playwright || true
+        "$DIR/runtime/venv/bin/python3" -m pip install "${CORE_PKGS[@]}"
+        "$DIR/runtime/venv/bin/python3" -m pip install playwright || true
+        "$DIR/runtime/venv/bin/python3" -m pip install mediapipe || true
+        "$DIR/runtime/venv/bin/python3" -m pip install demucs || true
         if [ "$(uname -m)" = "arm64" ]; then
             "$DIR/runtime/venv/bin/python3" -m pip install mlx-whisper || true
         fi
@@ -115,8 +127,9 @@ fi
 
 # 5. 执行全自动安装、Finder 右键菜单注册、桌面 .app 创建与黑匣子体检
 echo "[4/4] 正在执行《片语工作室》硬件自适应体检与桌面/Finder 集成..."
-export PATH="$DIR/runtime/bin:$DIR/runtime/ffmpeg/bin:$PATH"
-"$DIR/runtime/venv/bin/python3" "$DIR/install_studio.py" "$@"
+export PYTHONUTF8=1
+export PATH="$DIR/runtime/bin:$DIR/runtime/ffmpeg/bin:$DIR/runtime/ffmpeg:$PATH"
+"$DIR/runtime/venv/bin/python3" "$DIR/install_studio.py" --force-shortcuts "$@"
 
 echo ""
 echo "✅ macOS 安装与体检已完成！您现在可以直接双击桌面的《片语工作室.app》或本目录的《启动片语工作室.command》启动。"

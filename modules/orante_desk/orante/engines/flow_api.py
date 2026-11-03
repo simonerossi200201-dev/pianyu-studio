@@ -1334,7 +1334,7 @@ class FlowEngine(Engine):
             if info.get("action") == "reject" and rpc == "eb1hJf":
                 raise BlockedImage(info.get("plain") or "画面被 Flow 审核拦下了")
             if attempt < retries:
-                if info.get("action") == "busy":
+                if info.get("action") in ("busy", "busy_traffic"):
                     delay = BUSY_BACKOFF[min(attempt, len(BUSY_BACKOFF) - 1)]
                 else:
                     delay = 2 + attempt * 3
@@ -1343,6 +1343,13 @@ class FlowEngine(Engine):
                 time.sleep(delay)
             else:
                 self._log_flow_err(info)
+                if info.get("action") == "busy_traffic" and raise_:
+                    raise FlowThrottled(
+                        self.account.get("name") or "",
+                        code=info.get("code") or "PUBLIC_ERROR_UNUSUAL_ACTIVITY_TOO_MUCH_TRAFFIC",
+                        err_n=info.get("err_n"),
+                        raw=str(res.get("err"))[:300],
+                    )
         if not raise_:
             last = last or {}
             return {"ok": False, "payload": last.get("payload"),
@@ -1706,6 +1713,10 @@ class FlowEngine(Engine):
             pass
 
     def _ui_reload(self, page) -> None:
+        # 刷新页面后 Flow 网页会重置回默认模式（Ingredients/横竖屏/静音等），必须同步清掉本地缓存状态
+        self._ui_model_ok = False
+        self._ui_flow_mode = None
+        self._ui_silent_state = None
         page.goto(force_hl(self.project_url, "en"), wait_until="domcontentloaded", timeout=60000)
         page.locator(EDITOR_SEL).first.wait_for(state="visible", timeout=45000)
         self._ui_pace(0.8, 1.5)
@@ -2565,33 +2576,58 @@ class FlowEngine(Engine):
             aspect = "9:16"
         self.tick_credits()
         page = self._ensure_page()
-        res = self._ui_attempt(page, lambda: self._ui_image_fill_and_generate(
-            page, ref, prompt, aspect, label))
-        self._ui_step("看回包")
-        if res.get("status") == 200 and not res.get("err"):
-            payload = res.get("payload")
-            media_id = _g(payload, 0, 0, 0)
-            url = _g(payload, 0, 0, 6, 0, 13)
-            if not media_id or not url:
-                txt = json.dumps(payload, ensure_ascii=False)[:400]
-                if re.search(r"prominent|policy|违反|unsafe|minor|celebrit|blocked", txt, re.I):
-                    raise BlockedImage(txt)
-                raise OranteError("生图没有返回图片", txt)
-            if res.get("prompt_ok") is False:
-                raise OranteError("生图回包和这一次对不上（请求里的提示词不是这次的），这张图不认",
-                                  "不会存成这一次的结果。")
-            leaves = res.get("req_strings") or []
-            if leaves and key not in leaves:
-                got = next((x for x in leaves if x in IMAGE_MODEL_LABELS), "?")
-                self.log(f"  ⚠ 生图请求里的模型是 {got}，不是预期的 {key}")
-            self._note_rpc("ogiZ0b", key, _g(payload, 1))
-            return {"media_id": media_id, "url": url, "seed": None}
-        info = classify_flow_error("ogiZ0b", res)
-        if info.get("action") == "throttle":
+        TRAFFIC_BACKOFF = (35, 60, 90)
+        last_info: dict = {}
+        last_res: dict = {}
+        for traffic_try in range(len(TRAFFIC_BACKOFF) + 1):
+            res = self._ui_attempt(page, lambda: self._ui_image_fill_and_generate(
+                page, ref, prompt, aspect, label))
+            last_res = res
+            self._ui_step("看回包")
+            if res.get("status") == 200 and not res.get("err"):
+                payload = res.get("payload")
+                media_id = _g(payload, 0, 0, 0)
+                url = _g(payload, 0, 0, 6, 0, 13)
+                if not media_id or not url:
+                    txt = json.dumps(payload, ensure_ascii=False)[:400]
+                    if re.search(r"prominent|policy|违反|unsafe|minor|celebrit|blocked", txt, re.I):
+                        raise BlockedImage(txt)
+                    raise OranteError("生图没有返回图片", txt)
+                if res.get("prompt_ok") is False:
+                    raise OranteError("生图回包和这一次对不上（请求里的提示词不是这次的），这张图不认",
+                                      "不会存成这一次的结果。")
+                leaves = res.get("req_strings") or []
+                if leaves and key not in leaves:
+                    got = next((x for x in leaves if x in IMAGE_MODEL_LABELS), "?")
+                    self.log(f"  ⚠ 生图请求里的模型是 {got}，不是预期的 {key}")
+                self._note_rpc("ogiZ0b", key, _g(payload, 1))
+                return {"media_id": media_id, "url": url, "seed": None}
+
+            info = classify_flow_error("ogiZ0b", res)
+            last_info = info
+            act = info.get("action")
+            if act in ("busy_traffic", "busy", "retry") and traffic_try < len(TRAFFIC_BACKOFF):
+                wait_s = TRAFFIC_BACKOFF[traffic_try] if act == "busy_traffic" else BUSY_BACKOFF[min(traffic_try, len(BUSY_BACKOFF) - 1)]
+                wait_s = int(wait_s + random.uniform(2.0, 7.0))
+                self.log(
+                    f"  ⏳ Flow 生图返回流量瞬时拥堵（{info.get('code') or 'BUSY'}），"
+                    f"原地喘气 {wait_s} 秒后自动重交（第 {traffic_try + 1}/{len(TRAFFIC_BACKOFF)} 次）…"
+                )
+                self._ui_cleanup_failed_card(page)
+                time.sleep(wait_s)
+                try:
+                    self._ui_reload(page)
+                except Exception:
+                    pass
+                continue
+            break
+
+        info = last_info or classify_flow_error("ogiZ0b", last_res)
+        if info.get("action") in ("throttle", "busy_traffic"):
             raise FlowThrottled(
                 self.account.get("name") or "",
                 code=info.get("code") or "PUBLIC_ERROR_UNUSUAL_ACTIVITY",
-                err_n=info.get("err_n"), raw=str(res.get("err"))[:300])
+                err_n=info.get("err_n"), raw=str(last_res.get("err"))[:300])
         if info.get("action") == "reject":
             raise BlockedImage(info.get("plain") or "这张图被 Flow 审核拦下了")
         raise OranteError(info.get("plain") or "真人操作生图没成功", format_flow_raw(info).strip())

@@ -31,8 +31,26 @@ RUNTIME_DIR = (
     else (_LOCAL_RT if os.path.isdir(_LOCAL_RT) else _STUDIO_RT)
 )
 FFMPEG_DIR = os.path.join(RUNTIME_DIR, "ffmpeg")
-FFMPEG = os.path.join(FFMPEG_DIR, "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-FFPROBE = os.path.join(FFMPEG_DIR, "ffprobe.exe" if os.name == "nt" else "ffprobe")
+
+
+def _resolve_ffmpeg_tool(name: str) -> str:
+    exe = f"{name}.exe" if os.name == "nt" else name
+    for cand in (
+        os.path.join(FFMPEG_DIR, exe),
+        os.path.join(FFMPEG_DIR, "bin", exe),
+        os.path.join(RUNTIME_DIR, "bin", exe),
+    ):
+        if os.path.isfile(cand):
+            return cand
+    import shutil
+    found = shutil.which(name)
+    if found:
+        return found
+    return os.path.join(FFMPEG_DIR, exe)
+
+
+FFMPEG = _resolve_ffmpeg_tool("ffmpeg")
+FFPROBE = _resolve_ffmpeg_tool("ffprobe")
 MODELS = os.path.join(RUNTIME_DIR, "models")
 RESOURCES = os.path.join(REPO_ROOT, "resources")
 BRAND_DIR = os.path.join(RESOURCES, "brand")

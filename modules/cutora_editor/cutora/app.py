@@ -770,4 +770,9 @@ def run_gui_startup(app, queue_continue: bool = False, window_factory=None) -> i
         get_recorder().mark_clean_exit("gui_quit_rc_%s" % rc)
     except Exception:
         pass
+    try:
+        from cutora.core.single_instance import release_single_instance
+        release_single_instance()
+    except Exception:
+        pass
     return rc

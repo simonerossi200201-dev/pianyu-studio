@@ -47,13 +47,47 @@ def rewrite_pyvenv_cfg(root: Path | str | None = None) -> Path:
         has_py, effective_home = _has_python_binary(target_root)
         if not cfg_path.parent.is_dir() or not has_py:
             continue
-        ver = "3.12.7" if "python312" in str(target_root).lower() else "3.10.11"
-        clean_cfg = (
-            f"home = {effective_home}\n"
-            "include-system-site-packages = false\n"
-            f"version = {ver}\n"
-        )
-        cfg_path.write_text(clean_cfg, encoding="utf-8")
+        if os.name == "nt":
+            ver = "3.12.7" if "python312" in str(target_root).lower() else "3.10.11"
+            clean_cfg = (
+                f"home = {effective_home}\n"
+                "include-system-site-packages = false\n"
+                f"version = {ver}\n"
+            )
+            cfg_path.write_text(clean_cfg, encoding="utf-8")
+        else:
+            # macOS / POSIX: 绝不粗暴覆盖 uv venv 生成的 version_info / 3.11.x 元信息！
+            # 仅当用户移动了文件夹导致旧 home 目录不存在时，才原位替换 home = 行并修复断裂软链
+            if cfg_path.is_file():
+                try:
+                    lines = cfg_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    old_home = ""
+                    for ln in lines:
+                        if ln.strip().startswith("home"):
+                            parts = ln.split("=", 1)
+                            if len(parts) == 2:
+                                old_home = parts[1].strip()
+                            break
+                    if old_home and not Path(old_home).is_dir():
+                        new_lines = [
+                            f"home = {effective_home}" if ln.strip().startswith("home") else ln
+                            for ln in lines
+                        ]
+                        cfg_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+                except OSError:
+                    pass
+            # 若文件夹移动导致 runtime/venv/bin/python* 软链指向失效路径，自动重链到 effective_home/python3
+            venv_bin = cfg_path.parent / "bin"
+            target_py = effective_home / "python3"
+            if venv_bin.is_dir() and target_py.is_file():
+                for py_name in ("python", "python3", "python3.11", "python3.10"):
+                    p_link = venv_bin / py_name
+                    if p_link.is_symlink() and not p_link.exists():
+                        try:
+                            p_link.unlink()
+                            p_link.symlink_to(target_py)
+                        except OSError:
+                            pass
 
     # Windows: 若存在便携式自愈启动器模板，确保 venv/Scripts 与 comfyui/venv/Scripts 同步升级为相对路径自愈启动器
     if os.name == "nt":

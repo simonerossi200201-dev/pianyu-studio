@@ -236,6 +236,28 @@ class TestNov2HistoryAndVariableSlots(unittest.TestCase):
         # Iron Rule 4: submit_gap defaults to 8.0s breathing room
         self.assertEqual(generate.submit_gap(), 8.0)
 
+        # Edge Case 1: _ui_reload resets cached UI state so Flow webpage mode reset is re-synced
+        eng = flow_api.FlowEngine.__new__(flow_api.FlowEngine)
+        eng._ui_model_ok = True
+        eng._ui_flow_mode = "frames"
+        eng._ui_silent_state = False
+        eng.project_url = "https://labs.google/fx/tools/flow/project/test"
+        eng._ui_pace = lambda *a: None
+        class _DummyLoc:
+            first = property(lambda s: s)
+            def wait_for(self, **kw): pass
+        class _DummyPage:
+            def goto(self, *a, **kw): pass
+            def locator(self, *a): return _DummyLoc()
+        eng._ui_reload(_DummyPage())
+        self.assertFalse(eng._ui_model_ok)
+        self.assertIsNone(eng._ui_flow_mode)
+        self.assertIsNone(eng._ui_silent_state)
+
+        # Edge Case 2: studio_handoff.kick does not hijack Flow tasks when fallback is off (default)
+        from orante.services import studio_handoff
+        self.assertEqual(studio_handoff.kick("T0199"), {"skip": "fallback_off"})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

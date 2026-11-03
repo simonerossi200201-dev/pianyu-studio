@@ -145,8 +145,11 @@ def write_macos_app_bundle(
     exec_cmd: str,
     workdir: Path,
 ) -> Path:
-    """在 macOS 上生成标准 .app 应用包 (Contents/Info.plist + Contents/MacOS/Launcher)。"""
+    """在 macOS 上生成标准 .app 应用包 (Contents/Info.plist + Contents/MacOS/Launcher)。
+    支持过滤 Finder 传入的 -psn_* 参数、自动清理隔离属性并执行 ad-hoc 重签名，确保关掉后可无限次重新双击打开。
+    """
     import stat
+    import subprocess
 
     contents_dir = app_path / "Contents"
     macos_dir = contents_dir / "MacOS"
@@ -172,19 +175,42 @@ def write_macos_app_bundle(
     <string>3.0.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
 </dict>
 </plist>
 """
     script_txt = f"""#!/bin/bash
 cd "{workdir}" || exit 1
-exec {exec_cmd} "$@"
+export PYTHONUTF8=1
+export PATH="{workdir}/runtime/bin:{workdir}/runtime/ffmpeg/bin:{workdir}/runtime/ffmpeg:/opt/homebrew/bin:/usr/local/bin:$PATH"
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        -psn_*) ;;
+        *) ARGS+=("$arg") ;;
+    esac
+done
+mkdir -p "{workdir}/logs" 2>/dev/null || true
+exec {exec_cmd} "${{ARGS[@]}}" >> "{workdir}/logs/macos_app_launch.log" 2>&1
 """
-    plist_path.write_text(plist_xml, encoding="utf-8")
-    exec_path.write_text(script_txt, encoding="utf-8")
+    changed = False
+    if not plist_path.is_file() or plist_path.read_text(encoding="utf-8", errors="ignore") != plist_xml:
+        plist_path.write_text(plist_xml, encoding="utf-8")
+        changed = True
+    if not exec_path.is_file() or exec_path.read_text(encoding="utf-8", errors="ignore") != script_txt:
+        exec_path.write_text(script_txt, encoding="utf-8")
+        changed = True
     try:
         os.chmod(exec_path, os.stat(exec_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     except Exception:
         pass
+    if changed and sys.platform == "darwin":
+        try:
+            subprocess.run(["xattr", "-cr", str(app_path)], capture_output=True, timeout=5, check=False)
+            subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app_path)], capture_output=True, timeout=10, check=False)
+        except Exception:
+            pass
     return app_path
 
 
@@ -202,10 +228,12 @@ def ensure_shortcuts(root: Path | None = None, *, force: bool = False, quiet: bo
         if not force and stamp.is_file() and main_app.is_dir():
             return [main_app]
         py_exe = resolve_python_exe(gui=True, root=base)
+        launcher_sh = base / "启动片语工作室.command"
+        studio_cmd = f'/bin/bash "{launcher_sh}"' if launcher_sh.is_file() else f'"{py_exe}" "{base / "studio_launcher.py"}"'
         created_mac: list[Path] = []
         mac_targets = [
-            (desk / f"{APP_NAME}.app", APP_NAME, "com.cutora.ltxstudio", f'"{py_exe}" "{base / "studio_launcher.py"}"', base),
-            (apps_dir / f"{APP_NAME}.app", APP_NAME, "com.cutora.ltxstudio", f'"{py_exe}" "{base / "studio_launcher.py"}"', base),
+            (desk / f"{APP_NAME}.app", APP_NAME, "com.cutora.ltxstudio", studio_cmd, base),
+            (apps_dir / f"{APP_NAME}.app", APP_NAME, "com.cutora.ltxstudio", studio_cmd, base),
             (apps_dir / "片语剪辑台 CUTORA.app", "片语剪辑台 CUTORA", "com.cutora.editor", f'"{py_exe}" -m cutora', base / "modules" / "cutora_editor"),
             (apps_dir / "Orante 2.0 制片台.app", "Orante 2.0 制片台", "com.cutora.orante", f'"{py_exe}" -m orante', base / "modules" / "orante_desk"),
         ]

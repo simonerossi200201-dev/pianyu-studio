@@ -38,9 +38,9 @@ from core.table_sync import (
 )
 from core.delivery_worker import get_delivery_worker
 
-# 启动即自动修正便携 Python 路径并确保桌面快捷方式指向当前目录
+# 启动即自动修正便携 Python 路径并确保桌面快捷方式指向当前目录（macOS 上仅在未创建或内容变更时写入，避免运行中重写 .app 破坏签名）
 rewrite_pyvenv_cfg(LTX_ROOT)
-ensure_shortcuts(LTX_ROOT, force=True, quiet=True)
+ensure_shortcuts(LTX_ROOT, force=(os.name == "nt"), quiet=True)
 
 # ─────────────────────── CUTORA Roma-Gold 色彩令牌 ───────────────────────
 BG0 = "#141210"         # 暖玄武岩黑
@@ -128,6 +128,13 @@ def orante_instance_count() -> int:
     return len(alive)
 
 
+def _detached_popen_kwargs() -> dict:
+    """在 macOS / POSIX 下将子进程完全脱离当前 .app 会话组，防止关闭总控台后子进程卡住 LaunchServices 重启。"""
+    if os.name == "nt":
+        return {}
+    return {"start_new_session": True, "close_fds": True}
+
+
 def launch_orante(start_node: str = "") -> bool:
     """启动 Orante 2.0。不限制多开数量；仅在两次启动间隔小于 5 秒时忽略（防误触只对 CUTORA 做单实例锁定）。"""
     if orante_cooldown_left() > 0.0:
@@ -146,7 +153,15 @@ def launch_orante(start_node: str = "") -> bool:
     )
     if start_node:
         env["ORANTE_START_NODE"] = start_node
-    proc = subprocess.Popen([_python_exe(gui=True), "-m", "orante"], cwd=str(orante_dir), env=env)
+    cmd = [_python_exe(gui=True), "-m", "orante"]
+    if orante_instance_count() > 0:
+        cmd.append("--new")
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(orante_dir),
+        env=env,
+        **_detached_popen_kwargs(),
+    )
     _MODULE_PROCS["orante"] = proc
     _ORANTE_PROCS.append(proc)
     get_spine_db().emit_event("launcher.orante_started", "launcher", "orante", {"start_node": start_node})
@@ -175,12 +190,22 @@ def launch_cutora(room: str = "") -> bool:
         env["PYTHONUTF8"] = "1"
         env["CUTORA_RUNTIME"] = str(LTX_ROOT / "runtime")
         env["PATH"] = os.pathsep.join(
-            [str(LTX_ROOT / "runtime" / "bin"), str(LTX_ROOT / "runtime" / "ffmpeg"), env.get("PATH", "")]
+            [
+                str(LTX_ROOT / "runtime" / "bin"),
+                str(LTX_ROOT / "runtime" / "ffmpeg" / "bin"),
+                str(LTX_ROOT / "runtime" / "ffmpeg"),
+                env.get("PATH", ""),
+            ]
         )
         args = [_python_exe(gui=True), "-m", "cutora"]
         if room:
             env["CUTORA_START_ROOM"] = room
-        _CUTORA_PROC = subprocess.Popen(args, cwd=str(cutora_dir), env=env)
+        _CUTORA_PROC = subprocess.Popen(
+            args,
+            cwd=str(cutora_dir),
+            env=env,
+            **_detached_popen_kwargs(),
+        )
     get_spine_db().emit_event("launcher.cutora_started", "launcher", "cutora", {"room": room})
     return True
 
@@ -199,7 +224,7 @@ def launch_table_tool(target_dir: str | None = None) -> bool:
         ws_root = _resolve_workspace_root()
         if ws_root.is_dir():
             cmd.append(str(ws_root))
-    proc = subprocess.Popen(cmd, cwd=str(script.parent))
+    proc = subprocess.Popen(cmd, cwd=str(script.parent), **_detached_popen_kwargs())
     _MODULE_PROCS["table"] = proc
     get_spine_db().emit_event("launcher.table_tool_started", "launcher", "table_tool", {})
     return True
@@ -218,6 +243,7 @@ def launch_studio_gateway() -> bool:
         proc = subprocess.Popen(
             [_python_exe(gui=False), "-m", "modules.studio_gateway.server"],
             cwd=str(LTX_ROOT),
+            **_detached_popen_kwargs(),
         )
     _MODULE_PROCS["gateway"] = proc
     get_spine_db().emit_event("launcher.gateway_started", "launcher", "gateway", {"port": 7870})
@@ -1407,8 +1433,42 @@ def run_gui(screenshot_path: str | None = None) -> None:
             p.drawRoundedRect(inner_frame, win_radius - 1.5, win_radius - 1.5)
             p.end()
 
+        def closeEvent(self, event) -> None:
+            try:
+                if hasattr(self, "_pulse_timer") and self._pulse_timer.isActive():
+                    self._pulse_timer.stop()
+                if hasattr(self, "_status_timer") and self._status_timer.isActive():
+                    self._status_timer.stop()
+            except Exception:
+                pass
+            event.accept()
+            app_inst = QApplication.instance()
+            if app_inst is not None:
+                app_inst.quit()
+
+    app.setQuitOnLastWindowClosed(True)
     win = PosterLauncherWindow()
     win.show()
+
+    # macOS: 当用户在 Dock 或桌面再次点击《片语工作室.app》时，若窗口被最小化或隐藏，立即恢复并置顶
+    from PySide6.QtCore import QEvent, QObject
+
+    class _AppActivateFilter(QObject):
+        def eventFilter(self, obj, event):
+            if event.type() == QEvent.Type.ApplicationActivate:
+                try:
+                    if win.isMinimized():
+                        win.showNormal()
+                    elif not win.isVisible():
+                        win.show()
+                    win.raise_()
+                    win.activateWindow()
+                except Exception:
+                    pass
+            return super().eventFilter(obj, event)
+
+    _act_filter = _AppActivateFilter(app)
+    app.installEventFilter(_act_filter)
 
     if screenshot_path:
         def _capture_and_quit() -> None:
@@ -1422,6 +1482,12 @@ def run_gui(screenshot_path: str | None = None) -> None:
         QTimer.singleShot(350, _capture_and_quit)
 
     app.exec()
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    os._exit(0)
 
 
 if __name__ == "__main__":

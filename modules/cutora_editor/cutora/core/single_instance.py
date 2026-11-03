@@ -135,14 +135,47 @@ def is_cutora_running() -> bool:
     return False
 
 
+def release_single_instance() -> None:
+    """Release the single-instance lock and clean up the PID lockfile on process exit."""
+    global _MUTEX_HANDLE, _LOCK_FILE_FH
+    if _MUTEX_HANDLE is not None:
+        try:
+            import ctypes
+            ctypes.windll.kernel32.CloseHandle(_MUTEX_HANDLE)
+        except Exception:
+            pass
+        _MUTEX_HANDLE = None
+    if _LOCK_FILE_FH is not None:
+        try:
+            import fcntl
+            fcntl.flock(_LOCK_FILE_FH.fileno(), fcntl.LOCK_UN)
+        except Exception:
+            pass
+        try:
+            _LOCK_FILE_FH.close()
+        except Exception:
+            pass
+        _LOCK_FILE_FH = None
+    try:
+        pid_path = _pid_file_path()
+        if os.path.isfile(pid_path):
+            with open(pid_path, "r", encoding="utf-8") as fh:
+                raw = fh.read().strip()
+            if raw == str(os.getpid()):
+                os.remove(pid_path)
+    except Exception:
+        pass
+
+
 def acquire_single_instance_or_exit() -> bool:
     """Acquire the single-instance lock for the CUTORA GUI process.
 
     If another CUTORA GUI process is already running, focuses the existing
     window and raises ``SystemExit(0)`` immediately.
     """
+    import atexit
     global _MUTEX_HANDLE, _LOCK_FILE_FH
-    if _MUTEX_HANDLE is not None:
+    if _MUTEX_HANDLE is not None or _LOCK_FILE_FH is not None:
         return True
 
     if os.name == "nt":
@@ -158,6 +191,7 @@ def acquire_single_instance_or_exit() -> bool:
             focus_existing_cutora_window()
             raise SystemExit(0)
         _MUTEX_HANDLE = handle
+        atexit.register(release_single_instance)
         try:
             with open(_pid_file_path(), "w", encoding="utf-8") as fh:
                 fh.write(str(os.getpid()))
@@ -165,14 +199,17 @@ def acquire_single_instance_or_exit() -> bool:
             pass
         return True
 
-    # Non-Windows fallback using file lock
+    # Non-Windows (macOS / Linux) using flock on a single persistent file descriptor
     try:
         import fcntl
-        fh = open(_pid_file_path(), "w", encoding="utf-8")
+        fh = open(_pid_file_path(), "a+", encoding="utf-8")
         fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fh.seek(0)
+        fh.truncate()
         fh.write(str(os.getpid()))
         fh.flush()
         _LOCK_FILE_FH = fh
+        atexit.register(release_single_instance)
         return True
     except Exception:
         focus_existing_cutora_window()

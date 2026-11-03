@@ -916,27 +916,30 @@ def wake_orante_window(
     py_exe = resolve_python_exe(gui=True)
     log_dir = LTX_ROOT / "data" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    stdout_log = open(log_dir / "orante_stdout.log", "a", encoding="utf-8")
-    stderr_log = open(log_dir / "orante_stderr.log", "a", encoding="utf-8")
-    popen_kwargs: dict[str, Any] = {
-        "cwd": str(LTX_ROOT / "modules" / "orante_desk"),
-        "env": env,
-        "stdout": stdout_log,
-        "stderr": stderr_log,
-    }
-    if os.name == "nt":
-        popen_kwargs["creationflags"] = 0x00000008
-    else:
-        popen_kwargs["start_new_session"] = True
-    subprocess.Popen([py_exe, "-m", "orante"], **popen_kwargs)
+    with (
+        open(log_dir / "orante_stdout.log", "a", encoding="utf-8") as stdout_log,
+        open(log_dir / "orante_stderr.log", "a", encoding="utf-8") as stderr_log,
+    ):
+        popen_kwargs: dict[str, Any] = {
+            "cwd": str(LTX_ROOT / "modules" / "orante_desk"),
+            "env": env,
+            "stdout": stdout_log,
+            "stderr": stderr_log,
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = 0x00000008
+        else:
+            popen_kwargs["start_new_session"] = True
+            popen_kwargs["close_fds"] = True
+        subprocess.Popen([py_exe, "-m", "orante"], **popen_kwargs)
     time.sleep(0.5)
     return True
 
 
 def is_cutora_running() -> bool:
-    """检测 CUTORA 是否正在运行（Windows 检测单实例命名互斥体，macOS 检测 cutora.lock 或本地 API）。"""
+    """检测 CUTORA 是否正在运行（Windows 检测单实例命名互斥体，macOS/POSIX 检测 flock 锁文件或本地 API）。"""
     import os
-    import sys
+    import tempfile
 
     if os.name == "nt":
         try:
@@ -951,29 +954,24 @@ def is_cutora_running() -> bool:
             pass
         return False
 
-    if sys.platform == "darwin":
-        lock_file = Path.home() / "Library" / "Application Support" / "CUTORA" / "cutora.lock"
-        if lock_file.is_file():
-            try:
-                raw_pid = lock_file.read_text(encoding="utf-8", errors="ignore").strip()
-                if raw_pid.isdigit():
-                    os.kill(int(raw_pid), 0)
-                    return True
-            except PermissionError:
-                return True
-            except OSError:
-                pass
-            try:
-                import fcntl
+    # macOS / POSIX: 检测单实例 flock 文件锁（绝不仅凭残留 PID 数字误判，必须真实持有 flock 才算运行中）
+    for lock_cand in (
+        Path(tempfile.gettempdir()) / "cutora_single_instance.pid",
+        Path.home() / "Library" / "Application Support" / "CUTORA" / "cutora.lock",
+    ):
+        if not lock_cand.is_file():
+            continue
+        try:
+            import fcntl
 
-                with open(lock_file, "a+", encoding="utf-8") as fh:
-                    try:
-                        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-                    except BlockingIOError:
-                        return True
-            except Exception:
-                pass
+            with open(lock_cand, "a+", encoding="utf-8") as fh:
+                try:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    return True
+        except Exception:
+            pass
 
     # 兜底探测本地控制 API (127.0.0.1:47321)
     try:
@@ -1086,19 +1084,22 @@ def launch_cutora_room(
     py_exe = resolve_python_exe(gui=True)
     log_dir = LTX_ROOT / "data" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    stdout_log = open(log_dir / "cutora_stdout.log", "a", encoding="utf-8")
-    stderr_log = open(log_dir / "cutora_stderr.log", "a", encoding="utf-8")
-    popen_kwargs: dict[str, Any] = {
-        "cwd": str(LTX_ROOT / "modules" / "cutora_editor"),
-        "env": env,
-        "stdout": stdout_log,
-        "stderr": stderr_log,
-    }
-    if os.name == "nt":
-        popen_kwargs["creationflags"] = 0x00000008
-    else:
-        popen_kwargs["start_new_session"] = True
-    subprocess.Popen([py_exe, "-m", "cutora"], **popen_kwargs)
+    with (
+        open(log_dir / "cutora_stdout.log", "a", encoding="utf-8") as stdout_log,
+        open(log_dir / "cutora_stderr.log", "a", encoding="utf-8") as stderr_log,
+    ):
+        popen_kwargs: dict[str, Any] = {
+            "cwd": str(LTX_ROOT / "modules" / "cutora_editor"),
+            "env": env,
+            "stdout": stdout_log,
+            "stderr": stderr_log,
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = 0x00000008
+        else:
+            popen_kwargs["start_new_session"] = True
+            popen_kwargs["close_fds"] = True
+        subprocess.Popen([py_exe, "-m", "cutora"], **popen_kwargs)
     time.sleep(0.6)
     return True
 
