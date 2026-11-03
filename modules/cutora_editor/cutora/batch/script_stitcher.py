@@ -424,6 +424,13 @@ def _numeric_to_words(s):
             return _int_to_words(n)
     return None
 
+from cutora.asr.text_norm import (
+    fold_ar_for_match,
+    t2s as _zh_t2s,
+    zh_display_units,
+    zh_numeral_value,
+)
+
 _ARABIC_NORM_MAP = str.maketrans({
     "\u0640": "",   # tatweel
     "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا",
@@ -435,9 +442,10 @@ _CJK_NORM_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaf
 
 
 def _fold_multilingual_token(s: str) -> str:
-    """Fold Arabic variants and Latin diacritics (Malagasy ô→o, Swahili, etc.)."""
+    """Fold Chinese Trad->Simp, Arabic variants/diacritics, and Latin diacritics."""
     import unicodedata
-    s = s.translate(_ARABIC_NORM_MAP)
+    s = _zh_t2s(s or "")
+    s = fold_ar_for_match(s).translate(_ARABIC_NORM_MAP)
     out = []
     for ch in unicodedata.normalize("NFKD", s):
         cat = unicodedata.category(ch)
@@ -629,8 +637,13 @@ def _read_number(toks, i):
             return total * 100 + v2, j2
     return total, j
 
+_ZH_NUM_CHARS = frozenset("零〇一二两三四五六七八九十百千万亿")
+_ZH_SINGLE_NUM_CHARS = frozenset("零〇二两三四五六七八九十")
+_ZH_ONE_COUNTERS = frozenset("个只次天年月日百千万亿号楼层倍半点分秒元块岁章篇节段条位名")
+
+
 def fold_numbers(toks, spans=None):
-    """把 token 列表里的英文数字词串折回数字字符串。
+    """把 token 列表里的英文/中文数字词串折回数字字符串。
 
     spans 给定时 (ASR 侧), 同步合并时间戳: 折出来的数字取
     第一个词的 start 和最后一个词的 end。返回 (新 toks, 新 spans)。
@@ -639,6 +652,46 @@ def fold_numbers(toks, spans=None):
     i, n = 0, len(toks)
     while i < n:
         t = toks[i]
+        # 中文百分比: "百分之二十五" → ['25', 'percent']
+        if (
+            t == "百"
+            and i + 3 < n
+            and toks[i + 1] == "分"
+            and toks[i + 2] == "之"
+            and toks[i + 3] in _ZH_NUM_CHARS
+        ):
+            j = i + 3
+            while j < n and toks[j] in _ZH_NUM_CHARS:
+                j += 1
+            val = zh_numeral_value("".join(toks[i + 3:j]))
+            if val is not None:
+                out.append(str(val))
+                out.append("percent")
+                if spans is not None:
+                    sp_num = (spans[i][0], spans[j - 1][1])
+                    out_spans.append(sp_num)
+                    out_spans.append(sp_num)
+                i = j
+                continue
+        if t in _ZH_NUM_CHARS:
+            j = i
+            while j < n and toks[j] in _ZH_NUM_CHARS:
+                j += 1
+            run_len = j - i
+            next_tok = toks[j] if j < n else ""
+            should_fold_zh = (
+                run_len >= 2
+                or t in _ZH_SINGLE_NUM_CHARS
+                or (t == "一" and next_tok in _ZH_ONE_COUNTERS)
+            )
+            if should_fold_zh:
+                val = zh_numeral_value("".join(toks[i:j]))
+                if val is not None:
+                    out.append(str(val))
+                    if spans is not None:
+                        out_spans.append((spans[i][0], spans[j - 1][1]))
+                    i = j
+                    continue
         if (t in _W2N_UNIT or t in _W2N_TENS or t in _W2N_DECADE
                 or t in _W2N_SCALE_W
                 or (t in ("a", "an") and i + 1 < n
@@ -810,24 +863,62 @@ def tokenize(text):
         toks.extend(norm_tokens(raw))
     return _fold_for_match(toks)[0]
 
+def _iter_raw_script_units(text):
+    for chunk in re.split(r"\s+", unglue_punct(text)):
+        if not chunk:
+            continue
+        if _CJK_NORM_RE.search(chunk):
+            for u in zh_display_units(chunk):
+                if u:
+                    yield u
+        else:
+            yield chunk
+
+
+def _join_raw_tokens(raw_list):
+    clean = [str(x) for x in (raw_list or []) if x]
+    if not clean:
+        return ""
+    if not any(_CJK_NORM_RE.search(x) for x in clean):
+        return " ".join(clean)
+    out = []
+    for item in clean:
+        if (
+            out
+            and out[-1][-1].isascii()
+            and out[-1][-1].isalnum()
+            and item[0].isascii()
+            and item[0].isalnum()
+        ):
+            out.append(" " + item)
+        else:
+            out.append(item)
+    return "".join(out)
+
+
 def tokenize_raw_pairs(text):
     """返回 (归一化 token 列表, 对应原始词列表) — 两者索引一一对应。
     一个原始词展开成多个 token 时, 只在【首个】token 位置放原文,
     后续位置放 ''; 渲染缺失原文时过滤空串即可, 不会出现重复词。"""
     toks, raws = [], []
-    for raw in re.split(r"\s+", unglue_punct(text)):
+    for raw in _iter_raw_script_units(text):
         ts = norm_tokens(raw)
         for i, t in enumerate(ts):
             toks.append(t)
             raws.append(raw if i == 0 else "")
     # 数字折叠会把多个 token 合成一个, raws 要跟着合并:
-    # 取这一段里第一个非空原文, 保证缺失清单打印出来还是人读得懂的原话。
+    # 取这一段里第一个非空原文（中文多字数字则拼回原词）, 保证缺失清单打印出来还是人读得懂的原话。
     idx = list(range(len(toks)))
     folded, spans = _fold_for_match(toks, spans=[(k, k) for k in idx])
     new_raws = []
     for (a, b) in spans:
         chunk = [r for r in raws[a:b + 1] if r]
-        new_raws.append(chunk[0] if chunk else "")
+        if not chunk:
+            new_raws.append("")
+        elif len(chunk) > 1 and any(_CJK_NORM_RE.search(r) for r in chunk):
+            new_raws.append("".join(chunk))
+        else:
+            new_raws.append(chunk[0])
     return folded, new_raws
 
 # ----------------------------------------------------------------------
@@ -1230,7 +1321,10 @@ def _seg_words_or_text(seg):
     text = (seg.get("text") or "").strip()
     if not text:
         return [], False
-    parts = [p for p in re.split(r"\s+", text) if p]
+    if _CJK_NORM_RE.search(text):
+        parts = [p for p in zh_display_units(text) if p]
+    else:
+        parts = [p for p in re.split(r"\s+", text) if p]
     if not parts:
         return [], False
     t0, t1 = seg.get("start"), seg.get("end")
@@ -2668,8 +2762,8 @@ GRADE_COLOR = {
 
 
 def _hole_context(script_raws, j, k, window=3):
-    before = " ".join(x for x in (script_raws[max(0, j - window):j] or []) if x)
-    after = " ".join(x for x in (script_raws[k:k + window] or []) if x)
+    before = _join_raw_tokens(script_raws[max(0, j - window):j] or [])
+    after = _join_raw_tokens(script_raws[k:k + window] or [])
     return before, after
 
 
@@ -2691,7 +2785,7 @@ def find_missing(items, script_tokens, script_raws,
     if ignore_scripture_refs:
         text = script_text
         if text is None:
-            text = " ".join(x for x in (script_raws or []) if x)
+            text = _join_raw_tokens(script_raws or [])
         covered.update(scripture_token_indices(text, script_tokens))
     out = []
     if suspected is not None:
@@ -2705,7 +2799,7 @@ def find_missing(items, script_tokens, script_raws,
         k = j
         while k < M and k not in covered:
             k += 1
-        txt = " ".join(x for x in script_raws[j:k] if x)
+        txt = _join_raw_tokens(script_raws[j:k])
         before, after = _hole_context(script_raws, j, k)
         rec = {
             "s": j, "e": k, "text": txt,

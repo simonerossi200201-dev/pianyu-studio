@@ -1,0 +1,104 @@
+{
+  "version": 2,
+  "style": {
+    "pos_x": 540,
+    "pos_y": 1114,
+    "fontsize": 72,
+    "font_family": "LXGW Marker Gothic",
+    "bold": true,
+    "italic": false,
+    "color_text": "#FEFCE8",
+    "color_high": "#38BDF8",
+    "color_bg": "#0B1A33",
+    "color_outline": "#172554",
+    "opacity_bg": 180,
+    "opacity_outline": 255,
+    "shadow_enabled": false,
+    "use_box": false,
+    "use_stroke": true,
+    "border_width": 4,
+    "box_padding_x": 22,
+    "box_padding_y": 10,
+    "box_radius": 12,
+    "rotation": 0,
+    "wrap_width_percent": 86,
+    "wrap_lines": 2,
+    "line_spacing": 4,
+    "dynamic_box": false,
+    "anim_in_type": "impact_pop",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false,
+    "fade_in_out_duration": 0.3,
+    "geom_user_set": false,
+    "font_style": "",
+    "opacity_text_global": 255,
+    "anchor": "bottom-center",
+    "offset_x_pct": 0.0,
+    "offset_y_pct": -0.42,
+    "fontsize_pct": 0.066667,
+    "fx": {
+      "fill": {
+        "type": "solid",
+        "colors": [
+          "#FEFCE8"
+        ]
+      },
+      "stroke": {
+        "width_em": 0.075,
+        "color": "#172554",
+        "join": "round",
+        "enabled": true
+      },
+      "extrude": {
+        "depth_em": 0.09,
+        "angle": 135,
+        "color": "#1E3A8A"
+      },
+      "shadow": {
+        "sigma_em": 0.1,
+        "dx_em": 0.03,
+        "dy_em": 0.05,
+        "color": "#0F172A",
+        "alpha": 0.8
+      },
+      "bg": {
+        "type": "none",
+        "color": "#172554",
+        "alpha": 0.0,
+        "enabled": false
+      },
+      "fonts": {
+        "body": "LXGW Marker Gothic",
+        "emphasis": "LXGW Marker Gothic"
+      },
+      "anim": {
+        "in": "impact_pop",
+        "loop": "none",
+        "out": "none",
+        "unit": "segment",
+        "in_s": 0.26,
+        "seed": 0
+      }
+    }
+  },
+  "layout_rules": {
+    "max_chars_per_line": 20,
+    "max_lines": 2,
+    "balance_lines": false,
+    "line_break": "space"
+  },
+  "keyword_rules": [],
+  "animation": {
+    "anim_in_type": "impact_pop",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false
+  }
+}

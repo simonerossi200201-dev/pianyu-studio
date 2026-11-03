@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "竖屏字幕快出",
+  "description": "导入一条口播，打轴，套字幕预设，导出竖屏成品。",
+  "inputs": {
+    "media": { "description": "一条口播视频" },
+    "out_dir": { "description": "成品目录" }
+  },
+  "steps": [
+    { "command": "media.probe", "params": { "path": "{media}" }, "on_error": "stop" },
+    { "command": "media.import", "params": { "paths": ["{media}"] }, "on_error": "stop" },
+    { "command": "subtitle.auto", "params": { "language": "auto" }, "on_error": "stop" },
+    { "command": "style.apply_subtitle_preset", "params": { "name": "毛玻璃·白" }, "on_error": "stop" },
+    { "command": "export.run", "params": { "out_dir": "{out_dir}" }, "on_error": "stop" }
+  ]
+}

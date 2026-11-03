@@ -31,6 +31,10 @@ def test_fallback_languages_have_no_enabled_aligner():
     from cutora.asr.models import align_row_for_language, reset_catalog
     reset_catalog()
     for row in load_catalog():
+        if row["code"] in ("zh", "ar"):
+            rec = align_row_for_language(row["code"])
+            assert rec is not None and rec.get("enabled") is True, row["code"]
+            continue
         if row["line_break"] != "fallback":
             continue
         rec = align_row_for_language(row["code"])

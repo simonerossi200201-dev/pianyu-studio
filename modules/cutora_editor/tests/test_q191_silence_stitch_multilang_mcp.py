@@ -393,3 +393,133 @@ def test_silence_cut_studio_ui_and_stitch_hover_splitter(tmp_path):
     assert sdlg._layout_lock == "h"
     sdlg.close()
     dlg.close()
+
+
+def test_zh_ar_align_models_layout_and_stitching():
+    _qapp()
+    from cutora.asr.engine import align_transcript, get_align_model, has_local_align_model
+    from cutora.asr.languages import get_language
+    from cutora.asr.models import align_row_for_language, reset_catalog
+    from cutora.asr.tier import choose_word_timing
+    from cutora.batch.script_stitcher import (
+        find_missing,
+        flatten_words,
+        match_clip_global,
+        tokenize,
+        tokenize_raw_pairs,
+    )
+    from cutora.subtitle.layout import (
+        LayoutRules,
+        break_lines,
+        relayout_task,
+    )
+    from cutora.asr.text_norm import ZH_CLOSING, ZH_OPENING
+    from cutora.subtitle.text_utils import _doc_layout_lines, is_rtl_text, tokenize_for_wrap
+    from PySide6.QtGui import QFont
+
+    reset_catalog()
+    for code in ("zh", "ar"):
+        lang_row = get_language(code)
+        assert lang_row is not None
+        assert lang_row["experimental"] is False
+        assert lang_row["subtitle_tier"] == "complete"
+        assert lang_row["align_tier"] == "exact"
+        align_row = align_row_for_language(code)
+        assert align_row is not None and align_row["enabled"] is True
+        assert has_local_align_model(code) is True
+        timing = choose_word_timing(code, has_align=True)
+        assert timing.layer == "align"
+
+    # 1. Chinese & Arabic wav2vec2 CTC alignment restoring display tokens
+    sr = 16000
+    t = np.linspace(0, 2.4, int(sr * 2.4), dtype=np.float32)
+    audio = (0.12 * np.sin(2 * np.pi * 220 * t) + 0.08 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+
+    m_zh, meta_zh = get_align_model("zh")
+    res_zh = align_transcript(
+        [{"start": 0.0, "end": 2.4, "text": "“今天用 OpenAI 测试 25% 字幕！”"}],
+        m_zh, meta_zh, audio, "cpu", return_char_alignments=False,
+    )
+    zh_words = res_zh["segments"][0]["words"]
+    assert [w["word"] for w in zh_words] == ["“今", "天", "用", "OpenAI", "测", "试", "25%", "字", "幕！”"]
+    assert all(isinstance(w.get("start"), (int, float)) and isinstance(w.get("end"), (int, float)) for w in zh_words)
+
+    m_ar, meta_ar = get_align_model("ar")
+    res_ar = align_transcript(
+        [{"start": 0.0, "end": 2.4, "text": "مَرْحَبًا بِكُمْ فِي هَذَا الْفِيدْيُو، شُكْرًا!"}],
+        m_ar, meta_ar, audio, "cpu", return_char_alignments=False,
+    )
+    ar_words = res_ar["segments"][0]["words"]
+    assert [w["word"] for w in ar_words] == ["مَرْحَبًا", "بِكُمْ", "فِي", "هَذَا", "الْفِيدْيُو،", "شُكْرًا!"]
+    assert all(isinstance(w.get("start"), (int, float)) and isinstance(w.get("end"), (int, float)) for w in ar_words)
+
+    # 2. Chinese kinsoku + zh-en mixed line breaking (default 16-22 char cap, no broken English words/digits)
+    mixed_zh = "今天我们用 OpenAI GPT-4o 模型在 2026 年做 99.5% 精准度的“短视频字幕”测试，效果非常好！"
+    lines_zh = break_lines({"text": mixed_zh, "lang": "zh"}, LayoutRules(lang="zh", max_lines=2))
+    assert len(lines_zh) == 2
+    for ln in lines_zh:
+        assert not any(ln.startswith(ch) for ch in ZH_CLOSING), ln
+        assert not any(ln.endswith(ch) for ch in ZH_OPENING), ln
+    assert any("OpenAI" in ln for ln in lines_zh)
+    assert any("GPT-4o" in ln for ln in lines_zh)
+    assert any("2026" in ln for ln in lines_zh)
+    assert any("99.5%" in ln for ln in lines_zh)
+    full_joined = "".join(lines_zh)
+    assert "OpenAI GPT-4o" in full_joined
+    assert "2026" in full_joined and "99.5%" in full_joined
+
+    wrap_toks, joiner = tokenize_for_wrap(mixed_zh)
+    assert joiner == ""
+    assert any("OpenAI" in tok for tok in wrap_toks)
+    assert any("2026" in tok for tok in wrap_toks)
+
+    # Relayout task on zh and ar does not mark lines_approx
+    relayout_data = {
+        "segments": [
+            {"start": 0.0, "end": 2.5, "text": mixed_zh, "lang": "zh"},
+            {"start": 2.5, "end": 5.0, "text": "مرحبا بكم في هذا الفيديو الجديد عن صناعة المحتوى الاحترافي", "lang": "ar"},
+        ]
+    }
+    rel_out = relayout_task(relayout_data)
+    assert rel_out["approx"] == 0
+    for seg in relayout_data["segments"]:
+        assert "lines_approx" not in seg
+        assert seg.get("lines")
+
+    # 3. Arabic RTL document layout
+    ar_line = "مرحبا بكم في هذا الفيديو الجديد"
+    assert is_rtl_text(ar_line) is True
+    doc_lines, max_w, total_h = _doc_layout_lines(ar_line, QFont("Noto Sans Arabic", 28), 600)
+    assert len(doc_lines) >= 1 and max_w > 0 and total_h > 0
+
+    # 4. Chinese & Arabic stitching (Chinese numerals <-> digits, Trad <-> Simp, Arabic vocalized <-> plain)
+    zh_script = "歡迎來到這個視頻，今天有 3 個任務，完成了 25%，耗時 100 秒。"
+    zh_asr_segs = [{
+        "start": 0.2,
+        "end": 3.8,
+        "text": "欢迎来到这个视频今天有三个任务完成了百分之二十五耗时一百秒",
+        "words": [],
+    }]
+    zh_clip_words = flatten_words(zh_asr_segs)
+    zh_script_toks, zh_script_raws = tokenize_raw_pairs(zh_script)
+    assert zh_script_toks == [w[0] for w in zh_clip_words]
+    m_zh_clip = match_clip_global(zh_clip_words, zh_script_toks)
+    assert m_zh_clip["matched"] is True and m_zh_clip["ratio"] == 1.0
+    missing_zh = find_missing(
+        [{"name": "01a.mp4", "keep": True, "s_runs": [(m_zh_clip["s_start"], m_zh_clip["s_end"])]}],
+        zh_script_toks, zh_script_raws,
+    )
+    assert missing_zh == []
+
+    ar_script = "مَرْحَبًا بِكُمْ فِي هَذِهِ الْقَنَاةِ الْجَدِيدَةِ لِتَعْلِيمِ الْمُونْتَاجِ"
+    ar_asr_segs = [{
+        "start": 0.1,
+        "end": 3.2,
+        "text": "مرحبا بكم في هذه القناه الجديده لتعليم المونتاج",
+        "words": [],
+    }]
+    ar_clip_words = flatten_words(ar_asr_segs)
+    ar_script_toks, ar_script_raws = tokenize_raw_pairs(ar_script)
+    assert ar_script_toks == [w[0] for w in ar_clip_words]
+    m_ar_clip = match_clip_global(ar_clip_words, ar_script_toks)
+    assert m_ar_clip["matched"] is True and m_ar_clip["ratio"] == 1.0

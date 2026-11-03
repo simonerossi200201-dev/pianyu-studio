@@ -1,0 +1,61 @@
+{
+  "note": "Internal-pack model pins. revision is the Hugging Face commit, never main.",
+  "models": [
+    {
+      "id": "align-fr",
+      "repo": "jonatasgrosman/wav2vec2-large-xlsr-53-french",
+      "revision": "7c79e105a6525d38e1e69f640b974b4a679723cc",
+      "license": "Apache-2.0",
+      "dirname": "align_fr"
+    },
+    {
+      "id": "align-es",
+      "repo": "jonatasgrosman/wav2vec2-large-xlsr-53-spanish",
+      "revision": "96d7e9b4e4a78af515a3c6d3cee7c0826045d276",
+      "license": "Apache-2.0",
+      "dirname": "align_es"
+    },
+    {
+      "id": "align-de",
+      "repo": "jonatasgrosman/wav2vec2-large-xlsr-53-german",
+      "revision": "4b8a02957378d0f2da2ef74091156b032c485a89",
+      "license": "Apache-2.0",
+      "dirname": "align_de"
+    },
+    {
+      "id": "align-pt",
+      "repo": "jonatasgrosman/wav2vec2-large-xlsr-53-portuguese",
+      "revision": "634ac655299bcdc46c83bc01da9bab52d2987e4f",
+      "license": "Apache-2.0",
+      "dirname": "align_pt"
+    },
+    {
+      "id": "matte-sam21-large",
+      "repo": "facebook/sam2.1-hiera-large",
+      "revision": "665f8e2ad61cf5f53d65644ff27c8ee525124610",
+      "license": "Apache-2.0",
+      "dirname": "matte_sam21_large"
+    },
+    {
+      "id": "matte-sam21-base-plus",
+      "repo": "facebook/sam2.1-hiera-base-plus",
+      "revision": "b7320756a13354e7530a63935656d35b2f91a290",
+      "license": "Apache-2.0",
+      "dirname": "matte_sam21_base_plus"
+    },
+    {
+      "id": "track-tapnextpp-512",
+      "repo": "google/tapnet",
+      "revision": "5d3fb48e76c5422841e38501514121e251beabb7",
+      "license": "Apache-2.0",
+      "dirname": "track_tapnextpp_512"
+    },
+    {
+      "id": "track-tapnextpp-256",
+      "repo": "google/tapnet",
+      "revision": "5d3fb48e76c5422841e38501514121e251beabb7",
+      "license": "Apache-2.0",
+      "dirname": "track_tapnextpp_256"
+    }
+  ]
+}

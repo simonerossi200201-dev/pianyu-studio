@@ -7,9 +7,10 @@ import csv
 import re
 from typing import Any
 
+from cutora.subtitle.layout import _CJK_CHAR_RE, _cjk_atoms, _join_subtitle_tokens
 from cutora.subtitle.track_source import set_segments
 
-_END_PUNCT = re.compile(r"[\s.,;:!?…—\-]+$", re.UNICODE)
+_END_PUNCT = re.compile(r"[\s.,;:!?…—\-，。；：！？、،؛؟]+$", re.UNICODE)
 
 
 def _word_text(item: Any) -> str:
@@ -19,6 +20,8 @@ def _word_text(item: Any) -> str:
 
 
 def tokenize_words(text: str) -> list[str]:
+    if _CJK_CHAR_RE.search(text or ""):
+        return _cjk_atoms(text or "")
     return [t for t in (text or "").split() if t]
 
 
@@ -222,7 +225,7 @@ def merge_pair(left: dict, right: dict) -> dict:
     out = dict(left)
     a = str(left.get("text") or "").strip()
     b = str(right.get("text") or "").strip()
-    out["text"] = (a + " " + b).strip()
+    out["text"] = _join_subtitle_tokens([a, b]).strip()
     out["start"] = min(float(left.get("start") or 0), float(right.get("start") or 0))
     out["end"] = max(float(left.get("end") or 0), float(right.get("end") or 0))
     words = list(left.get("words") or []) + list(right.get("words") or [])

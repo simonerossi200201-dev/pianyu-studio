@@ -153,6 +153,7 @@ def _run_path(run: WordRun, style: dict, spec: FxSpec | None = None,
         draw_x = run.x + (run.w - orig_w) * 0.5 + float(run.pad_px)
         draw_baseline = run.y + (run.h - orig_h) * 0.5 + orig_asc
         path = QPainterPath()
+        path.setFillRule(Qt.FillRule.WindingFill)
         path.addText(QPointF(draw_x, draw_baseline), font, run.text)
         cx = run.x + max(1.0, run.w) * 0.5
         cy = run.y + max(1.0, run.h) * 0.5
@@ -162,10 +163,13 @@ def _run_path(run: WordRun, style: dict, spec: FxSpec | None = None,
         if abs(pop - 1.0) >= 0.001:
             xf.scale(pop, pop)
         xf.translate(-cx, -cy)
-        return xf.map(path)
+        mapped = xf.map(path)
+        mapped.setFillRule(Qt.FillRule.WindingFill)
+        return mapped
     ox = float(getattr(run, "glyph_ox", 0.0) or 0.0)
     oy = float(getattr(run, "glyph_oy", 0.0) or 0.0)
     path = QPainterPath()
+    path.setFillRule(Qt.FillRule.WindingFill)
     path.addText(QPointF(run.x + float(run.pad_px) + ox, run.baseline + oy), font, run.text)
     if abs(run.rot_deg) < 0.01 and abs(pop - 1.0) < 0.001:
         return path
@@ -178,7 +182,9 @@ def _run_path(run: WordRun, style: dict, spec: FxSpec | None = None,
     if abs(pop - 1.0) >= 0.001:
         xf.scale(pop, pop)
     xf.translate(-cx, -cy)
-    return xf.map(path)
+    mapped = xf.map(path)
+    mapped.setFillRule(Qt.FillRule.WindingFill)
+    return mapped
 
 
 def collect_run_paths(

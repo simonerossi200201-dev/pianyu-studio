@@ -1,0 +1,35 @@
+{
+  "default": {},
+  "default_preset_name": "默认",
+  "presets": {
+    "默认": {
+      "pos_x": 960,
+      "pos_y": 1450,
+      "fontsize": 60,
+      "font_family": "Arimo",
+      "bold": true,
+      "italic": false,
+      "color_text": "#000000",
+      "color_high": "#FF0000",
+      "color_bg": "#e0c3fc",
+      "color_shadow": "#000000",
+      "opacity_bg": 191,
+      "opacity_shadow": 0,
+      "shadow_enabled": false,
+      "use_box": true,
+      "box_padding_x": 20,
+      "box_padding_y": 20,
+      "box_radius": 20,
+      "box_blur": 0,
+      "use_stroke": false,
+      "border_width": 2,
+      "opacity_outline": 255,
+      "color_outline": "#000000",
+      "wrap_width_percent": 86,
+      "wrap_lines": 2,
+      "line_spacing": 0,
+      "anim_in_type": "none",
+      "anim_out_type": "none"
+    }
+  }
+}

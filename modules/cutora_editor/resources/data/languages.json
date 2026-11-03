@@ -1,0 +1,1017 @@
+{
+  "common": [
+    "en",
+    "it",
+    "es",
+    "fr",
+    "de",
+    "pt",
+    "ru",
+    "nl",
+    "pl"
+  ],
+  "languages": [
+    {
+      "code": "af",
+      "name_en": "Afrikaans",
+      "name_native": "Afrikaans",
+      "name_zh": "南非荷兰语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "am",
+      "name_en": "Amharic",
+      "name_native": "አማርኛ",
+      "name_zh": "阿姆哈拉语",
+      "script": "ethiopic",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "ar",
+      "name_en": "Arabic",
+      "name_native": "العربية",
+      "name_zh": "阿拉伯语",
+      "script": "arabic",
+      "line_break": "fallback",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "as",
+      "name_en": "Assamese",
+      "name_native": "অসমীয়া",
+      "name_zh": "阿萨姆语",
+      "script": "bengali",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "az",
+      "name_en": "Azerbaijani",
+      "name_native": "Azərbaycan",
+      "name_zh": "阿塞拜疆语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ba",
+      "name_en": "Bashkir",
+      "name_native": "Башҡортса",
+      "name_zh": "巴什基尔语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "be",
+      "name_en": "Belarusian",
+      "name_native": "Беларуская",
+      "name_zh": "白俄罗斯语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "bg",
+      "name_en": "Bulgarian",
+      "name_native": "Български",
+      "name_zh": "保加利亚语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "bn",
+      "name_en": "Bengali",
+      "name_native": "বাংলা",
+      "name_zh": "孟加拉语",
+      "script": "bengali",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "bo",
+      "name_en": "Tibetan",
+      "name_native": "བོད་སྐད་",
+      "name_zh": "藏语",
+      "script": "tibetan",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "br",
+      "name_en": "Breton",
+      "name_native": "Brezhoneg",
+      "name_zh": "布列塔尼语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "bs",
+      "name_en": "Bosnian",
+      "name_native": "Bosanski",
+      "name_zh": "波斯尼亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ca",
+      "name_en": "Catalan",
+      "name_native": "Català",
+      "name_zh": "加泰罗尼亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "cs",
+      "name_en": "Czech",
+      "name_native": "Čeština",
+      "name_zh": "捷克语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "cy",
+      "name_en": "Welsh",
+      "name_native": "Cymraeg",
+      "name_zh": "威尔士语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "da",
+      "name_en": "Danish",
+      "name_native": "Dansk",
+      "name_zh": "丹麦语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "de",
+      "name_en": "German",
+      "name_native": "Deutsch",
+      "name_zh": "德语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "el",
+      "name_en": "Greek",
+      "name_native": "Ελληνικά",
+      "name_zh": "希腊语",
+      "script": "greek",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "en",
+      "name_en": "English",
+      "name_native": "English",
+      "name_zh": "英语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "es",
+      "name_en": "Spanish",
+      "name_native": "Español",
+      "name_zh": "西班牙语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "et",
+      "name_en": "Estonian",
+      "name_native": "Eesti",
+      "name_zh": "爱沙尼亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "eu",
+      "name_en": "Basque",
+      "name_native": "Euskara",
+      "name_zh": "巴斯克语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "fa",
+      "name_en": "Persian",
+      "name_native": "فارسی",
+      "name_zh": "波斯语",
+      "script": "arabic",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "fi",
+      "name_en": "Finnish",
+      "name_native": "Suomi",
+      "name_zh": "芬兰语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "fo",
+      "name_en": "Faroese",
+      "name_native": "Føroyskt",
+      "name_zh": "法罗语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "fr",
+      "name_en": "French",
+      "name_native": "Français",
+      "name_zh": "法语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "gl",
+      "name_en": "Galician",
+      "name_native": "Galego",
+      "name_zh": "加利西亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "gu",
+      "name_en": "Gujarati",
+      "name_native": "ગુજરાતી",
+      "name_zh": "古吉拉特语",
+      "script": "gujarati",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "ha",
+      "name_en": "Hausa",
+      "name_native": "Hausa",
+      "name_zh": "豪萨语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "haw",
+      "name_en": "Hawaiian",
+      "name_native": "ʻŌlelo Hawaiʻi",
+      "name_zh": "夏威夷语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "he",
+      "name_en": "Hebrew",
+      "name_native": "עברית",
+      "name_zh": "希伯来语",
+      "script": "hebrew",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "hi",
+      "name_en": "Hindi",
+      "name_native": "हिन्दी",
+      "name_zh": "印地语",
+      "script": "devanagari",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "hr",
+      "name_en": "Croatian",
+      "name_native": "Hrvatski",
+      "name_zh": "克罗地亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ht",
+      "name_en": "Haitian Creole",
+      "name_native": "Kreyòl ayisyen",
+      "name_zh": "海地克里奥尔语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "hu",
+      "name_en": "Hungarian",
+      "name_native": "Magyar",
+      "name_zh": "匈牙利语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "hy",
+      "name_en": "Armenian",
+      "name_native": "Հայերեն",
+      "name_zh": "亚美尼亚语",
+      "script": "armenian",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "id",
+      "name_en": "Indonesian",
+      "name_native": "Bahasa Indonesia",
+      "name_zh": "印度尼西亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "is",
+      "name_en": "Icelandic",
+      "name_native": "Íslenska",
+      "name_zh": "冰岛语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "it",
+      "name_en": "Italian",
+      "name_native": "Italiano",
+      "name_zh": "意大利语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ja",
+      "name_en": "Japanese",
+      "name_native": "日本語",
+      "name_zh": "日语",
+      "script": "kana",
+      "line_break": "fallback",
+      "experimental": true,
+      "note": "混用汉字",
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "jw",
+      "name_en": "Javanese",
+      "name_native": "Basa Jawa",
+      "name_zh": "爪哇语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ka",
+      "name_en": "Georgian",
+      "name_native": "ქართული",
+      "name_zh": "格鲁吉亚语",
+      "script": "georgian",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "kk",
+      "name_en": "Kazakh",
+      "name_native": "Қазақша",
+      "name_zh": "哈萨克语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "km",
+      "name_en": "Khmer",
+      "name_native": "ភាសាខ្មែរ",
+      "name_zh": "高棉语",
+      "script": "khmer",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "kn",
+      "name_en": "Kannada",
+      "name_native": "ಕನ್ನಡ",
+      "name_zh": "卡纳达语",
+      "script": "kannada",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "ko",
+      "name_en": "Korean",
+      "name_native": "한국어",
+      "name_zh": "韩语",
+      "script": "hangul",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "la",
+      "name_en": "Latin",
+      "name_native": "Latina",
+      "name_zh": "拉丁语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "lb",
+      "name_en": "Luxembourgish",
+      "name_native": "Lëtzebuergesch",
+      "name_zh": "卢森堡语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ln",
+      "name_en": "Lingala",
+      "name_native": "Lingála",
+      "name_zh": "林加拉语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "lo",
+      "name_en": "Lao",
+      "name_native": "ລາວ",
+      "name_zh": "老挝语",
+      "script": "lao",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "lt",
+      "name_en": "Lithuanian",
+      "name_native": "Lietuvių",
+      "name_zh": "立陶宛语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "lv",
+      "name_en": "Latvian",
+      "name_native": "Latviešu",
+      "name_zh": "拉脱维亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "mg",
+      "name_en": "Malagasy",
+      "name_native": "Malagasy",
+      "name_zh": "马达加斯加语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "mi",
+      "name_en": "Maori",
+      "name_native": "Māori",
+      "name_zh": "毛利语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "mk",
+      "name_en": "Macedonian",
+      "name_native": "Македонски",
+      "name_zh": "马其顿语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ml",
+      "name_en": "Malayalam",
+      "name_native": "മലയാളം",
+      "name_zh": "马拉雅拉姆语",
+      "script": "malayalam",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "mn",
+      "name_en": "Mongolian",
+      "name_native": "Монгол",
+      "name_zh": "蒙古语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "note": "喀尔喀蒙古语为西里尔字母",
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "mr",
+      "name_en": "Marathi",
+      "name_native": "मराठी",
+      "name_zh": "马拉地语",
+      "script": "devanagari",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "ms",
+      "name_en": "Malay",
+      "name_native": "Bahasa Melayu",
+      "name_zh": "马来语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "mt",
+      "name_en": "Maltese",
+      "name_native": "Malti",
+      "name_zh": "马耳他语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "my",
+      "name_en": "Myanmar",
+      "name_native": "မြန်မာ",
+      "name_zh": "缅甸语",
+      "script": "myanmar",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "ne",
+      "name_en": "Nepali",
+      "name_native": "नेपाली",
+      "name_zh": "尼泊尔语",
+      "script": "devanagari",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "nl",
+      "name_en": "Dutch",
+      "name_native": "Nederlands",
+      "name_zh": "荷兰语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "nn",
+      "name_en": "Nynorsk",
+      "name_native": "Norsk nynorsk",
+      "name_zh": "新挪威语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "no",
+      "name_en": "Norwegian",
+      "name_native": "Norsk",
+      "name_zh": "挪威语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "oc",
+      "name_en": "Occitan",
+      "name_native": "Occitan",
+      "name_zh": "奥克语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "pa",
+      "name_en": "Punjabi",
+      "name_native": "ਪੰਜਾਬੀ",
+      "name_zh": "旁遮普语",
+      "script": "gurmukhi",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "pl",
+      "name_en": "Polish",
+      "name_native": "Polski",
+      "name_zh": "波兰语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ps",
+      "name_en": "Pashto",
+      "name_native": "پښتو",
+      "name_zh": "普什图语",
+      "script": "arabic",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "pt",
+      "name_en": "Portuguese",
+      "name_native": "Português",
+      "name_zh": "葡萄牙语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ro",
+      "name_en": "Romanian",
+      "name_native": "Română",
+      "name_zh": "罗马尼亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ru",
+      "name_en": "Russian",
+      "name_native": "Русский",
+      "name_zh": "俄语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "sa",
+      "name_en": "Sanskrit",
+      "name_native": "संस्कृतम्",
+      "name_zh": "梵语",
+      "script": "devanagari",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "sd",
+      "name_en": "Sindhi",
+      "name_native": "سنڌي",
+      "name_zh": "信德语",
+      "script": "arabic",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "si",
+      "name_en": "Sinhala",
+      "name_native": "සිංහල",
+      "name_zh": "僧伽罗语",
+      "script": "sinhala",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "sk",
+      "name_en": "Slovak",
+      "name_native": "Slovenčina",
+      "name_zh": "斯洛伐克语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "sl",
+      "name_en": "Slovenian",
+      "name_native": "Slovenščina",
+      "name_zh": "斯洛文尼亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "sn",
+      "name_en": "Shona",
+      "name_native": "chiShona",
+      "name_zh": "绍纳语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "so",
+      "name_en": "Somali",
+      "name_native": "Soomaali",
+      "name_zh": "索马里语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "sq",
+      "name_en": "Albanian",
+      "name_native": "Shqip",
+      "name_zh": "阿尔巴尼亚语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "sr",
+      "name_en": "Serbian",
+      "name_native": "Српски",
+      "name_zh": "塞尔维亚语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "su",
+      "name_en": "Sundanese",
+      "name_native": "Basa Sunda",
+      "name_zh": "巽他语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "sv",
+      "name_en": "Swedish",
+      "name_native": "Svenska",
+      "name_zh": "瑞典语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "sw",
+      "name_en": "Swahili",
+      "name_native": "Kiswahili",
+      "name_zh": "斯瓦希里语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ta",
+      "name_en": "Tamil",
+      "name_native": "தமிழ்",
+      "name_zh": "泰米尔语",
+      "script": "tamil",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "te",
+      "name_en": "Telugu",
+      "name_native": "తెలుగు",
+      "name_zh": "泰卢固语",
+      "script": "telugu",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "tg",
+      "name_en": "Tajik",
+      "name_native": "Тоҷикӣ",
+      "name_zh": "塔吉克语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "th",
+      "name_en": "Thai",
+      "name_native": "ไทย",
+      "name_zh": "泰语",
+      "script": "thai",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "tk",
+      "name_en": "Turkmen",
+      "name_native": "Türkmençe",
+      "name_zh": "土库曼语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "tl",
+      "name_en": "Tagalog",
+      "name_native": "Tagalog",
+      "name_zh": "他加禄语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "tr",
+      "name_en": "Turkish",
+      "name_native": "Türkçe",
+      "name_zh": "土耳其语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "tt",
+      "name_en": "Tatar",
+      "name_native": "Татарча",
+      "name_zh": "鞑靼语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "uk",
+      "name_en": "Ukrainian",
+      "name_native": "Українська",
+      "name_zh": "乌克兰语",
+      "script": "cyrillic",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "ur",
+      "name_en": "Urdu",
+      "name_native": "اردو",
+      "name_zh": "乌尔都语",
+      "script": "arabic",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "uz",
+      "name_en": "Uzbek",
+      "name_native": "Oʻzbek",
+      "name_zh": "乌兹别克语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "vi",
+      "name_en": "Vietnamese",
+      "name_native": "Tiếng Việt",
+      "name_zh": "越南语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "yi",
+      "name_en": "Yiddish",
+      "name_native": "ייִדיש",
+      "name_zh": "意第绪语",
+      "script": "hebrew",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    },
+    {
+      "code": "yo",
+      "name_en": "Yoruba",
+      "name_native": "Yorùbá",
+      "name_zh": "约鲁巴语",
+      "script": "latin",
+      "line_break": "space",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "zh",
+      "name_en": "Chinese",
+      "name_native": "中文",
+      "name_zh": "中文",
+      "script": "han",
+      "line_break": "fallback",
+      "experimental": false,
+      "subtitle_tier": "complete"
+    },
+    {
+      "code": "yue",
+      "name_en": "Cantonese",
+      "name_native": "粵語",
+      "name_zh": "粤语",
+      "script": "han",
+      "line_break": "fallback",
+      "experimental": true,
+      "subtitle_tier": "font_only"
+    }
+  ]
+}

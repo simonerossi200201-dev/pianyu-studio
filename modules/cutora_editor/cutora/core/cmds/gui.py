@@ -215,11 +215,13 @@ def cmd_timeline_join_clips(ctx: Context, params: dict) -> dict:
 
 
 def cmd_timeline_add_transition(ctx: Context, params: dict) -> dict:
+    dur_raw = params.get("duration")
+    dur_val = float(dur_raw) if dur_raw is not None else 0.0
     return _call(
         ctx, "command_add_transition",
         track_id=str(params.get("track_id") or ""),
         start_t=float(params["start_t"]),
-        duration=float(params["duration"]),
+        duration=dur_val,
         preset=str(params.get("preset") or ""),
         domain=str(params.get("domain") or "visual"),
     )

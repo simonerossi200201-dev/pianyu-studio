@@ -492,7 +492,22 @@ def overlay_to_style(ov: dict, video_w: int, video_h: int) -> dict:
         "_video_w": int(video_w),
         "_video_h": int(video_h),
     }
+    raw_content = str(ov.get("content") or ov.get("text") or "")
+    from cutora.subtitle.text_utils import is_rtl_text
+    if is_rtl_text(raw_content) or str(ov.get("lang") or "").strip().lower() == "ar":
+        style["rtl"] = True
+        style.setdefault("script", "arabic")
     return style
+
+
+def apply_rtl_text_option(opt, text: str = "", lang: str | None = None):
+    """Set RightToLeft text direction on QTextOption when text/lang is RTL."""
+    from PySide6.QtCore import Qt
+    from cutora.subtitle.text_utils import is_rtl_text
+    code = (lang or "").strip().lower()
+    if code in ("ar", "he", "fa", "ur", "ps", "sd") or is_rtl_text(text or ""):
+        opt.setTextDirection(Qt.LayoutDirection.RightToLeft)
+    return opt
 
 
 def overlay_event(ov: dict) -> dict:
@@ -501,22 +516,36 @@ def overlay_event(ov: dict) -> dict:
     end = float(ov.get("end") or (start + 1.0))
     words = []
     if text:
-        parts = text.split(" ")
-        step = (end - start) / max(1, len([p for p in parts if p]) or 1)
-        t = start
-        wid = 0
-        for i, part in enumerate(parts):
-            token = part if i == len(parts) - 1 else part + " "
-            if not token:
-                continue
-            words.append({
-                "word": token.strip() or token,
-                "start": t,
-                "end": t + step,
-                "wid": wid,
-            })
-            t += step
-            wid += 1
+        from cutora.subtitle.layout import _CJK_CHAR_RE, _cjk_atoms
+        if _CJK_CHAR_RE.search(text) and " " not in text.strip():
+            parts = _cjk_atoms(text)
+            step = (end - start) / max(1, len(parts) or 1)
+            t = start
+            for wid, token in enumerate(parts):
+                words.append({
+                    "word": token,
+                    "start": t,
+                    "end": t + step,
+                    "wid": wid,
+                })
+                t += step
+        else:
+            parts = text.split(" ")
+            step = (end - start) / max(1, len([p for p in parts if p]) or 1)
+            t = start
+            wid = 0
+            for i, part in enumerate(parts):
+                token = part if i == len(parts) - 1 else part + " "
+                if not token:
+                    continue
+                words.append({
+                    "word": token.strip() or token,
+                    "start": t,
+                    "end": t + step,
+                    "wid": wid,
+                })
+                t += step
+                wid += 1
     return {
         "text": text,
         "start": start,

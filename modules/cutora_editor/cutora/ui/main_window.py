@@ -14095,20 +14095,30 @@ class MainWindow(CommandBodies, QMainWindow):
     def _on_apply_transition(self, preset, domain, duration):
         from cutora.core.commands import CommandError, get_bus
         from cutora.model.seams import clip_span, find_seams
+        from cutora.render.anim_engine import audio_transition_duration
+        from cutora.render.transition_catalog import recommended_duration
+        want_dom = "audio" if str(domain or "visual") == "audio" else "visual"
+        eff_dur = float(duration or 0.0)
+        if eff_dur <= 0:
+            eff_dur = (
+                audio_transition_duration(preset)
+                if want_dom == "audio"
+                else recommended_duration(str(preset or ""), 0.35)
+            )
         seam = getattr(self.timeline, "selected_seam", None)
         if not seam:
             # 1) 如果当前已选中了一条时间线转场，直接替换其预设
             sel_trans = getattr(self.timeline, "selected_transition", None)
             if sel_trans and len(sel_trans) == 2:
                 track, trans_obj = sel_trans
-                want = "audio" if str(domain or "visual") == "audio" else "visual"
+                want = want_dom
                 if (getattr(track, "domain", "visual") == "audio") == (want == "audio"):
                     try:
                         get_bus().execute("timeline.set_transition", {
                             "track_id": str(getattr(track, "id", "") or ""),
                             "transition_id": str(getattr(trans_obj, "id", "") or ""),
                             "preset": str(preset or ""),
-                            "duration": float(duration or getattr(trans_obj, "duration", 0.35) or 0.35),
+                            "duration": eff_dur,
                         }, source="ui")
                         self.timeline.update()
                         if hasattr(self, "video_canvas") and self.video_canvas is not None:
@@ -14135,7 +14145,7 @@ class MainWindow(CommandBodies, QMainWindow):
                 scoped = f"{preset}_both" if preset and not str(preset).endswith(("_in", "_out", "_both")) else str(preset)
                 for ov in ov_targets:
                     ov["transition_preset"] = scoped
-                    ov["transition_duration"] = float(duration or 0.35)
+                    ov["transition_duration"] = eff_dur
                 self.capture_undo_after()
                 if hasattr(self, "prop_panel") and self.prop_panel is not None:
                     self.prop_panel.load_data("overlay", ov_targets[0])
@@ -14159,7 +14169,7 @@ class MainWindow(CommandBodies, QMainWindow):
                         self.push_undo("应用片段转场")
                         scoped = f"{preset}_both" if preset and not str(preset).endswith(("_in", "_out", "_both")) else str(preset)
                         clip.transition_preset = scoped
-                        clip.transition_duration = float(duration or 0.35)
+                        clip.transition_duration = eff_dur
                         self.capture_undo_after()
                         if hasattr(self, "video_canvas") and self.video_canvas is not None:
                             self.video_canvas.update()
@@ -14175,7 +14185,7 @@ class MainWindow(CommandBodies, QMainWindow):
             self.statusBar().showMessage("不能添加转场：接缝已失效", 4000)
             return
         track_domain = getattr(track, "domain", "visual")
-        want = "audio" if str(domain or "visual") == "audio" else "visual"
+        want = want_dom
         if (track_domain == "audio") != (want == "audio"):
             self.statusBar().showMessage(
                 "不能添加转场：视频转场请放到视频接缝，音频转场请放到音频接缝", 4000)
@@ -14184,7 +14194,7 @@ class MainWindow(CommandBodies, QMainWindow):
         if _left_i >= 0 and _left_i < len(clips):
             _s, left_end = clip_span(clips[_left_i])
             seam_t = left_end
-        dur = float(duration or 0.35)
+        dur = eff_dur
         start_t = seam_t - dur / 2.0
         try:
             get_bus().execute("timeline.add_transition", {

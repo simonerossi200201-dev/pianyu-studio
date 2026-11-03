@@ -27,7 +27,7 @@ import time
 HANG_S = 12.0
 SLOW_MS = 1500.0
 STARTUP_S = 90
-SAMPLE = "When God is leading 字幕 AaBbGg 123"
+SAMPLE = "When God is leading 字幕 مرحبا AaBbGg 123"
 VERSION = 1
 
 _STATE = {"probe": None}

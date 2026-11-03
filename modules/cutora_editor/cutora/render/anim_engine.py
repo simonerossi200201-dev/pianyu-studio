@@ -1156,7 +1156,11 @@ def apply_overlay_standalone_transition(layer_img, current_time, seg_start, seg_
         # Extract transitioned alpha from mask green channel (11 -> 0, 255 -> 255)
         trans_alpha = np.clip((c_msk[..., 1] - 11.0) * (255.0 / 244.0), 0.0, 255.0)
         # For flash/white/light transitions where mask is brightened globally, bound by original silhouette + fade
-        if base in ("fade_white", "flash_white", "light_leak", "film_burn", "fade_dark"):
+        from cutora.render.transitions_social import SOCIAL_OVERLAY_LIGHT_PRESETS
+        if base in (
+            "fade_white", "flash_white", "flash_black", "exposure_dissolve", "bloom_dissolve",
+            "light_leak", "film_burn", "fade_dark",
+        ) or base in SOCIAL_OVERLAY_LIGHT_PRESETS:
             fade_env = prog if entering else (1.0 - prog)
             trans_alpha = np.minimum(trans_alpha, alpha_orig * max(0.0, min(1.0, fade_env * 1.35)))
 

@@ -31,7 +31,8 @@ _backups_*/
 modules/cutora_editor/docs/plan/reports/
 modules/cutora_editor/vendor/whisperX/build/
 modules/orante_desk/specs/reports/
-modules/cutora_editor/resources/fonts/
+modules/cutora_editor/resources/fonts/**/*.ttf
+modules/cutora_editor/resources/fonts/**/*.otf
 modules/cutora_editor/resources/fonts_pending/
 
 # 3. 深度学习权重、二进制可执行文件与大体积媒体文件后缀拦截
@@ -59,8 +60,8 @@ modules/cutora_editor/resources/fonts_pending/
 
 
 # 4. 本地运行时数据库、浏览器会话与日志
-data/
-logs/
+/data/
+/logs/
 *.db
 *.db-shm
 *.db-wal

@@ -1,0 +1,414 @@
+{
+  "allowed_licenses": [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "CC0-1.0",
+    "CC-BY-4.0",
+    "Unlicense"
+  ],
+  "models": [
+    {
+      "id": "asr-small",
+      "kind": "asr",
+      "title_zh": "识别 small",
+      "repo": "Systran/faster-whisper-small",
+      "revision": "536b0662742c02347bc0e980a01041f333bce120",
+      "dirname": "asr_small",
+      "weight_file": "model.bin",
+      "files": [
+        {
+          "filename": "config.json",
+          "size": 2370,
+          "sha256": "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828",
+          "source": "computed"
+        },
+        {
+          "filename": "model.bin",
+          "size": 483546902,
+          "sha256": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671",
+          "source": "hf-lfs-oid"
+        },
+        {
+          "filename": "tokenizer.json",
+          "size": 2203239,
+          "sha256": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab",
+          "source": "computed"
+        },
+        {
+          "filename": "vocabulary.txt",
+          "size": 459861,
+          "sha256": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913",
+          "source": "computed"
+        }
+      ],
+      "license": "MIT",
+      "size_mb": 461,
+      "sha256": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671",
+      "enabled": true
+    },
+    {
+      "id": "asr-medium",
+      "kind": "asr",
+      "title_zh": "识别 medium",
+      "repo": "Systran/faster-whisper-medium",
+      "revision": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+      "dirname": "asr_medium",
+      "weight_file": "model.bin",
+      "files": [
+        {
+          "filename": "config.json",
+          "size": 2257,
+          "sha256": "3622a2ddc41ec0e0fd4e68c13c6830f03b90c38d89aaad184de02c8c642cf807",
+          "source": "computed"
+        },
+        {
+          "filename": "model.bin",
+          "size": 1527906378,
+          "sha256": "9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae",
+          "source": "hf-lfs-oid"
+        },
+        {
+          "filename": "tokenizer.json",
+          "size": 2203239,
+          "sha256": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab",
+          "source": "computed"
+        },
+        {
+          "filename": "vocabulary.txt",
+          "size": 459861,
+          "sha256": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913",
+          "source": "computed"
+        }
+      ],
+      "license": "MIT",
+      "size_mb": 1457,
+      "sha256": "9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae",
+      "enabled": false,
+      "note": "removed from product 2026-09-16; worse WER than small on Luca corpus."
+    },
+    {
+      "id": "asr-large-v3",
+      "kind": "asr",
+      "title_zh": "识别 large-v3",
+      "repo": "Systran/faster-whisper-large-v3",
+      "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+      "dirname": "asr_large-v3",
+      "weight_file": "model.bin",
+      "files": [
+        {
+          "filename": "config.json",
+          "size": 2394,
+          "sha256": "a9306624f5ec14270a014b647e5c316b6e03a662c369758d1b90697a7b0655b9",
+          "source": "computed"
+        },
+        {
+          "filename": "model.bin",
+          "size": 3087284237,
+          "sha256": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1",
+          "source": "hf-lfs-oid"
+        },
+        {
+          "filename": "preprocessor_config.json",
+          "size": 340,
+          "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+          "source": "computed"
+        },
+        {
+          "filename": "tokenizer.json",
+          "size": 2480617,
+          "sha256": "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca",
+          "source": "computed"
+        },
+        {
+          "filename": "vocabulary.json",
+          "size": 1068114,
+          "sha256": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1",
+          "source": "computed"
+        }
+      ],
+      "license": "MIT",
+      "size_mb": 2944,
+      "sha256": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1",
+      "enabled": false,
+      "note": "removed from product 2026-09-16; hallucination-prone vs turbo/small."
+    },
+    {
+      "id": "asr-large-v3-turbo",
+      "kind": "asr",
+      "title_zh": "识别 large-v3-turbo（实验）",
+      "repo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+      "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf",
+      "dirname": "asr_large-v3-turbo",
+      "weight_file": "model.bin",
+      "files": [
+        {
+          "filename": "config.json",
+          "size": 2263,
+          "sha256": "b0253ea6c0d3bea6b1e19e91a02acfd3b53f4467362efcb5a3e6b16c9b3a9b7e",
+          "source": "computed"
+        },
+        {
+          "filename": "model.bin",
+          "size": 1617884929,
+          "sha256": "e76620f83d5f5b69efd3d87e3dc180c1bd21df9fbebacfd4335e5e1efcc018da",
+          "source": "hf-lfs-oid"
+        },
+        {
+          "filename": "preprocessor_config.json",
+          "size": 340,
+          "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+          "source": "computed"
+        },
+        {
+          "filename": "tokenizer.json",
+          "size": 2710337,
+          "sha256": "297b13372ac43916285644fb9687add3cc62ee2a1adb60da3dc25cc94c1871fd",
+          "source": "computed"
+        },
+        {
+          "filename": "vocabulary.json",
+          "size": 1068114,
+          "sha256": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1",
+          "source": "computed"
+        }
+      ],
+      "license": "MIT",
+      "size_mb": 1543,
+      "sha256": "e76620f83d5f5b69efd3d87e3dc180c1bd21df9fbebacfd4335e5e1efcc018da",
+      "enabled": true,
+      "note": "社区 CTranslate2 转换；HF 卡片标 MIT。"
+    },
+    {
+      "id": "align-en",
+      "kind": "align",
+      "title_zh": "对齐 en",
+      "repo": null,
+      "dirname": "align_wav2vec2",
+      "weight_file": "wav2vec2_fairseq_large_lv60k_asr_ls960.pth",
+      "files": [
+        {
+          "filename": "wav2vec2_fairseq_large_lv60k_asr_ls960.pth",
+          "size": 1262046195,
+          "sha256": "7a88965716fbd598a595209bf45c1210a18a6935cfb0cf53527fc986c5543ac7",
+          "source": "computed"
+        }
+      ],
+      "license": "Apache-2.0",
+      "size_mb": 1200,
+      "sha256": "7a88965716fbd598a595209bf45c1210a18a6935cfb0cf53527fc986c5543ac7",
+      "enabled": true,
+      "local_only": true
+    },
+    {
+      "id": "align-it",
+      "kind": "align",
+      "language": "it",
+      "title_zh": "对齐 it",
+      "repo": null,
+      "dirname": "align_wav2vec2",
+      "weight_file": "wav2vec2_voxpopuli_base_10k_asr_it.pt",
+      "files": [
+        {
+          "filename": "wav2vec2_voxpopuli_base_10k_asr_it.pt",
+          "size": 377689881,
+          "sha256": "620bad579ee46ba1f67df2e7c858c111d14a09b349a62b1c672f0275a68484eb",
+          "source": "computed"
+        }
+      ],
+      "license": "CC-BY-NC-4.0",
+      "license_url": "https://huggingface.co/facebook/wav2vec2-base-10k-voxpopuli-ft-it",
+      "license_card": "HF YAML license: cc-by-nc-4.0; torchaudio VOXPOPULI_ASR_BASE_10K_IT same. Internal non-commercial use.",
+      "size_mb": 360,
+      "sha256": "620bad579ee46ba1f67df2e7c858c111d14a09b349a62b1c672f0275a68484eb",
+      "enabled": true,
+      "local_only": true
+    },
+    {
+      "id": "vad-silero",
+      "kind": "vad",
+      "title_zh": "Silero VAD · 内置",
+      "repo": "faster-whisper/assets/silero_vad_v6.onnx",
+      "dirname": "vad_silero",
+      "weight_file": "",
+      "files": [],
+      "license": "MIT",
+      "size_mb": 2,
+      "sha256": null,
+      "enabled": true,
+      "local_only": true,
+      "bundled": true,
+      "note": "faster-whisper 内置，已就绪，不可下载或删除。"
+    },
+    {
+      "id": "vad-segmentation",
+      "kind": "vad",
+      "title_zh": "VAD segmentation",
+      "repo": "pyannote/segmentation-3.0",
+      "revision": "e66f3d3b9eb0873085418a7b813d3b369bf160bb",
+      "dirname": "vad_segmentation",
+      "weight_file": "pytorch_model.bin",
+      "files": [
+        "config.yaml",
+        "pytorch_model.bin"
+      ],
+      "license": "other",
+      "size_mb": 6,
+      "sha256": null,
+      "enabled": false,
+      "gated": true,
+      "bundled": false,
+      "note": "不捆绑。gated / license=other，权重不进包、不进仓库。"
+    },
+    {
+      "id": "matte-sam21-large",
+      "kind": "matte",
+      "title_zh": "AI 抠像 SAM 2.1 Large（推荐，8 GB+ 显存）",
+      "repo": "facebook/sam2.1-hiera-large",
+      "revision": "665f8e2ad61cf5f53d65644ff27c8ee525124610",
+      "dirname": "matte_sam21_large",
+      "weight_file": "model.safetensors",
+      "files": [
+        {
+          "filename": "model.safetensors",
+          "size": 897897416,
+          "sha256": "dc407dce21301fd94abb395c5099b4f2c455fdc8a8f261ac3d0ea6d4cd197230",
+          "source": "hf-lfs-oid"
+        },
+        {
+          "filename": "config.json",
+          "size": 5705,
+          "sha256": "00446988cf4d617118d2d347eabe2c46aebed744628facdd540508be30b69ec3",
+          "source": "computed"
+        },
+        {
+          "filename": "preprocessor_config.json",
+          "size": 683,
+          "sha256": "6ebf229ee259368ce4a8d4f2fe893a72b053023710853e257253939e601f583d",
+          "source": "computed"
+        },
+        {
+          "filename": "processor_config.json",
+          "size": 95,
+          "sha256": "f8a68e865cfad115c1c2763f3d93eca7b1c622da06da2a9273eb437fb2389b6d",
+          "source": "computed"
+        },
+        {
+          "filename": "video_preprocessor_config.json",
+          "size": 705,
+          "sha256": "9fccfe5f464ec38c2f236d0e6a68e95511c80c22132fc2fa4b9f7b65f24fad95",
+          "source": "computed"
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/facebook/sam2.1-hiera-large/blob/main/README.md",
+      "author": "Meta AI (FAIR)",
+      "size_mb": 857,
+      "sha256": "dc407dce21301fd94abb395c5099b4f2c455fdc8a8f261ac3d0ea6d4cd197230",
+      "enabled": true,
+      "default": true,
+      "note": "Segment Anything 2.1 Hiera-L，Transformers 格式权重；本地推理，提示式分割 + 视频传播。"
+    },
+    {
+      "id": "matte-sam21-base-plus",
+      "kind": "matte",
+      "title_zh": "AI 抠像 SAM 2.1 Base+（轻量，4 GB 显存可用）",
+      "repo": "facebook/sam2.1-hiera-base-plus",
+      "revision": "b7320756a13354e7530a63935656d35b2f91a290",
+      "dirname": "matte_sam21_base_plus",
+      "weight_file": "model.safetensors",
+      "files": [
+        {
+          "filename": "model.safetensors",
+          "size": 323476296,
+          "sha256": "2012733a0de5d03efd1bba550a2847c4551be9ef2e0d497c83074df66189f780",
+          "source": "hf-lfs-oid"
+        },
+        {
+          "filename": "config.json",
+          "size": 5705,
+          "sha256": "8e24a93b6a40d4dad86eaec383ce7b4044f37ec6360136460f5ff2ce55f87390",
+          "source": "computed"
+        },
+        {
+          "filename": "preprocessor_config.json",
+          "size": 683,
+          "sha256": "6ebf229ee259368ce4a8d4f2fe893a72b053023710853e257253939e601f583d",
+          "source": "computed"
+        },
+        {
+          "filename": "processor_config.json",
+          "size": 95,
+          "sha256": "f8a68e865cfad115c1c2763f3d93eca7b1c622da06da2a9273eb437fb2389b6d",
+          "source": "computed"
+        },
+        {
+          "filename": "video_preprocessor_config.json",
+          "size": 705,
+          "sha256": "9fccfe5f464ec38c2f236d0e6a68e95511c80c22132fc2fa4b9f7b65f24fad95",
+          "source": "computed"
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/facebook/sam2.1-hiera-base-plus/blob/main/README.md",
+      "author": "Meta AI (FAIR)",
+      "size_mb": 309,
+      "sha256": "2012733a0de5d03efd1bba550a2847c4551be9ef2e0d497c83074df66189f780",
+      "enabled": true,
+      "note": "Segment Anything 2.1 Hiera-B+，Transformers 格式权重；显存紧张时用。"
+    },
+    {
+      "id": "track-tapnextpp-512",
+      "kind": "track",
+      "title_zh": "AI 跟踪 TAPNext++ 512（推荐，最准）",
+      "repo": "google/tapnet",
+      "revision": "5d3fb48e76c5422841e38501514121e251beabb7",
+      "dirname": "track_tapnextpp_512",
+      "weight_file": "tapnextpp_512.ckpt",
+      "files": [
+        {
+          "filename": "tapnextpp_512.ckpt",
+          "size": 2532283010,
+          "sha256": "6cd0e793fdcface3063d63f8ed3819bcf74c2c0468fe1fef85acee4de2f3609f",
+          "source": "hf-lfs-oid"
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/google/tapnet/blob/main/README.md",
+      "author": "Google DeepMind",
+      "size_mb": 2415,
+      "sha256": "6cd0e793fdcface3063d63f8ed3819bcf74c2c0468fe1fef85acee4de2f3609f",
+      "input_resolution": 512,
+      "enabled": true,
+      "default": true,
+      "note": "TAPNext++ 512×512：任意点在线跟踪（TAP-Vid DAVIS AJ 67.0），本地推理；代码收录在 cutora/third_party/tapnext（Apache 2.0）。"
+    },
+    {
+      "id": "track-tapnextpp-256",
+      "kind": "track",
+      "title_zh": "AI 跟踪 TAPNext++ 256（更快）",
+      "repo": "google/tapnet",
+      "revision": "5d3fb48e76c5422841e38501514121e251beabb7",
+      "dirname": "track_tapnextpp_256",
+      "weight_file": "tapnextpp_ckpt.pt",
+      "files": [
+        {
+          "filename": "tapnextpp_ckpt.pt",
+          "size": 2532282370,
+          "sha256": "cb96a43444ccb4fbdb25d800b88c7ba196179a526e78f01b021a16b1c1eff6da",
+          "source": "hf-lfs-oid"
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/google/tapnet/blob/main/README.md",
+      "author": "Google DeepMind",
+      "size_mb": 2415,
+      "sha256": "cb96a43444ccb4fbdb25d800b88c7ba196179a526e78f01b021a16b1c1eff6da",
+      "input_resolution": 256,
+      "enabled": true,
+      "note": "TAPNext++ 256×256：同一模型低分辨率输入，速度约为 512 档的 3–4 倍（DAVIS AJ 65.6）。"
+    }
+  ]
+}

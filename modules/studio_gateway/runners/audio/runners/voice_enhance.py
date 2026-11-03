@@ -42,6 +42,31 @@ _PORTABLE_RUN_DIR = _LTX_ROOT / "runtime" / "models" / "resemble_enhance" / "enh
 RUN_DIR = _PORTABLE_RUN_DIR if _PORTABLE_RUN_DIR.is_dir() else Path(r"D:\0_LLM\audio\models\resemble_enhance\enhancer_stage2")
 EXTS = {".wav", ".flac", ".mp3", ".ogg", ".m4a"}
 
+class _OpaqueGlobal:
+    """Safe inert stand-in for non-tensor objects (e.g. HParams/PosixPath) in DeepSpeed checkpoints."""
+    def __init__(self, *args, **kwargs):
+        self._args = args
+        self._kwargs = kwargs
+
+    def __setstate__(self, state):
+        self._state = state
+
+
+def _load_checkpoint_weights_only(ckpt: Path) -> dict:
+    import pickle
+    try:
+        return torch.load(ckpt, map_location="cpu", weights_only=True)
+    except pickle.UnpicklingError:
+        ser = torch.serialization
+        names = list(ser.get_unsafe_globals_in_checkpoint(str(ckpt)))
+        stand_ins = []
+        for full in names:
+            mod, _, qual = str(full).rpartition(".")
+            stand_ins.append(type(qual or "Opaque", (_OpaqueGlobal,), {"__module__": mod, "__qualname__": qual}))
+        with ser.safe_globals(stand_ins):
+            return torch.load(ckpt, map_location="cpu", weights_only=True)
+
+
 def load_model(device):
     import pathlib, os
     _pp = pathlib.PosixPath
@@ -54,11 +79,7 @@ def load_model(device):
     model = Enhancer(hp)
     ckpt = (RUN_DIR / "ds" / "G" / "default" / "mp_rank_00_model_states.pt").resolve()
     ckpt.relative_to(RUN_DIR.resolve())
-    try:
-        sd = torch.load(ckpt, map_location="cpu", weights_only=True)["module"]
-    except Exception:
-        # DeepSpeed checkpoint state dict fallback after strict RUN_DIR path confinement check
-        sd = torch.load(ckpt, map_location="cpu", weights_only=False)["module"]
+    sd = _load_checkpoint_weights_only(ckpt)["module"]
     model.load_state_dict(sd)
     return model.eval().to(device)
 

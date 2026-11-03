@@ -2192,6 +2192,8 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
 
     def _add_transition_to_seam(self, track, left_i, right_i, preset, domain, duration):
         from cutora.model.seams import clip_span
+        from cutora.render.anim_engine import audio_transition_duration
+        from cutora.render.transition_catalog import recommended_duration
         clips = getattr(track, "clips", []) or []
         if int(right_i) < 0 or int(right_i) >= len(clips):
             self._status("不能添加转场：接缝已失效")
@@ -2199,9 +2201,15 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         seam_t = float(getattr(clips[int(right_i)], "start_t", 0.0) or 0.0)
         if 0 <= int(left_i) < len(clips):
             _s, seam_t = clip_span(clips[int(left_i)])
-        dur = float(duration or 0.35)
-        start_t = seam_t - dur / 2.0
         want = "audio" if str(domain or "visual") == "audio" else "visual"
+        dur = float(duration or 0.0)
+        if dur <= 0:
+            dur = (
+                audio_transition_duration(preset)
+                if want == "audio"
+                else recommended_duration(str(preset or ""), 0.35)
+            )
+        start_t = seam_t - dur / 2.0
         track_domain = getattr(track, "domain", "visual")
         if (track_domain == "audio") != (want == "audio"):
             self._status("不能添加转场：视频转场请放到视频接缝，音频转场请放到音频接缝")
@@ -5595,7 +5603,12 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                 add_menu.addAction(lab).setData(preset)
             picked = menu.exec(event.globalPos())
             if picked is not None and picked.data():
-                dur = audio_transition_duration(picked.data()) if domain == "audio" else 0.35
+                from cutora.render.transition_catalog import recommended_duration
+                dur = (
+                    audio_transition_duration(picked.data())
+                    if domain == "audio"
+                    else recommended_duration(str(picked.data() or ""), 0.35)
+                )
                 self._add_transition_to_seam(
                     track, left_i, right_i, picked.data(), domain, dur)
             return
@@ -6305,13 +6318,15 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             if hit is None:
                 hit = self._hit_overlay_or_clip_for_transition(real_x, y)
             if hit is not None and hit[0] == "seam":
+                from cutora.render.transition_catalog import recommended_duration
                 track, left_i, right_i, _t = hit[1], hit[2], hit[3], hit[4]
                 self._select_seam(track, left_i, right_i, _t)
+                preset_str = str(payload.get("preset") or "")
                 ok = self._add_transition_to_seam(
                     track, left_i, right_i,
-                    payload.get("preset") or "",
+                    preset_str,
                     payload.get("domain") or "visual",
-                    float(payload.get("duration") or 0.35),
+                    float(payload.get("duration") or recommended_duration(preset_str, 0.35)),
                 )
                 if ok:
                     event.acceptProposedAction()
@@ -6319,9 +6334,13 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                     event.ignore()
                 return
             if hit is not None and hit[0] == "transition":
+                from cutora.render.transition_catalog import recommended_duration
                 track, trans_obj, _t = hit[1], hit[2], hit[3]
                 preset = str(payload.get("preset") or "")
-                dur = float(payload.get("duration") or getattr(trans_obj, "duration", 0.35) or 0.35)
+                dur = float(
+                    payload.get("duration")
+                    or recommended_duration(preset, float(getattr(trans_obj, "duration", 0.35) or 0.35))
+                )
                 ok = self._bus_execute("timeline.set_transition", {
                     "track_id": str(getattr(track, "id", "") or ""),
                     "transition_id": str(getattr(trans_obj, "id", "") or ""),
@@ -6336,13 +6355,14 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                     event.ignore()
                 return
             if hit is not None and hit[0] == "overlay":
+                from cutora.render.transition_catalog import recommended_duration
                 if str(payload.get("domain") or "visual") == "audio":
                     self._status("不能添加转场：音频转场不能应用到文字或图片图层")
                     event.ignore()
                     return
                 track, list_name, idx, ov, scope = hit[1], hit[2], hit[3], hit[4], hit[5]
                 base_preset = str(payload.get("preset") or "")
-                dur = float(payload.get("duration") or 0.35)
+                dur = float(payload.get("duration") or recommended_duration(base_preset, 0.35))
                 scoped_preset = f"{base_preset}_{scope}" if base_preset and not base_preset.endswith(("_in", "_out", "_both")) else base_preset
                 win = self.window()
                 if win is not None and hasattr(win, "push_undo"):
@@ -6359,9 +6379,10 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                 event.acceptProposedAction()
                 return
             if hit is not None and hit[0] == "clip":
+                from cutora.render.transition_catalog import recommended_duration
                 track, c_idx, c_obj, scope = hit[1], hit[2], hit[3], hit[4]
                 base_preset = str(payload.get("preset") or "")
-                dur = float(payload.get("duration") or 0.35)
+                dur = float(payload.get("duration") or recommended_duration(base_preset, 0.35))
                 scoped_preset = f"{base_preset}_{scope}" if base_preset and not base_preset.endswith(("_in", "_out", "_both")) else base_preset
                 win = self.window()
                 if win is not None and hasattr(win, "push_undo"):

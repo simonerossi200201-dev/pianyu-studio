@@ -1,0 +1,187 @@
+{
+  "description": "Original demo frames for transition previews. Generated for CUTORA by the project team with an AI image generator; no people, logos, readable text or third-party assets. Re-encoded with Pillow; all metadata (EXIF/XMP/ICC) stripped.",
+  "license": "CUTORA project-owned asset (commercial use OK)",
+  "generated_utc": "2026-11-03T21:45:11Z",
+  "files": [
+    {
+      "file": "camera_a.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 24211,
+      "sha256": "1e4b5c8eb2044c3fbdba25397ef2ff504e094998a1828e35a8fd3689fcf0ed29"
+    },
+    {
+      "file": "camera_a@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 79529,
+      "sha256": "4ca248c91808a82c6ed83e2062f3e2a6af7cb62cdf8b425d36a5289ec8c2200e"
+    },
+    {
+      "file": "camera_b.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 29708,
+      "sha256": "673178e4c0dcc9678b93d46ea438ff20ef27c1d64f8747284a27f995b0e7d3a6"
+    },
+    {
+      "file": "camera_b@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 107444,
+      "sha256": "5091ca54d713eb261eddbf8b7c9609279b5b482e06ee6d72d8a0c90a8c760345"
+    },
+    {
+      "file": "dissolve_a.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 22493,
+      "sha256": "fa1b1187b31b15e1eb1c34cc84b2c7e123ad74e7ab3a59b6af908e95bfb8a1d4"
+    },
+    {
+      "file": "dissolve_a@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 76623,
+      "sha256": "10ee0ba492a2a1bdf5645c5f3af85ac583be14df1279ca96c989bf9b14844ea4"
+    },
+    {
+      "file": "dissolve_b.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 27474,
+      "sha256": "fc2d1a42006c94f157cdade43cfd6caaca8327c68f31181b42e05858877def37"
+    },
+    {
+      "file": "dissolve_b@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 105066,
+      "sha256": "1c1223e5d5f1507b347ce749bc3577450e879d25ed133ea32c9966fbfe5030c6"
+    },
+    {
+      "file": "graphic_a.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 9573,
+      "sha256": "e29a1d684966424423527cdbba515ab0d680b26cbbc899094f52386ba5014879"
+    },
+    {
+      "file": "graphic_a@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 29584,
+      "sha256": "845ef1b3ca732c0d1c3e9d54c3d2b2bd04f0283083231e34cc001029f92b07fa"
+    },
+    {
+      "file": "graphic_b.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 15908,
+      "sha256": "5651ac06d87d13fe8135106e6455313da8e73395803fee0bdbcfebd9eccece34"
+    },
+    {
+      "file": "graphic_b@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 56611,
+      "sha256": "b08e9cdb5461f116b581762a20b6f895657a0fa88a8096e65a1c3bbcb147f5f6"
+    },
+    {
+      "file": "light_a.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 26658,
+      "sha256": "9edf63a23674a95f119e2bf54c4aefd811a7d4c25c812494789c1b221dc6b5b3"
+    },
+    {
+      "file": "light_a@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 96621,
+      "sha256": "84a4673e7fd5ca32ad31d4540eee3eda3c236d4a3e603b714076317837ae125d"
+    },
+    {
+      "file": "light_b.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 15117,
+      "sha256": "21406c943592affd9a9c70f3be64ee96b24c91711e4f2d909896112aa0c8a3c2"
+    },
+    {
+      "file": "light_b@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 51133,
+      "sha256": "cba644ae2bcb7078f2cd4b68b7d94dbfc543d4a1dc3aa3692d0c912569a7c501"
+    },
+    {
+      "file": "rhythm_a.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 28233,
+      "sha256": "9a8fbd6b6c69398836cd2468e18b04ac0c20cbc9b2253bc3322970f5975f2a8f"
+    },
+    {
+      "file": "rhythm_a@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 86087,
+      "sha256": "41a2ea3d0d462e99650f61e30e263fe1f847d442d6be1c027fba4d55c77a5538"
+    },
+    {
+      "file": "rhythm_b.jpg",
+      "size": [
+        384,
+        216
+      ],
+      "bytes": 20624,
+      "sha256": "d2064b413981ac324191e8f131f2b3c102307a205a56469135aa4e864426cf2e"
+    },
+    {
+      "file": "rhythm_b@2x.jpg",
+      "size": [
+        768,
+        432
+      ],
+      "bytes": 65091,
+      "sha256": "3e178c1f4f1176602dde223270e6da5acde0fa37b4ca5eb388d691a981da7011"
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "style": {
+    "pos_x": 540,
+    "pos_y": 1114,
+    "fontsize": 68,
+    "font_family": "Chiron Hei HK",
+    "bold": true,
+    "italic": false,
+    "color_text": "#FDE68A",
+    "color_high": "#FCA5A5",
+    "color_bg": "#0B1A33",
+    "color_outline": "#7F1D1D",
+    "opacity_bg": 180,
+    "opacity_outline": 255,
+    "shadow_enabled": false,
+    "use_box": false,
+    "use_stroke": true,
+    "border_width": 3,
+    "box_padding_x": 22,
+    "box_padding_y": 10,
+    "box_radius": 12,
+    "rotation": 0,
+    "wrap_width_percent": 86,
+    "wrap_lines": 2,
+    "line_spacing": 4,
+    "dynamic_box": false,
+    "anim_in_type": "fade",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false,
+    "fade_in_out_duration": 0.3,
+    "geom_user_set": false,
+    "font_style": "",
+    "opacity_text_global": 255,
+    "anchor": "bottom-center",
+    "offset_x_pct": 0.0,
+    "offset_y_pct": -0.42,
+    "fontsize_pct": 0.062963,
+    "fx": {
+      "fill": {
+        "type": "gradient",
+        "colors": [
+          "#FEF08A",
+          "#F59E0B"
+        ],
+        "angle": 90.0
+      },
+      "stroke": {
+        "width_em": 0.05,
+        "color": "#7F1D1D",
+        "join": "round",
+        "enabled": true
+      },
+      "glow": {
+        "sigma_em": 0.16,
+        "spread_em": 0.02,
+        "color": "#EF4444",
+        "strength": 0.8,
+        "mode": "neon"
+      },
+      "bg": {
+        "type": "none",
+        "color": "#7F1D1D",
+        "alpha": 0.0,
+        "enabled": false
+      },
+      "fonts": {
+        "body": "Chiron Hei HK",
+        "emphasis": "Chiron Hei HK"
+      },
+      "anim": {
+        "in": "fade",
+        "loop": "none",
+        "out": "none",
+        "unit": "segment",
+        "in_s": 0.3,
+        "seed": 0
+      },
+      "tracking_em": 0.04
+    }
+  },
+  "layout_rules": {
+    "max_chars_per_line": 20,
+    "max_lines": 2,
+    "balance_lines": false,
+    "line_break": "space"
+  },
+  "keyword_rules": [],
+  "animation": {
+    "anim_in_type": "fade",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false
+  }
+}

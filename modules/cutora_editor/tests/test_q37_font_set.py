@@ -1,27 +1,32 @@
 # -*- coding: utf-8 -*-
-"""Q37: product font *files* must match tests/golden/fonts_digest.txt.
+"""Q37: product font files commercial-license & SHA256 manifest verification + DirectWrite unique-file load count.
 
-The 240 vs 607 split is not extra files. DirectWrite (Qt platform
-``windows``) exposes variable-font named instances as extra family
-names, and FontManager.register() used to call addApplicationFont once
-per (family, file) pair. That made the log say 607 while the unique
-file set stayed 240 — the same set golden pins.
-
-This test must run on the windows plugin. QT_QPA_PLATFORM=offscreen
-collapses named instances, so LAST_EMBEDDED_FONT_LOAD_COUNT is already
-240 and the defect never shows.
+1. DirectWrite (Qt platform ``windows``) exposes variable-font named instances as extra family
+   names; ``LAST_EMBEDDED_FONT_LOAD_COUNT`` must equal the unique font file count on disk
+   while keeping named instances (e.g. ``Roboto Slab Thin``) in ``_family_name_map``.
+2. The legacy 240-font count cap is retired: font count has no upper bound, provided 100% of
+   bundled fonts are commercially licensed (``OFL-1.1`` or ``Apache-2.0``), every family
+   directory preserves its license credential file (``OFL.txt`` / ``LICENSE.txt`` and
+   ``METADATA.pb`` for ``google/fonts`` social families), and every file on disk matches its
+   recorded SHA256 in ``FONTS_MANIFEST.json`` and ``PROVENANCE.json``.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
+if not os.path.isfile(PY):
+    PY = os.path.join(os.path.dirname(os.path.dirname(REPO)), "runtime", "venv", "Scripts", "python.exe")
 FFMPEG_DIR = os.path.join(REPO, "runtime", "ffmpeg")
-DIGEST_PATH = os.path.join(REPO, "tests", "golden", "fonts_digest.txt")
+MANIFEST_PATH = os.path.join(REPO, "resources", "fonts", "FONTS_MANIFEST.json")
+PROVENANCE_PATH = os.path.join(REPO, "resources", "fonts", "PROVENANCE.json")
 SKIP_DIR_NAMES = ("_quarantine", "_extra", "fonts_pending", "Noto_Color_Emoji")
+ALLOWED_COMMERCIAL_LICENSES = {"OFL-1.1", "Apache-2.0"}
 # DirectWrite named instance of Roboto Slab; absent under offscreen.
 NAMED_INSTANCE = "Roboto Slab Thin"
 
@@ -40,6 +45,14 @@ def _windows_env() -> dict:
     return env
 
 
+def _sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def test_q37_font_set_matches():
     r = subprocess.run(
         [PY, "-u", os.path.abspath(__file__), "--check"],
@@ -55,19 +68,14 @@ def test_q37_font_set_matches():
     assert r.returncode == 0 and "Q37_FONT_SET_OK" in (r.stdout or ""), out[-8000:]
 
 
-def _read_pinned() -> tuple[int, str]:
-    count = None
-    digest = ""
-    with open(DIGEST_PATH, encoding="utf-8") as fh:
-        for raw in fh:
-            line = raw.strip()
-            if line.startswith("count="):
-                count = int(line.split("=", 1)[1])
-            elif len(line) == 64 and all(c in "0123456789abcdef" for c in line.lower()):
-                digest = line.lower()
-    if count is None or not digest:
-        raise AssertionError("fonts_digest.txt missing count= or sha256: %s" % DIGEST_PATH)
-    return count, digest
+def _has_license_credential(fam_dir: str) -> bool:
+    if not os.path.isdir(fam_dir):
+        return False
+    for fn in os.listdir(fam_dir):
+        low = fn.lower()
+        if low in ("ofl.txt", "license", "license.txt", "licence.txt", "apache.txt") or "license" in low or low.startswith("ofl"):
+            return True
+    return False
 
 
 def _check() -> int:
@@ -79,7 +87,7 @@ def _check() -> int:
     from cutora.core.runtime import init_torch_runtime
     init_torch_runtime(render_child=False)
     from PySide6.QtWidgets import QApplication
-    from cutora.core.paths import FONT_DIR
+    from cutora.core.paths import FONT_DIR, RESOURCES
     from cutora.ui.panels.fonts import (
         _iter_font_files,
         get_font_manager,
@@ -121,45 +129,67 @@ def _check() -> int:
         return 1
 
     from cutora.ui.panels.fonts import LAST_EMBEDDED_FONT_LOAD_COUNT
-    import importlib.util
 
-    gc_path = os.path.join(REPO, "tools", "golden_check.py")
-    spec = importlib.util.spec_from_file_location("cutora_golden_check_q37", gc_path)
-    gc = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(gc)
-    _fonts_digest = gc._fonts_digest
-
-    pinned_count, pinned_digest = _read_pinned()
-    got_count, got_digest = _fonts_digest(files)
+    unique_count = len({os.path.normcase(os.path.abspath(p)) for p in files})
     loaded = int(LAST_EMBEDDED_FONT_LOAD_COUNT)
     print("platform", platform, flush=True)
     print("iter_files", len(files), flush=True)
-    print("digest_count", got_count, flush=True)
-    print("digest", got_digest, flush=True)
-    print("pinned_count", pinned_count, flush=True)
-    print("pinned_digest", pinned_digest, flush=True)
+    print("unique_count", unique_count, flush=True)
     print("LAST_EMBEDDED_FONT_LOAD_COUNT", loaded, flush=True)
 
-    if got_count != pinned_count:
+    if loaded != unique_count:
         print(
-            "Q37_COUNT_MISMATCH unique_files=%s pinned=%s" % (got_count, pinned_count),
-            flush=True,
-        )
-        return 1
-    if got_digest != pinned_digest:
-        print(
-            "Q37_DIGEST_MISMATCH got=%s pinned=%s" % (got_digest, pinned_digest),
-            flush=True,
-        )
-        return 1
-    if loaded != pinned_count:
-        print(
-            "Q37_LOAD_COUNT_MISMATCH loaded=%s pinned=%s "
+            "Q37_LOAD_COUNT_MISMATCH loaded=%s unique_files=%s "
             "(named-instance aliases counted as extra files)"
-            % (loaded, pinned_count),
+            % (loaded, unique_count),
             flush=True,
         )
         return 1
+
+    # Verify FONTS_MANIFEST.json commercial license compliance & SHA256 integrity
+    with open(MANIFEST_PATH, encoding="utf-8") as fh:
+        manifest = json.load(fh)
+    man_by_rel = {str(r.get("file") or ""): r for r in (manifest.get("fonts") or [])}
+    for lic_key in (manifest.get("by_license") or {}):
+        if lic_key not in ALLOWED_COMMERCIAL_LICENSES:
+            print("Q37_DISALLOWED_LICENSE_SUMMARY", lic_key, flush=True)
+            return 1
+
+    for path in files:
+        rel = os.path.relpath(path, RESOURCES).replace("\\", "/")
+        row = man_by_rel.get(rel)
+        if not row:
+            print("Q37_MISSING_FROM_MANIFEST", rel, flush=True)
+            return 1
+        lic = str(row.get("license") or "")
+        if lic not in ALLOWED_COMMERCIAL_LICENSES:
+            print("Q37_DISALLOWED_FONT_LICENSE", rel, lic, flush=True)
+            return 1
+        fam_dir = os.path.dirname(path)
+        if not _has_license_credential(fam_dir):
+            print("Q37_MISSING_LICENSE_FILE", rel, fam_dir, flush=True)
+            return 1
+        got_sha = _sha256(path)
+        if got_sha != str(row.get("sha256") or ""):
+            print("Q37_SHA256_MISMATCH", rel, got_sha, row.get("sha256"), flush=True)
+            return 1
+
+    # Verify PROVENANCE.json entries
+    with open(PROVENANCE_PATH, encoding="utf-8") as fh:
+        prov = json.load(fh)
+    for item in prov.get("fonts") or []:
+        rel = str(item.get("file") or "")
+        disk_path = os.path.join(RESOURCES, rel.replace("/", os.sep))
+        if not os.path.isfile(disk_path):
+            print("Q37_PROVENANCE_FILE_MISSING", rel, flush=True)
+            return 1
+        if _sha256(disk_path) != str(item.get("sha256") or ""):
+            print("Q37_PROVENANCE_SHA_MISMATCH", rel, flush=True)
+            return 1
+        lic = str(item.get("license") or "OFL-1.1")
+        if lic not in ALLOWED_COMMERCIAL_LICENSES:
+            print("Q37_PROVENANCE_BAD_LICENSE", rel, lic, flush=True)
+            return 1
 
     mgr = get_font_manager()
     mapped = mgr._family_name_map
@@ -171,7 +201,7 @@ def _check() -> int:
         )
         return 1
 
-    print("Q37_FONT_SET_OK count=%s digest=%s loaded=%s" % (got_count, got_digest, loaded), flush=True)
+    print("Q37_FONT_SET_OK count=%s loaded=%s" % (unique_count, loaded), flush=True)
     return 0
 
 

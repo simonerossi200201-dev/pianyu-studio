@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "只出 SRT 不渲染",
+  "description": "无字幕则先自动识别（已有分段则 skip_if 跳过），再写成 SRT。不启动渲染子进程。",
+  "inputs": {
+    "media": { "description": "视频文件；同目录有 project.asproj.json 时用里面的字幕" },
+    "out_dir": { "description": "SRT 输出目录" }
+  },
+  "steps": [
+    {
+      "command": "subtitle.auto",
+      "params": { "language": "auto" },
+      "on_error": "skip",
+      "skip_if": {
+        "command": "subtitle.status",
+        "field": "has_segments",
+        "equals": true,
+        "params": { "media": "{media}" }
+      }
+    },
+    { "command": "subtitle.export_srt", "params": { "media": "{media}", "out_dir": "{out_dir}" }, "on_error": "skip" }
+  ]
+}

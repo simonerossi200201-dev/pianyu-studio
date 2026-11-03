@@ -382,6 +382,114 @@ def _align_transcript_native(segments, metadata, audio):
     return {"segments": out_segments, "word_segments": all_words}
 
 
+def _merge_aligned_unit_words(unit: str, chunk: list) -> dict:
+    import math
+    starts = []
+    ends = []
+    scores = []
+    for w in chunk:
+        if not isinstance(w, dict):
+            continue
+        s = w.get("start")
+        e = w.get("end")
+        sc = w.get("score")
+        if isinstance(s, (int, float)) and not isinstance(s, bool) and math.isfinite(float(s)):
+            starts.append(float(s))
+        if isinstance(e, (int, float)) and not isinstance(e, bool) and math.isfinite(float(e)):
+            ends.append(float(e))
+        if isinstance(sc, (int, float)) and not isinstance(sc, bool) and math.isfinite(float(sc)):
+            scores.append(float(sc))
+    out = {"word": unit}
+    if starts:
+        out["start"] = round(min(starts), 3)
+    if ends:
+        out["end"] = round(max(ends), 3)
+    if scores:
+        out["score"] = round(sum(scores) / len(scores), 3)
+    return out
+
+
+def align_zh_ar_segments(segments, model, metadata, audio, eff_device, lang, **kwargs):
+    """Align Chinese (char/Latin-run units) or Arabic (word units) via wav2vec2 CTC and restore display units."""
+    from cutora.asr.text_norm import (
+        WILDCARD, ar_align_form, ar_display_units, zh_align_form, zh_display_units,
+    )
+    vocab = frozenset((metadata or {}).get("dictionary") or ())
+    rewritten = []
+    plans = []
+    for seg in segments or []:
+        raw_text = "" if seg is None else str(seg.get("text") or "")
+        t0 = float((seg or {}).get("start") or 0.0)
+        t1 = float((seg or {}).get("end") or t0)
+        if lang == "zh":
+            units = zh_display_units(raw_text)
+            forms = [
+                zh_align_form(u, vocab, units[i + 1] if i + 1 < len(units) else "") or WILDCARD
+                for i, u in enumerate(units)
+            ]
+            align_text = "".join(forms)
+        else:
+            units = ar_display_units(raw_text)
+            forms = [ar_align_form(u, vocab) or WILDCARD for u in units]
+            align_text = " ".join(forms)
+        copied = dict(seg or {})
+        copied["text"] = align_text if units else ""
+        rewritten.append(copied)
+        plans.append((seg, raw_text, units, forms, t0, t1))
+
+    aligned = whisperx.align(rewritten, model, metadata, audio, eff_device, **kwargs)
+    raw_segs = list(aligned.get("segments") or [])
+    out_segs = []
+    all_words = []
+    for idx, (orig_seg, raw_text, units, forms, t0, t1) in enumerate(plans):
+        raw_seg = dict(raw_segs[idx]) if idx < len(raw_segs) else dict(orig_seg or {})
+        raw_words = [
+            w for w in (raw_seg.get("words") or [])
+            if isinstance(w, dict) and str(w.get("word") or "").strip()
+        ]
+        restored = []
+        total_form_chars = sum(len(f) for f in forms)
+        if not units:
+            restored = []
+        elif lang == "zh" and len(raw_words) == total_form_chars and total_form_chars > 0:
+            offset = 0
+            for u, f in zip(units, forms):
+                k = max(1, len(f))
+                chunk = raw_words[offset : offset + k]
+                offset += k
+                restored.append(_merge_aligned_unit_words(u, chunk))
+        elif len(raw_words) == len(units):
+            for u, w in zip(units, raw_words):
+                w_copy = dict(w)
+                w_copy["word"] = u
+                restored.append(w_copy)
+        else:
+            dur = max(0.0, t1 - t0)
+            step = dur / len(units) if units and dur > 0 else 0.0
+            for i, u in enumerate(units):
+                if i < len(raw_words):
+                    w_copy = dict(raw_words[i])
+                    w_copy["word"] = u
+                    restored.append(w_copy)
+                elif dur > 0:
+                    restored.append({
+                        "word": u,
+                        "start": round(t0 + i * step, 3),
+                        "end": round(t0 + (i + 1) * step, 3),
+                    })
+                else:
+                    restored.append({"word": u})
+        raw_seg["text"] = raw_text
+        if not isinstance(raw_seg.get("start"), (int, float)):
+            raw_seg["start"] = t0
+        if not isinstance(raw_seg.get("end"), (int, float)):
+            raw_seg["end"] = t1
+        raw_seg["words"] = restored
+        out_segs.append(raw_seg)
+        all_words.extend(restored)
+    return {"segments": out_segs, "word_segments": all_words}
+
+
 def align_transcript(segments, model, metadata, audio, device=None, **kwargs):
     """``whisperx.align``, romanizing only on the MMS fallback.
 
@@ -392,7 +500,23 @@ def align_transcript(segments, model, metadata, audio, device=None, **kwargs):
     if (metadata or {}).get("cutora_native_align"):
         return _align_transcript_native(segments, metadata, audio)
     eff_device = ALIGN_DEVICE if (sys.platform == "darwin" and ALIGN_DEVICE == "mps") else (device or ALIGN_DEVICE)
+    try:
+        if hasattr(model, "parameters"):
+            p = next(model.parameters(), None)
+            if p is not None and hasattr(p, "device"):
+                eff_device = str(p.device.type)
+    except Exception:
+        pass
     if not (metadata or {}).get("cutora_mms"):
+        lang_code = str(
+            (metadata or {}).get("language")
+            or (metadata or {}).get("cutora_source_lang")
+            or ""
+        ).strip().lower()
+        if lang_code in ("zh", "ar"):
+            return align_zh_ar_segments(
+                segments, model, metadata, audio, eff_device, lang_code, **kwargs
+            )
         return whisperx.align(segments, model, metadata, audio, eff_device, **kwargs)
     from cutora.asr.romanize import RomanizeError, romanize_tokens, speech_tokens
     lang = str((metadata or {}).get("cutora_source_lang") or "")

@@ -2061,6 +2061,13 @@ EXTRA_TRANSITION_LIBRARY = [
     ("斜向格栅", "venetian_diag"),
 ]
 
+from cutora.render.transitions_social import (
+    SOCIAL_TRANSITION_FUNCS,
+    SOCIAL_TRANSITION_LIBRARY,
+)
+
+EXTRA_TRANSITION_LIBRARY.extend(SOCIAL_TRANSITION_LIBRARY)
+
 
 def _bind_dir(fn, direction):
     def inner(a, b, t, w, h, **p):
@@ -2149,6 +2156,7 @@ TRANSITION_FUNCS = {
     "wave_ripple": wave_ripple,
     "curtain_drop": curtain_drop,
     "venetian_diag": venetian_diag,
+    **SOCIAL_TRANSITION_FUNCS,
 }
 
 

@@ -1,0 +1,97 @@
+{
+  "version": 2,
+  "style": {
+    "pos_x": 540,
+    "pos_y": 1114,
+    "fontsize": 70,
+    "font_family": "Long Cang",
+    "bold": true,
+    "italic": false,
+    "color_text": "#2D1E17",
+    "color_high": "#EA580C",
+    "color_bg": "#F5EFE0",
+    "color_outline": "#FFFBEB",
+    "opacity_bg": 210,
+    "opacity_outline": 255,
+    "shadow_enabled": false,
+    "use_box": true,
+    "use_stroke": true,
+    "border_width": 3,
+    "box_padding_x": 22,
+    "box_padding_y": 10,
+    "box_radius": 10,
+    "rotation": 0,
+    "wrap_width_percent": 86,
+    "wrap_lines": 2,
+    "line_spacing": 4,
+    "dynamic_box": false,
+    "anim_in_type": "fade",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false,
+    "fade_in_out_duration": 0.3,
+    "geom_user_set": false,
+    "font_style": "",
+    "opacity_text_global": 255,
+    "anchor": "bottom-center",
+    "offset_x_pct": 0.0,
+    "offset_y_pct": -0.42,
+    "fontsize_pct": 0.064815,
+    "fx": {
+      "fill": {
+        "type": "solid",
+        "colors": [
+          "#2D1E17"
+        ]
+      },
+      "stroke": {
+        "width_em": 0.0,
+        "color": "#FFFBEB",
+        "join": "round"
+      },
+      "bg": {
+        "type": "texture",
+        "texture": "paper",
+        "color": "#F5EFE0",
+        "alpha": 0.92,
+        "radius_em": 0.16,
+        "pad_em": [
+          0.48,
+          0.26
+        ],
+        "enabled": true
+      },
+      "fonts": {
+        "body": "Long Cang",
+        "emphasis": "Long Cang"
+      },
+      "anim": {
+        "in": "fade",
+        "loop": "none",
+        "out": "none",
+        "unit": "segment",
+        "in_s": 0.28,
+        "seed": 0
+      }
+    }
+  },
+  "layout_rules": {
+    "max_chars_per_line": 22,
+    "max_lines": 2,
+    "balance_lines": false,
+    "line_break": "space"
+  },
+  "keyword_rules": [],
+  "animation": {
+    "anim_in_type": "fade",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false
+  }
+}

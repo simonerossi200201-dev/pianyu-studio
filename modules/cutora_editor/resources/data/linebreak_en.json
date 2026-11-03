@@ -1,0 +1,8 @@
+{
+  "no_break_after": [
+    "a", "an", "the", "of", "in", "on", "at", "to", "for", "from",
+    "by", "as", "or", "and", "but", "nor", "if", "so", "yet",
+    "with", "without", "into", "onto", "upon", "over", "under",
+    "is", "are", "was", "were", "be", "been"
+  ]
+}

@@ -124,11 +124,14 @@ def _script_from_row(row: dict) -> dict:
     for item in row.get("files") or []:
         size = int(item.get("size") or 0)
         total += size
-        files.append({
+        f_entry = {
             "filename": str(item.get("filename") or ""),
             "size": size,
             "sha256": str(item.get("sha256") or "").strip().lower(),
-        })
+        }
+        if item.get("revision"):
+            f_entry["revision"] = str(item.get("revision"))
+        files.append(f_entry)
     return {
         "id": str(row.get("id") or ""),
         "language": code,

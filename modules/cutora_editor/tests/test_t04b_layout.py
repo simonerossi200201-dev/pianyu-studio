@@ -192,7 +192,15 @@ def test_relayout_check_extend_commands(tmp_path):
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     g01 = os.path.join(repo, "tests", "golden", "_media", "g01", "video.mp4")
     media = tmp_path / "video.mp4"
-    shutil.copy2(g01, media)
+    if os.path.isfile(g01):
+        shutil.copy2(g01, media)
+    else:
+        import subprocess
+        from cutora.core.config import FFMPEG_PATH
+        subprocess.run([
+            FFMPEG_PATH, "-y", "-f", "lavfi", "-i", "color=c=black:s=640x360:d=4:r=25",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", str(media),
+        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     proj = tmp_path / "project.asproj.json"
     proj.write_text(json.dumps({
         "version": 2,

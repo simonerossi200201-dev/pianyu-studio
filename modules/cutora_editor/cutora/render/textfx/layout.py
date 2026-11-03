@@ -590,10 +590,36 @@ def _split_line_runs(
     cursor: int,
 ) -> tuple[list[tuple[str, dict | None]], int]:
     """Split a line into (token, word_entry|None) consuming `words` in order."""
+    from cutora.subtitle.layout import _CJK_CHAR_RE, _cjk_atoms
+    if _CJK_CHAR_RE.search(line or "") and len(words) > 1:
+        atoms = _cjk_atoms(line)
+        if len(atoms) > 1:
+            runs_cjk: list[tuple[str, dict | None]] = []
+            pos = 0
+            n_line = len(line)
+            for i, atom in enumerate(atoms):
+                idx = line.find(atom, pos)
+                if idx >= 0:
+                    pos = idx + len(atom)
+                trail = ""
+                while pos < n_line and line[pos] == " ":
+                    trail = " "
+                    pos += 1
+                token = atom + (trail if i < len(atoms) - 1 else "")
+                info = None
+                if cursor < len(words) and atom:
+                    info = words[cursor]
+                    cursor += 1
+                runs_cjk.append((token, info))
+            return runs_cjk, cursor
+    rtl = _is_rtl_text(line)
     parts = line.split(" ")
     runs: list[tuple[str, dict | None]] = []
     for i, part in enumerate(parts):
-        token = part if i == len(parts) - 1 else part + " "
+        if rtl:
+            token = part
+        else:
+            token = part if i == len(parts) - 1 else part + " "
         info = None
         if cursor < len(words) and part:
             info = words[cursor]
@@ -710,6 +736,16 @@ def _build_runs(
     return built, cursor
 
 
+def _built_line_width(built: list, line_text: str, em: float = 34.0) -> tuple[float, float]:
+    rtl = _is_rtl_text(line_text)
+    space_w = 0.0
+    if rtl and len(built) > 1:
+        first_font = built[0][2]
+        space_w = float(_metrics(first_font).horizontalAdvance(" ")) if first_font is not None else em * 0.25
+    total_w = sum(float(b[3]) for b in built) + (space_w * max(0, len(built) - 1) if rtl else 0.0)
+    return total_w, space_w
+
+
 def _place_line(
     built: list,
     line_text: str,
@@ -728,10 +764,10 @@ def _place_line(
             built, line_text, x0, y0, t0, t1, spec, family, em)
     runs: list[WordRun] = []
     rtl = _is_rtl_text(line_text)
-    total_w = sum(float(b[3]) for b in built)
+    total_w, space_w = _built_line_width(built, line_text, em)
     x = (x0 + total_w) if rtl else x0
     max_h = em
-    for token, info, font, w, asc, desc, fam, hit, fill, size, pad in built:
+    for i_b, (token, info, font, w, asc, desc, fam, hit, fill, size, pad) in enumerate(built):
         idx = int(info["index"]) if info else len(runs)
         ts = float(info["start"]) if info else t0
         te = float(info["end"]) if info else t1
@@ -740,6 +776,8 @@ def _place_line(
         if rtl:
             x -= w
             run_x = x
+            if i_b < len(built) - 1:
+                x -= space_w
         else:
             run_x = x
             x += w
@@ -1232,7 +1270,7 @@ def _measure_and_place(
         built, cursor = _build_runs(
             text, spec, style, em, words, cursor, t0, t1,
             hits=hits, seg_id=seg_id)
-        line_w = sum(b[3] for b in built)
+        line_w, _ = _built_line_width(built, text, em)
         line_h = (max((b[4] for b in built), default=em * 0.8)
                   + max((b[5] for b in built), default=em * 0.2))
         measured.append((text, built, line_w, line_h))

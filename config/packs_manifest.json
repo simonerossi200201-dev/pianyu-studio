@@ -30,6 +30,8 @@
       "runtime/models/asr_large-v3-turbo",
       "runtime/models/asr_small",
       "runtime/models/align_wav2vec2",
+      "runtime/models/align_zh",
+      "runtime/models/align_ar",
       "runtime/models/matte_sam21_base_plus",
       "runtime/models/matte_sam21_large",
       "runtime/models/rmbg2",
@@ -195,7 +197,9 @@
         "runtime/models/align_es",
         "runtime/models/align_fr",
         "runtime/models/align_mms",
-        "runtime/models/align_pt"
+        "runtime/models/align_pt",
+        "runtime/models/align_zh",
+        "runtime/models/align_ar"
       ],
       "required_markers": [
         "runtime/models/vision/upscale/4xNomos2_realplksr_dysample.pth",

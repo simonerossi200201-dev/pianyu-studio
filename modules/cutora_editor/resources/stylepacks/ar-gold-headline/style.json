@@ -1,0 +1,101 @@
+{
+  "version": 2,
+  "style": {
+    "pos_x": 540,
+    "pos_y": 1114,
+    "fontsize": 68,
+    "font_family": "Reem Kufi",
+    "bold": true,
+    "italic": false,
+    "color_text": "#FFF3B0",
+    "color_high": "#F59E0B",
+    "color_bg": "#0B1A33",
+    "color_outline": "#141A26",
+    "opacity_bg": 180,
+    "opacity_outline": 255,
+    "shadow_enabled": false,
+    "use_box": false,
+    "use_stroke": true,
+    "border_width": 3,
+    "box_padding_x": 22,
+    "box_padding_y": 10,
+    "box_radius": 12,
+    "rotation": 0,
+    "wrap_width_percent": 86,
+    "wrap_lines": 2,
+    "line_spacing": 4,
+    "dynamic_box": false,
+    "anim_in_type": "pop_in",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false,
+    "fade_in_out_duration": 0.3,
+    "geom_user_set": false,
+    "font_style": "",
+    "opacity_text_global": 255,
+    "anchor": "bottom-center",
+    "offset_x_pct": 0.0,
+    "offset_y_pct": -0.42,
+    "fontsize_pct": 0.062963,
+    "fx": {
+      "fill": {
+        "type": "gradient",
+        "colors": [
+          "#FFF7C2",
+          "#D4AF37"
+        ],
+        "angle": 90.0
+      },
+      "stroke": {
+        "width_em": 0.06,
+        "color": "#141A26",
+        "join": "round",
+        "enabled": true
+      },
+      "shadow": {
+        "sigma_em": 0.14,
+        "dx_em": 0.04,
+        "dy_em": 0.06,
+        "color": "#10141E",
+        "alpha": 0.82
+      },
+      "bg": {
+        "type": "none",
+        "color": "#141A26",
+        "alpha": 0.0,
+        "enabled": false
+      },
+      "fonts": {
+        "body": "Reem Kufi",
+        "emphasis": "Reem Kufi"
+      },
+      "anim": {
+        "in": "pop_in",
+        "loop": "none",
+        "out": "none",
+        "unit": "segment",
+        "in_s": 0.28,
+        "seed": 0
+      }
+    }
+  },
+  "layout_rules": {
+    "max_chars_per_line": 28,
+    "max_lines": 2,
+    "balance_lines": false,
+    "line_break": "space"
+  },
+  "keyword_rules": [],
+  "animation": {
+    "anim_in_type": "pop_in",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false
+  }
+}

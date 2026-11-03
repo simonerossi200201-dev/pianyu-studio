@@ -1,0 +1,11 @@
+{
+  "no_break_after": [
+    "il", "lo", "la", "i", "gli", "le", "un", "uno", "una",
+    "di", "del", "dello", "della", "dei", "degli", "delle",
+    "a", "al", "allo", "alla", "ai", "agli", "alle",
+    "da", "dal", "dallo", "dalla", "dai", "dagli", "dalle",
+    "in", "nel", "nello", "nella", "nei", "negli", "nelle",
+    "su", "sul", "sullo", "sulla", "sui", "sugli", "sulle",
+    "per", "con", "e", "ed", "o", "od"
+  ]
+}

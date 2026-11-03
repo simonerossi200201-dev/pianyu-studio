@@ -762,9 +762,10 @@ class CommandBodies:
             "right_index": int(right_index),
         }
 
-    def command_add_transition(self, track_id, start_t, duration, preset, domain="visual"):
+    def command_add_transition(self, track_id, start_t, duration=0.0, preset="", domain="visual"):
         from cutora.model.timeline_model import TransitionItem
         from cutora.render.anim_engine import audio_transition_duration
+        from cutora.render.transition_catalog import recommended_duration, recommended_sfx
         idx, task = _idx(self, None)
         tl = _tl(task)
         if tl is None:
@@ -778,9 +779,13 @@ class CommandBodies:
             raise CommandError("找不到轨道 %s" % track_id)
         self._require_unlocked(tr, track_id)
         domain = "audio" if str(domain or "visual") == "audio" else "visual"
-        dur = float(duration)
+        dur = float(duration or 0.0)
         if dur <= 0:
-            dur = audio_transition_duration(preset) if domain == "audio" else 0.35
+            dur = (
+                audio_transition_duration(preset)
+                if domain == "audio"
+                else recommended_duration(str(preset or ""), 0.35)
+            )
         t0 = float(start_t)
         t1 = t0 + dur
         bag = getattr(tr, "transitions", None)
@@ -803,6 +808,17 @@ class CommandBodies:
             replaced = TransitionItem(
                 start_t=t0, duration=dur, preset=str(preset), domain=domain)
             bag.append(replaced)
+        if domain == "visual":
+            try:
+                from cutora.audio import sfx_social
+                if sfx_social.is_enabled():
+                    sfx_id = recommended_sfx(str(preset or ""))
+                    if sfx_id:
+                        sfx_social.attach_transition_sfx(tl, tr, replaced, sfx_id)
+                    else:
+                        sfx_social.detach_transition_sfx(tl, tr, replaced)
+            except Exception:
+                pass
         self.timeline.update()
         return {
             "track_id": track_id,
@@ -859,6 +875,18 @@ class CommandBodies:
             found.preset = str(preset)
         if found.duration < min_dur:
             found.duration = min_dur
+        if preset is not None and str(getattr(found, "domain", "visual") or "visual") == "visual":
+            try:
+                from cutora.audio import sfx_social
+                from cutora.render.transition_catalog import recommended_sfx
+                if sfx_social.is_enabled():
+                    sfx_id = recommended_sfx(str(preset or ""))
+                    if sfx_id:
+                        sfx_social.attach_transition_sfx(tl, tr, found, sfx_id)
+                    else:
+                        sfx_social.detach_transition_sfx(tl, tr, found)
+            except Exception:
+                pass
         self.timeline.update()
         return {
             "track_id": track_id,
@@ -904,6 +932,11 @@ class CommandBodies:
                 break
         if found is None or found not in bag:
             raise CommandError("找不到转场")
+        try:
+            from cutora.audio import sfx_social
+            sfx_social.detach_transition_sfx(tl, tr, found)
+        except Exception:
+            pass
         bag.remove(found)
         self.timeline.update()
         return {

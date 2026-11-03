@@ -23,8 +23,10 @@ def test_script_enum_and_line_break_values():
     for row in rows:
         assert row["script"] in SCRIPT_ENUM, (row["code"], row["script"])
         assert row["line_break"] in LINE_BREAKS, (row["code"], row["line_break"])
-        if row["line_break"] == "space":
+        if row["line_break"] == "space" or row["code"] in ("zh", "ar"):
             assert row["experimental"] is False, row["code"]
+            if row["code"] in ("zh", "ar"):
+                assert row["subtitle_tier"] == "complete", row["code"]
         else:
             assert row["experimental"] is True, row["code"]
 
@@ -36,7 +38,12 @@ def test_arabic_hebrew_persian_not_latin():
         assert script in ("arabic", "hebrew"), (code, script)
         assert script != "latin", code
         assert by_code[code]["line_break"] == "fallback"
-        assert by_code[code]["experimental"] is True
+        if code == "ar":
+            assert by_code[code]["experimental"] is False
+            assert by_code[code]["subtitle_tier"] == "complete"
+            assert by_code[code]["align_tier"] == "exact"
+        else:
+            assert by_code[code]["experimental"] is True
 
 
 def test_cjk_scripts_are_han_kana_hangul():
@@ -46,7 +53,12 @@ def test_cjk_scripts_are_han_kana_hangul():
     assert by_code["ko"]["script"] == "hangul"
     for code in ("zh", "ja", "ko"):
         assert by_code[code]["line_break"] == "fallback"
-        assert by_code[code]["experimental"] is True
+        if code == "zh":
+            assert by_code[code]["experimental"] is False
+            assert by_code[code]["subtitle_tier"] == "complete"
+            assert by_code[code]["align_tier"] == "exact"
+        else:
+            assert by_code[code]["experimental"] is True
 
 
 def test_greek_armenian_georgian_are_supported():

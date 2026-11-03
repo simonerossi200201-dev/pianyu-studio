@@ -49,11 +49,18 @@ import os
 import re
 from dataclasses import dataclass
 
+from cutora.asr.text_norm import (
+    ZH_CLOSING as _ZH_CLOSING,
+    ZH_OPENING as _ZH_OPENING,
+    detect_dominant_script,
+    zh_display_units,
+)
 from cutora.core.paths import RESOURCES
 from cutora.subtitle.model import Segment, segment_from_dict
 from cutora.subtitle.track_source import set_segments
 
 DEFAULT_MAX_CHARS = 42
+DEFAULT_CJK_MAX_CHARS = 20
 DEFAULT_MAX_LINES = 2
 DEFAULT_CPS = 17.0
 DEFAULT_MIN_GAP = 0.08
@@ -61,8 +68,8 @@ PUNCT_END = frozenset(",.;:…—،؛؟，。；：！？、")
 _TOKEN_RE = re.compile(r"\S+|\s+")
 _WORD_STRIP = re.compile(r"^[\"'(\[«“‘]+|[\"')\]»”’.,;:!?…—،؛؟，。；：！？、]+$")
 _CJK_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]")
-_CJK_NO_START = frozenset("，。！？；：、）》」』】”’.,;:!?…—")
-_CJK_NO_END = frozenset("（《「『【“‘")
+_CJK_NO_START = frozenset("，。！？；：、）》」』】”’.,;:!?…—") | _ZH_CLOSING
+_CJK_NO_END = frozenset("（《「『【“‘") | _ZH_OPENING
 _STOP_CACHE: dict[str, frozenset[str]] = {}
 
 
@@ -374,62 +381,95 @@ def _greedy_pack(tokens: list[str], max_c: int, max_l: int, stops: frozenset[str
     return [" ".join(part) for part in lines if part]
 
 
+def _is_ascii_word_char(ch: str) -> bool:
+    return bool(ch) and ch.isascii() and (ch.isalnum() or ch in "%+-@#")
+
+
+def _join_cjk_atoms(atoms: list[str]) -> str:
+    """Join CJK/mixed atoms: insert space only between adjacent ASCII word tokens."""
+    out: list[str] = []
+    for raw in atoms:
+        atom = str(raw or "")
+        if not atom:
+            continue
+        if out and _is_ascii_word_char(out[-1][-1]) and _is_ascii_word_char(atom[0]):
+            out.append(" " + atom)
+        else:
+            out.append(atom)
+    return "".join(out)
+
+
+def _join_subtitle_tokens(tokens: list[str]) -> str:
+    """Join subtitle word tokens without inserting spaces between CJK units."""
+    clean = [str(t) for t in (tokens or []) if str(t)]
+    if not clean:
+        return ""
+    if not any(_CJK_CHAR_RE.search(t) for t in clean):
+        return " ".join(clean)
+    return _join_cjk_atoms(clean)
+
+
 def _cjk_atoms(text: str) -> list[str]:
-    """Split CJK text into kinsoku-safe atoms (keeping closing punct attached)."""
+    """Split CJK text into kinsoku-safe atoms (keeping closing punct attached,
+    opening punct attached to following unit, and Latin words/digits whole)."""
     body = (text or "").replace("\n", "").strip()
     if not body:
         return []
+    raw_units = zh_display_units(body)
+    if not raw_units:
+        return []
     atoms: list[str] = []
-    i = 0
-    n = len(body)
-    while i < n:
-        ch = body[i]
-        if ch.isspace():
-            i += 1
+    pending_open = ""
+    for unit in raw_units:
+        if all(ch in _CJK_NO_END for ch in unit):
+            pending_open += unit
             continue
-        atom = ""
-        while i < n and body[i] in _CJK_NO_END:
-            atom += body[i]
-            i += 1
-        if i < n:
-            if body[i].isascii() and (body[i].isalnum() or body[i] in "-'%$"):
-                while i < n and body[i].isascii() and not body[i].isspace() and body[i] not in _CJK_NO_START:
-                    atom += body[i]
-                    i += 1
-            else:
-                atom += body[i]
-                i += 1
-        while i < n and body[i] in _CJK_NO_START:
-            atom += body[i]
-            i += 1
-        if atom:
-            atoms.append(atom)
+        if all(ch in _CJK_NO_START for ch in unit) and atoms:
+            atoms[-1] += pending_open + unit
+            pending_open = ""
+            continue
+        atoms.append(pending_open + unit)
+        pending_open = ""
+    if pending_open:
+        if atoms:
+            atoms[-1] += pending_open
+        else:
+            atoms.append(pending_open)
     return atoms
+
+
+def _effective_cjk_max_chars(raw_max_c: int) -> int:
+    c = max(1, int(raw_max_c))
+    if c >= DEFAULT_MAX_CHARS:
+        return DEFAULT_CJK_MAX_CHARS
+    if c >= 28:
+        return min(22, max(16, c // 2))
+    return c
 
 
 def _split_cjk(text: str, rules: LayoutRules) -> list[str]:
     """Clause-aware and kinsoku-safe CJK line breaking."""
-    max_c = max(1, int(rules.max_chars_per_line))
+    max_c = _effective_cjk_max_chars(rules.max_chars_per_line)
     max_l = max(1, int(rules.max_lines))
     body = (text or "").replace("\n", "").strip()
     if not body:
         return []
-    if max_l == 1 or len(body) <= max_c:
-        return [body]
     atoms = _cjk_atoms(body)
-    if len(atoms) <= 1:
-        return [body]
+    joined_body = _join_cjk_atoms(atoms) if atoms else body
+    if max_l == 1 or len(joined_body) <= max_c or len(atoms) <= 1:
+        return [joined_body]
     if max_l == 2 and rules.balance_lines:
         best = None
         best_score = None
         for i in range(1, len(atoms)):
-            left = "".join(atoms[:i])
-            right = "".join(atoms[i:])
+            left = _join_cjk_atoms(atoms[:i])
+            right = _join_cjk_atoms(atoms[i:])
             over_l = 0 if len(left) <= max_c else 1
             over_r = 0 if len(right) <= max_c else 1
+            over_any = 1 if (over_l or over_r) else 0
             punct = 0 if left[-1] in PUNCT_END else 1
             spread = abs(len(left) - len(right))
-            score = (over_l + over_r, max(len(left), len(right)) if (over_l or over_r) else 0, punct, spread)
+            score = (over_any, max(len(left), len(right)) if over_any else 0, punct, spread)
             if best_score is None or score < best_score:
                 best_score = score
                 best = [left, right]
@@ -437,10 +477,11 @@ def _split_cjk(text: str, rules: LayoutRules) -> list[str]:
             return best
     lines: list[str] = [""]
     for atom in atoms:
-        if lines[-1] and len(lines[-1]) + len(atom) > max_c and len(lines) < max_l:
+        cand = _join_cjk_atoms([lines[-1], atom]) if lines[-1] else atom
+        if lines[-1] and len(cand) > max_c and len(lines) < max_l:
             lines.append(atom)
         else:
-            lines[-1] += atom
+            lines[-1] = cand
     return [ln for ln in lines if ln]
 
 
@@ -465,7 +506,11 @@ def word_indices_for_lines(lines: list[str], words: list) -> list[list[int]]:
     n_words = len(words or [])
     out: list[list[int]] = []
     for line in lines:
-        n = len(str(line).replace("…", " ").split())
+        s = str(line)
+        if _CJK_CHAR_RE.search(s):
+            n = len(_cjk_atoms(s.replace("…", "")))
+        else:
+            n = len(s.replace("…", " ").split())
         end = min(n_words, cursor + n)
         out.append(list(range(cursor, end)))
         cursor = end
@@ -484,8 +529,11 @@ def break_lines(segment, rules: LayoutRules | None = None) -> list[str]:
     text = " ".join(text.split())
     code = (lang or "").strip().lower()
     mode = (rules.line_break or line_break_mode(lang)).strip().lower()
-    if code in ("zh", "zh-cn", "zh-tw", "yue") or (_CJK_CHAR_RE.search(text) and " " not in text.strip()):
+    if code in ("zh", "zh-cn", "zh-tw", "yue") or _CJK_CHAR_RE.search(text):
         return _split_cjk(text, rules)
+    dom_script = detect_dominant_script(text)
+    if code == "ar" or (not code and dom_script in ("arabic", "hebrew")):
+        mode = "space"
     if mode == "fallback":
         return _split_fallback(text, rules)
     tokens = _tokens(text)
@@ -514,7 +562,8 @@ def _word_items_for_split(raw: dict) -> list[dict]:
         })
     if items:
         return items
-    toks = str(raw.get("text") or "").split()
+    raw_text = str(raw.get("text") or "")
+    toks = _cjk_atoms(raw_text) if _CJK_CHAR_RE.search(raw_text) else raw_text.split()
     n = max(1, sum(len(t) for t in toks))
     dur = max(0.0, t1 - t0)
     t = t0
@@ -538,7 +587,7 @@ def _seg_from_word_group(base: dict, group: list[dict], *, first: bool = False) 
         # 光栅缓存按 id 命中 —— 「Bible」那一格画出了「Does」（同 id、框一样大）。
         from cutora.subtitle.seg_ids import new_seg_id
         new["id"] = new_seg_id()
-    new["text"] = " ".join(w["word"] for w in group)
+    new["text"] = _join_subtitle_tokens([w["word"] for w in group])
     new["start"] = float(group[0]["start"])
     new["end"] = float(group[-1]["end"])
     new["words"] = [dict(w["raw"]) for w in group]
@@ -600,7 +649,7 @@ def _pixel_groups_for_seg(raw: dict, task: dict, rules: LayoutRules) -> list[lis
         cur: list[dict] = []
         for it in items:
             trial = cur + [it]
-            text = " ".join(x["word"] for x in trial)
+            text = _join_subtitle_tokens([x["word"] for x in trial])
             nline = 1
             if cur:
                 parts = _pixel_wrap_lines(
@@ -692,7 +741,11 @@ def relayout_task(task: dict, rules: LayoutRules | None = None, *, selected=None
         if write is not None and id(raw) not in write:
             continue
         lang = rules.lang or raw.get("lang")
+        code = (lang or "").strip().lower()
+        dom_script = detect_dominant_script(str(raw.get("text") or ""))
         mode = (rules.line_break or line_break_mode(lang)).strip().lower()
+        if code in ("zh", "zh-cn", "zh-tw", "yue", "ar") or (not code and dom_script in ("han", "arabic")):
+            mode = "space"
         local = LayoutRules(
             max_chars_per_line=rules.max_chars_per_line,
             max_lines=rules.max_lines,
@@ -932,14 +985,14 @@ def pack_tokens_to_width(
         return []
     max_l = max(1, int(max_l))
     if max_l == 1 or len(tokens) == 1:
-        return [" ".join(tokens)]
+        return [_join_subtitle_tokens(tokens)]
     stops = stops or frozenset()
     ntok = len(tokens)
     if max_l == 2:
         best = None
         best_score = None
         for i in range(1, ntok):
-            left, right = " ".join(tokens[:i]), " ".join(tokens[i:])
+            left, right = _join_subtitle_tokens(tokens[:i]), _join_subtitle_tokens(tokens[i:])
             w0 = float(fm.horizontalAdvance(left))
             w1 = float(fm.horizontalAdvance(right))
             hang = 1 if _bad_end(tokens[i - 1], stops) else 0
@@ -948,7 +1001,7 @@ def pack_tokens_to_width(
             if best_score is None or score < best_score:
                 best_score = score
                 best = [left, right]
-        return best or [" ".join(tokens)]
+        return best or [_join_subtitle_tokens(tokens)]
     return _greedy_pack(tokens, max(1, int(cap / 8)), max_l, stops)
 
 
@@ -972,7 +1025,7 @@ def prefix_fill_ellipsis(
         cur: list[str] = []
         while i < n:
             trial = cur + [tokens[i]]
-            body = " ".join(trial)
+            body = _join_subtitle_tokens(trial)
             more = (i + 1 < n)
             probe = (body + _ELLIPSIS) if (last and more) else body
             adv = float(fm.horizontalAdvance(probe))
@@ -989,15 +1042,15 @@ def prefix_fill_ellipsis(
             cur.append(tokens[i])
             i += 1
         if last and i < n:
-            cand = (" ".join(cur) + _ELLIPSIS) if cur else _ELLIPSIS
+            cand = (_join_subtitle_tokens(cur) + _ELLIPSIS) if cur else _ELLIPSIS
             while cur and float(fm.horizontalAdvance(cand)) > cap:
                 cur.pop()
-                cand = (" ".join(cur) + _ELLIPSIS) if cur else _ELLIPSIS
+                cand = (_join_subtitle_tokens(cur) + _ELLIPSIS) if cur else _ELLIPSIS
             out.append(cand)
             i = n
         else:
             if cur:
-                out.append(" ".join(cur))
+                out.append(_join_subtitle_tokens(cur))
         if i >= n:
             break
     if i < n and out:
@@ -1007,9 +1060,9 @@ def prefix_fill_ellipsis(
             if float(fm.horizontalAdvance(cand)) <= cap:
                 out[-1] = cand
             else:
-                words = last.split()
+                words = _cjk_atoms(last) if _CJK_CHAR_RE.search(last) else last.split()
                 while words:
-                    cand = " ".join(words) + _ELLIPSIS
+                    cand = _join_subtitle_tokens(words) + _ELLIPSIS
                     if float(fm.horizontalAdvance(cand)) <= cap:
                         out[-1] = cand
                         break
@@ -1024,8 +1077,11 @@ def reflow_and_fit(
 ) -> tuple[list[str], float, str | None, int]:
     """Width-pack all tokens, shrink to floor, then prefix-fill + visible …"""
     src_text = str(text or "").strip()
-    tokens = [t for t in src_text.split() if t] or [
-        t for t in " ".join(lines or []).split() if t]
+    if _CJK_CHAR_RE.search(src_text):
+        tokens = _cjk_atoms(src_text)
+    else:
+        tokens = [t for t in src_text.split() if t] or [
+            t for t in " ".join(lines or []).split() if t]
     cur = [str(x) for x in (lines or [])] or ([src_text] if src_text else [""])
     scale = 1.0
     warn = None

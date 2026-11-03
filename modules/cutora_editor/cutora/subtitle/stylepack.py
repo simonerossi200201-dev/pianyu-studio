@@ -838,9 +838,9 @@ def render_pack_thumb(path: str, dest: str) -> str:
     if QApplication.instance() is None:
         raise StylepackError("pack thumb needs QApplication")
     pack = load_pack(path)
-    from cutora.ui.panels.style_thumbs import paint_pack_on_frame, neutral_frame
+    from cutora.ui.panels.style_thumbs import paint_pack_on_frame, neutral_frame, pack_sample
     base = neutral_frame(1080, 1920)
-    painted = paint_pack_on_frame(base, pack, SAMPLE_EN, t=0.4)
+    painted = paint_pack_on_frame(base, pack, pack_sample(pack), t=0.4)
     scaled = painted.scaled(
         THUMB_SIZE, THUMB_SIZE,
         Qt.AspectRatioMode.KeepAspectRatioByExpanding,

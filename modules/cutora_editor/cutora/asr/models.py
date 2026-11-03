@@ -97,8 +97,13 @@ def _normalize_catalog_row(row: dict[str, Any]) -> dict[str, Any]:
     if item.get("kind") == "align" and item.get("language"):
         from cutora.asr.languages import get_language
         lang = get_language(str(item.get("language")))
-        if not lang or lang.get("line_break") != "space":
+        if not lang or (
+            lang.get("line_break") != "space"
+            and lang.get("subtitle_tier") != "complete"
+            and str(lang.get("code") or "") not in ("zh", "ar")
+        ):
             item["enabled"] = False
+            item["disabled_reason"] = "non_space_script"
     return item
 
 
@@ -381,7 +386,7 @@ ALIGN_IT_SENTENCE_NOTE = "意大利语暂只做句级时间戳，不做词级对
 PACK_FIXTURE_DIRNAMES = frozenset({"asr_fake"})
 # Local torchaudio pair lives in one folder; listed in models.json.
 FROZEN_ALIGN_IDS = ("align-en", "align-it")
-COMPLETE_LAYOUT_SCRIPTS = frozenset({"latin", "cyrillic", "greek"})
+COMPLETE_LAYOUT_SCRIPTS = frozenset({"latin", "cyrillic", "greek", "han", "arabic"})
 
 
 def is_pack_fixture(row: dict[str, Any]) -> bool:
@@ -466,21 +471,18 @@ def pack_model_directories() -> list[str]:
 
 
 def complete_layout_languages() -> list[dict[str, Any]]:
-    """Languages T04L L4 would mark ``subtitle_tier=complete``.
-
-    ``subtitle_tier`` is not in languages.json yet. Rule matches L4:
-    space line-break + latin/cyrillic/greek, not experimental.
-    """
+    """Languages marked ``subtitle_tier=complete`` (space + latin/cyrillic/greek, or zh/ar)."""
     from cutora.asr.languages import load_catalog
     out = []
     for row in load_catalog():
-        if row.get("line_break") != "space":
-            continue
-        if row.get("script") not in COMPLETE_LAYOUT_SCRIPTS:
-            continue
         if row.get("experimental"):
             continue
-        out.append(dict(row))
+        if row.get("subtitle_tier") != "complete":
+            continue
+        if row.get("line_break") == "space" and row.get("script") in COMPLETE_LAYOUT_SCRIPTS:
+            out.append(dict(row))
+        elif row.get("code") in ("zh", "ar"):
+            out.append(dict(row))
     return out
 
 

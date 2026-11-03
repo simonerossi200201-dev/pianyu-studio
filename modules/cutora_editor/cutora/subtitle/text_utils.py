@@ -48,24 +48,58 @@ _RICH_PARSE_FAST_LIMIT = 4000
 
 _RICH_PARSE_BLOCK_LIMIT = 300
 
+def is_rtl_text(text: str) -> bool:
+    """Return True when RTL letters (Arabic/Hebrew) dominate *text*."""
+    if not text:
+        return False
+    import unicodedata
+    rtl = 0
+    ltr = 0
+    for ch in str(text):
+        bidi = unicodedata.bidirectional(ch)
+        if bidi in ("R", "AL"):
+            rtl += 1
+        elif bidi == "L":
+            ltr += 1
+    return rtl > 0 and rtl >= ltr
+
+
 def tokenize_for_wrap(text: str):
 
     if not text:
         return [], ""
-    
+
     # 修复：防止Windows换行符 \r\n 和单独的 \r 导致分词数组指针索引错乱。
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    from cutora.subtitle.layout import _CJK_CHAR_RE, _cjk_atoms, _is_ascii_word_char
+    if _CJK_CHAR_RE.search(text):
+        tokens: list[str] = []
+        parts = text.split("\n")
+        for li, line in enumerate(parts):
+            if li > 0:
+                tokens.append("\n")
+            atoms = _cjk_atoms(line)
+            for ai, atom in enumerate(atoms):
+                if (
+                    ai + 1 < len(atoms)
+                    and _is_ascii_word_char(atom[-1])
+                    and _is_ascii_word_char(atoms[ai + 1][0])
+                ):
+                    tokens.append(atom + " ")
+                else:
+                    tokens.append(atom)
+        return tokens, ""
+
     has_space = " " in text
-    
-    import re
+
     if has_space:
         # 终极修复：绝对不要依赖 .split(" ")！
         # 使用正则提取：任何非空格字符连续块，或者独立的 \n 字符！
         # 这样无论有没有物理空格，只要有 \n，它都会被极其干净利落地切成独立的 token ('ORE', '\n', 'Caro')
         tokens = re.findall(r'[^\s\n]+|\n', text)
         return tokens, " "
-    
-    # 无空格的场景（如纯中文，或用户强行输入的无空格连续字符）
+
+    # 无空格的场景（如用户强行输入的无空格连续字符）
     # 退化为按字符切割，同时也单独保护 \n 不被粘连
     tokens = []
     for char in text:
@@ -742,6 +776,8 @@ def _doc_layout_lines(text, font, max_w, align=Qt.AlignmentFlag.AlignLeft):
         opt = QTextOption()
         opt.setWrapMode(QTextOption.WrapMode.WordWrap)
         opt.setAlignment(align)
+        if is_rtl_text(text or ""):
+            opt.setTextDirection(Qt.LayoutDirection.RightToLeft)
         doc.setDefaultTextOption(opt)
         doc.setDefaultFont(font)
         doc.setTextWidth(max_w)
@@ -830,10 +866,12 @@ def resegment_words_by_style(all_words, style, video_w):
     )
     fm = QFontMetrics(font)
 
+    from cutora.subtitle.layout import _CJK_CHAR_RE, _is_ascii_word_char, _join_subtitle_tokens
+
     def pack_event_words(words):
         if not words:
             return None
-        text = " ".join([w.get('word', '') for w in words if w.get('word')]).strip()
+        text = _join_subtitle_tokens([w.get('word', '') for w in words if w.get('word')]).strip()
         return {
             "start": words[0].get("start"),
             "end": words[-1].get("end"),
@@ -865,7 +903,24 @@ def resegment_words_by_style(all_words, style, video_w):
         tokens = [w.get('word', '') for w in current_words if w.get('word')]
         if next_token:
             tokens.append(next_token)
-        lines = wrap_tokens_by_pixel_width(tokens, fm, max_width_px, " ") if tokens else []
+        if not tokens:
+            return True
+        if any(_CJK_CHAR_RE.search(t) for t in tokens):
+            cjk_toks = []
+            for idx, tok in enumerate(tokens):
+                if (
+                    idx + 1 < len(tokens)
+                    and tok
+                    and tokens[idx + 1]
+                    and _is_ascii_word_char(tok[-1])
+                    and _is_ascii_word_char(tokens[idx + 1][0])
+                ):
+                    cjk_toks.append(tok + " ")
+                else:
+                    cjk_toks.append(tok)
+            lines = wrap_tokens_by_pixel_width(cjk_toks, fm, max_width_px, "")
+        else:
+            lines = wrap_tokens_by_pixel_width(tokens, fm, max_width_px, " ")
         return len(lines) <= max_lines
         
     def _deduplicate_words(w_list):

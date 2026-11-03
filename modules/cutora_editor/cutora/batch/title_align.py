@@ -128,7 +128,11 @@ def _words_of(segments) -> list[dict]:
         if not text:
             continue
         end = max(end, start)
-        parts = [p for p in re.split(r"\s+", text) if p]
+        if _CJK.search(text):
+            from cutora.asr.text_norm import zh_display_units
+            parts = [p for p in zh_display_units(text) if p]
+        else:
+            parts = [p for p in re.split(r"\s+", text) if p]
         if len(parts) > 1 and (end - start) > 0.6:
             weights = [max(1, len(p)) for p in parts]
             tot_w = float(sum(weights))
@@ -415,12 +419,15 @@ def _infer_end_punct(text: str) -> str:
     body = s.rstrip("\"'”’)] ")
     if not body:
         return ""
-    if body[-1] in ".!?…。！？;；:：":
+    if body[-1] in ".!?…。！？;；:：؟،؛":
         return ""
     if _CJK.search(body):
         if body.endswith(("吗", "呢", "吧")) or any(q in body for q in ("为什么", "怎么", "哪里", "谁", "多少", "几")):
             return "？"
         return "。"
+    ar_words = body.split()
+    if ar_words and ar_words[0] in ("هل", "ماذا", "لماذا", "كيف", "أين", "اين", "متى", "من", "كم"):
+        return "؟"
     toks = re.findall(r"[A-Za-z0-9']+", body.lower())
     if toks and toks[0] in _QUESTION_STARTERS:
         # "when god begins to lift you up" -> subordinate clause if not followed by auxiliary, so only question if short or aux

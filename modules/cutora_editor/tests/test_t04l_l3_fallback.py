@@ -8,8 +8,10 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PY = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
-FFMPEG_DIR = os.path.join(REPO, "runtime", "ffmpeg")
+_CAND_PY = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
+PY = _CAND_PY if os.path.isfile(_CAND_PY) else sys.executable
+_CAND_FFMPEG = os.path.join(REPO, "runtime", "ffmpeg")
+FFMPEG_DIR = _CAND_FFMPEG if os.path.isdir(_CAND_FFMPEG) else os.path.join(os.path.dirname( os.path.dirname(REPO)), "runtime", "ffmpeg")
 
 
 def test_script_fallback_covers_languages_scripts():

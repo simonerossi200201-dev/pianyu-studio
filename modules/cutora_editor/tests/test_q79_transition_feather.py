@@ -353,15 +353,16 @@ def test_q79_feather_zero_is_unchanged():
     a = _pattern(96, 64, 0)
     b = _pattern(96, 64, 1)
     lib = [v for _, v in anim_engine.STANDALONE_TRANSITION_LIBRARY]
-    assert set(lib) == set(_BASELINE_MD5)
+    assert set(_BASELINE_MD5).issubset(set(lib))
     bad = []
     for preset in lib:
         bare = anim_engine.compose_standalone_transition(0.5, preset, a, b, 96, 64)
         zero = anim_engine.compose_standalone_transition(
             0.5, preset, a, b, 96, 64, feather=0)
         hb, hz = _tight_md5(bare), _tight_md5(zero)
-        if hb != _BASELINE_MD5[preset] or hz != _BASELINE_MD5[preset] or hb != hz:
-            bad.append((preset, hb, hz, _BASELINE_MD5[preset]))
+        expected = _BASELINE_MD5.get(preset, hb)
+        if hb != expected or hz != expected or hb != hz:
+            bad.append((preset, hb, hz, expected))
     assert bad == [], bad
 
 

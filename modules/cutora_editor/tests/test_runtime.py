@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VENV_PY = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
+_CAND_PY = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
+VENV_PY = _CAND_PY if os.path.isfile(_CAND_PY) else sys.executable
 
 
 def test_init_torch_runtime_render_child_does_not_import_torch():

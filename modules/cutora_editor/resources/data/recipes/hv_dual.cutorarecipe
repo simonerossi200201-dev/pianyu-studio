@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "name": "横竖双版本",
+  "description": "导入一条口播、打轴，导出成品到 out_dir。T08a 删除了空转的 profile；横竖双预设对象见 T08b。",
+  "inputs": {
+    "media": { "description": "一条口播视频" },
+    "out_dir": { "description": "成品目录" }
+  },
+  "steps": [
+    { "command": "media.probe", "params": { "path": "{media}" }, "on_error": "stop" },
+    { "command": "media.import", "params": { "paths": ["{media}"] }, "on_error": "stop" },
+    { "command": "subtitle.auto", "params": { "language": "auto" }, "on_error": "stop" },
+    { "command": "export.run", "params": { "out_dir": "{out_dir}" }, "on_error": "stop" }
+  ]
+}

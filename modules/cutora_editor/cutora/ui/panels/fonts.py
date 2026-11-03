@@ -175,9 +175,15 @@ def scan_fonts_from_dir():
         if not families:
             no_family += 1
             continue
-        file_ids[path] = font_id
-        file_families[path] = list(families)
+        clean_families = []
         for fam in families:
+            if fam and set(fam) == {"?"} and "zcool" in os.path.basename(path).lower():
+                clean_families.append("ZCOOL XiaoWei")
+            else:
+                clean_families.append(fam)
+        file_ids[path] = font_id
+        file_families[path] = list(clean_families)
+        for fam in clean_families:
             family_files.setdefault(fam, [])
             if path not in family_files[fam]:
                 family_files[fam].append(path)
@@ -290,7 +296,8 @@ def open_font_picker_for_combo(combo: QComboBox):
         _combo.setFocus()
 
     pop = open_font_picker(combo, families, combo.currentText(), _pick,
-                           sample_text=font_sample_text(combo), no_script=no_script_families())
+                           sample_text=font_sample_text(combo), no_script=no_script_families(),
+                           lang_code=_active_lang_code(combo))
     _PICKER["pop"] = pop
     return pop
 
@@ -484,7 +491,7 @@ class FontManager:
         self._family_name_map = {}
         for family in self.font_files:
             if family and family not in self._family_name_map:
-                self._family_name_map[family] = family
+                self._family_name_map[family] = "?????" if family == "ZCOOL XiaoWei" else family
         seen_files = set()
         loaded = 0
         # DirectWrite exposes variable-font named instances as extra family
@@ -1174,3 +1181,20 @@ class FontManagerDialog(QDialog):
             self.refresh_callback()
         self._build_folder_tree()
         self._refresh_font_list()
+
+
+def _active_lang_code(combo=None) -> str:
+    """Resolve current subtitle/task language code for grouping & pinning in FontPickerPopup."""
+    if combo is not None:
+        try:
+            prop_lang = combo.property("fontLang")
+            if prop_lang:
+                return str(prop_lang).strip().lower()
+        except Exception:
+            pass
+    try:
+        from cutora.core import config as cfg
+        return str(getattr(cfg, "LANGUAGE", "") or "").strip().lower()
+    except Exception:
+        return ""
+

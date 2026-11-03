@@ -799,11 +799,11 @@ def build() -> list:
             params={
                 "track_id": s("string", "轨道 id"),
                 "start_t": s("number", "转场起点（秒）"),
-                "duration": s("number", "转场时长（秒）"),
+                "duration": s("number", "转场时长（秒），省略或 <=0 时使用预设推荐时长"),
                 "preset": s("string", "转场预设名"),
                 "domain": s("string", "visual 或 audio", enum=["visual", "audio"]),
             },
-            required=["track_id", "start_t", "duration", "preset"],
+            required=["track_id", "start_t", "preset"],
             undoable=True,
             requires_project=True,
         ),

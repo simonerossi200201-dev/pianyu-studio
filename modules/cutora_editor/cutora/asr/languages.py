@@ -69,13 +69,16 @@ def _normalize_row(row: dict) -> dict[str, Any]:
     script = str(row.get("script") or "").strip().lower()
     line_break = str(row.get("line_break") or "").strip().lower()
     complete = (
-        line_break == "space"
-        and script in ("latin", "cyrillic", "greek")
-        and not bool(row.get("experimental"))
-    )
+        (
+            line_break == "space"
+            and script in ("latin", "cyrillic", "greek")
+        )
+        or code in ("zh", "ar")
+    ) and not bool(row.get("experimental"))
     tier = str(row.get("subtitle_tier") or "").strip().lower()
     if tier not in ("complete", "font_only"):
         tier = "complete" if complete else "font_only"
+    align_tier = str(row.get("align_tier") or ("exact" if complete else "approx")).strip().lower()
     return {
         "code": code,
         "name_en": str(row.get("name_en") or code),
@@ -85,6 +88,7 @@ def _normalize_row(row: dict) -> dict[str, Any]:
         "line_break": line_break,
         "experimental": bool(row.get("experimental")),
         "subtitle_tier": tier,
+        "align_tier": align_tier,
         "note": str(row.get("note") or ""),
     }
 

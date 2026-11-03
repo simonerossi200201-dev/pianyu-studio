@@ -14,7 +14,8 @@ from cutora.subtitle.layout import (
 )
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PY = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
+_PY_CAND = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
+PY = _PY_CAND if os.path.isfile(_PY_CAND) else sys.executable
 
 OVERFLOW = (
     "Please remember to bring the documents, the maps, the keys, "

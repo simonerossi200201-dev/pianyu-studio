@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cutora.local/recipe.schema.json",
+  "title": "CUTORA recipe",
+  "type": "object",
+  "required": ["schema_version", "name", "description", "inputs", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "params"],
+        "additionalProperties": false,
+        "properties": {
+          "command": { "type": "string", "minLength": 1 },
+          "params": { "type": "object" },
+          "on_error": { "type": "string", "enum": ["stop", "skip"] },
+          "skip_if": {
+            "type": "object",
+            "required": ["command", "field"],
+            "additionalProperties": false,
+            "properties": {
+              "command": { "type": "string", "minLength": 1 },
+              "field": { "type": "string", "minLength": 1 },
+              "equals": {},
+              "params": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

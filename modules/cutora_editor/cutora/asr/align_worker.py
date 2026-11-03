@@ -25,7 +25,14 @@ from cutora.render.readers import (
     probe_bitrates,
     probe_duration_sec,
 )
-from cutora.asr.engine import align_transcript, get_align_model, get_whisperx_model, has_local_align_model, torch, trim_gpu_cache, whisperx
+from cutora.asr.engine import align_transcript, align_zh_ar_segments, get_align_model, get_whisperx_model, has_local_align_model, torch, trim_gpu_cache, whisperx
+from cutora.asr.text_norm import (
+    ar_align_form,
+    ar_display_units,
+    detect_dominant_script,
+    zh_align_form,
+    zh_display_units,
+)
 from cutora.core.paths import MODELS
 from cutora.render.readers import probe_bitrates, probe_duration_sec
 from cutora.subtitle.text_utils import resegment_words_by_style
@@ -654,10 +661,17 @@ class AlignmentWorker(QThread):
 
     def pack_event(self, words):
         if not words: return None
-        full_text = ""
+        from cutora.subtitle.layout import _join_subtitle_tokens
+        lines = []
+        cur = []
         for w in words:
-            if w.get('is_break'): full_text += "\n"
-            full_text += w['word'] + " "
+            if w.get('is_break') and cur:
+                lines.append(_join_subtitle_tokens(cur))
+                cur = []
+            cur.append(w['word'])
+        if cur:
+            lines.append(_join_subtitle_tokens(cur))
+        full_text = "\n".join(lines)
         return {
             "start": words[0]["start"], 
             "end": words[-1]["end"], 

@@ -172,13 +172,20 @@ def _event_text(seg: Segment, karaoke: bool) -> str:
 
 
 def _karaoke(seg: Segment) -> str:
+    from cutora.subtitle.layout import _CJK_CHAR_RE, _is_ascii_word_char
     parts: list[str] = []
+    prev_piece = ""
     for i, word in enumerate(seg.words):
         dur = max(0.0, float(word.end) - float(word.start))
         cs = max(0, int(round(dur * 100.0)))
         piece = word.text or ""
         if i > 0 and piece and not piece[0].isspace():
-            piece = " " + piece
+            if _CJK_CHAR_RE.search(prev_piece) or _CJK_CHAR_RE.search(piece):
+                if prev_piece and _is_ascii_word_char(prev_piece[-1]) and _is_ascii_word_char(piece[0]):
+                    piece = " " + piece
+            else:
+                piece = " " + piece
+        prev_piece = word.text or ""
         parts.append(r"{\k%d}%s" % (cs, _escape(piece)))
     return "".join(parts) or _escape(seg.text or "")
 

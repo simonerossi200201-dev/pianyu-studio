@@ -14,6 +14,16 @@ from cutora.subtitle.stylepack import PACK_OFFSET_Y_PCT, list_pack_dirs, load_pa
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACK_DIR = os.path.join(REPO, "resources", "stylepacks")
 
+SOCIAL_20_IDS = {
+    "zh-variety-boom", "zh-variety-punch", "zh-sci-explain",
+    "zh-xhs-cream", "zh-xhs-matcha",
+    "zh-guofeng-brush", "zh-guofeng-xing", "zh-guofeng-grass",
+    "zh-wenkai-poetic", "zh-vlog-handnote", "zh-comic-marker",
+    "zh-cyber-neon", "zh-alert-redwhite", "zh-cinema-serif", "zh-hk-neon-retro",
+    "ar-gold-headline", "ar-news-white", "ar-poster-impact",
+    "ar-calligraphy-ruqaa", "ar-modern-changa",
+}
+
 EXPECTED_IDS = {
     "basic-white-red", "glass-white", "minimal-white", "bar-black", "amber-karaoke", "chant",
     "podcast-card", "pop-word", "duo-pop", "handwrite-duo", "neon-cyan",
@@ -22,7 +32,7 @@ EXPECTED_IDS = {
     "word-pill-follow", "line-hug-morandi", "oriental-brackets", "gold-bottom-rule",
     "linen-literary", "jade-forest-calm", "capsule-silver-ring", "wave-gold-note",
     "sentence-bar-glide", "rose-quartz-elegance", "hud-tech-clean", "art-deco-theater",
-}
+} | SOCIAL_20_IDS
 NO_KARAOKE_GOLD = ("minimal-white", "bar-black")
 
 
@@ -126,3 +136,22 @@ def test_normalize_calls_feather_migrate():
     el = data["tasks"][0]["image_overlays"][0]["elements"][0]
     assert el.get("feather_legacy") == 30
     assert el.get("fade_top", 0) > 0
+
+
+def test_social_20_packs_commercial_fonts_and_thumbs():
+    from PySide6.QtWidgets import QApplication
+    import cutora.ui.panels.fonts as fonts_mod
+
+    _app = QApplication.instance() or QApplication([])
+    fonts_mod.load_embedded_fonts()
+    allowed = set(fonts_mod.ALLOWED_FONTS)
+    assert len(SOCIAL_20_IDS) == 20
+    for name in sorted(SOCIAL_20_IDS):
+        pdir = os.path.join(PACK_DIR, name)
+        pack = load_pack(pdir)
+        assert pack["preview"] and os.path.isfile(pack["preview"]), name
+        assert pack["thumb"] and os.path.isfile(pack["thumb"]), name
+        assert os.path.isfile(os.path.join(pdir, "thumb.hash")), name
+        fam = (pack.get("style") or {}).get("font_family")
+        assert fam in allowed, (name, fam)
+

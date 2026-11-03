@@ -1,0 +1,106 @@
+{
+  "version": 2,
+  "style": {
+    "pos_x": 540,
+    "pos_y": 1114,
+    "fontsize": 78,
+    "font_family": "Liu Jian Mao Cao",
+    "bold": true,
+    "italic": false,
+    "color_text": "#FFE082",
+    "color_high": "#EF4444",
+    "color_bg": "#0B1A33",
+    "color_outline": "#281509",
+    "opacity_bg": 180,
+    "opacity_outline": 255,
+    "shadow_enabled": false,
+    "use_box": false,
+    "use_stroke": true,
+    "border_width": 3,
+    "box_padding_x": 22,
+    "box_padding_y": 10,
+    "box_radius": 12,
+    "rotation": 0,
+    "wrap_width_percent": 86,
+    "wrap_lines": 2,
+    "line_spacing": 4,
+    "dynamic_box": false,
+    "anim_in_type": "pop_in",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false,
+    "fade_in_out_duration": 0.3,
+    "geom_user_set": false,
+    "font_style": "",
+    "opacity_text_global": 255,
+    "anchor": "bottom-center",
+    "offset_x_pct": 0.0,
+    "offset_y_pct": -0.42,
+    "fontsize_pct": 0.072222,
+    "fx": {
+      "fill": {
+        "type": "gradient",
+        "colors": [
+          "#FFF0B3",
+          "#F59E0B"
+        ],
+        "angle": 90.0
+      },
+      "stroke": {
+        "width_em": 0.055,
+        "color": "#281509",
+        "join": "round",
+        "enabled": true
+      },
+      "extrude": {
+        "depth_em": 0.06,
+        "angle": 135,
+        "color": "#281509"
+      },
+      "shadow": {
+        "sigma_em": 0.14,
+        "dx_em": 0.04,
+        "dy_em": 0.06,
+        "color": "#1C0F07",
+        "alpha": 0.85
+      },
+      "bg": {
+        "type": "none",
+        "color": "#281509",
+        "alpha": 0.0,
+        "enabled": false
+      },
+      "fonts": {
+        "body": "Liu Jian Mao Cao",
+        "emphasis": "Liu Jian Mao Cao"
+      },
+      "anim": {
+        "in": "pop_in",
+        "loop": "none",
+        "out": "none",
+        "unit": "segment",
+        "in_s": 0.3,
+        "seed": 0
+      }
+    }
+  },
+  "layout_rules": {
+    "max_chars_per_line": 18,
+    "max_lines": 2,
+    "balance_lines": false,
+    "line_break": "space"
+  },
+  "keyword_rules": [],
+  "animation": {
+    "anim_in_type": "pop_in",
+    "anim_in_duration": 0.28,
+    "anim_in_easing": "ease_out",
+    "anim_out_type": "none",
+    "anim_out_duration": 0.25,
+    "anim_out_easing": "ease_out",
+    "fade_in_out_enabled": false
+  }
+}

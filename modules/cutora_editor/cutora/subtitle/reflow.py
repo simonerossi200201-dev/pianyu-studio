@@ -164,6 +164,7 @@ def make_line_counter(style: dict, task: dict, lang: str | None = None
         from cutora.render.textfx.layout import _pixel_wrap_lines
         from cutora.render.textfx.spec import expansion_px, from_style
         from cutora.subtitle.io import canvas_size
+        from cutora.subtitle.layout import _join_subtitle_tokens
         cw, _ch = canvas_size(task)
         em = float(style.get("fontsize") or 34)
         spec = from_style(style)
@@ -175,7 +176,7 @@ def make_line_counter(style: dict, task: dict, lang: str | None = None
         cache: dict = {}
 
         def count(tokens):
-            text = " ".join(tokens)
+            text = _join_subtitle_tokens(tokens)
             hit = cache.get(text)
             if hit is not None:
                 return hit
@@ -199,6 +200,7 @@ def split_run(tokens: list[str], fits: Callable[[list[str]], bool],
 
     fits(seg) 装不装得下；lines_of(seg) 用了几行（给「少用一行」计罚，可不传）。
     """
+    from cutora.subtitle.layout import _join_subtitle_tokens
     n = len(tokens)
     if n == 0:
         return []
@@ -206,7 +208,7 @@ def split_run(tokens: list[str], fits: Callable[[list[str]], bool],
     best = [INF] * (n + 1)
     prev = [-1] * (n + 1)
     best[0] = 0.0
-    total_chars = max(1, len(" ".join(tokens)))
+    total_chars = max(1, len(_join_subtitle_tokens(tokens)))
     for j in range(1, n + 1):
         # i 从 j-1 往前扫，一旦装不下就停（再往前更装不下）
         i = j - 1
@@ -227,7 +229,7 @@ def split_run(tokens: list[str], fits: Callable[[list[str]], bool],
                     cost += COST_EMPTY_LINE * (max_lines - used)
                 if j == n and i > 0:
                     # 末条比平均明显空 → 罚，逼它从前一条借词
-                    frac = len(" ".join(seg)) / float(total_chars)
+                    frac = len(_join_subtitle_tokens(seg)) / float(total_chars)
                     if frac < 0.25:
                         cost += COST_UNDERFULL * (0.25 - frac) / 0.25
                 if cost < best[j]:
@@ -308,12 +310,14 @@ def group_words(items: list[dict], style: dict, task: dict, *,
 
 
 def _seg_text_is_edited(raw: dict) -> bool:
+    from cutora.subtitle.layout import _join_subtitle_tokens
     ed = raw.get("edited_text")
     if not ed:
         return False
-    joined = " ".join(str(w.get("word") or "").strip()
-                      for w in (raw.get("words") or []) if isinstance(w, dict)).split()
-    return " ".join(str(ed).split()) != " ".join(joined)
+    toks = [str(w.get("word") or "").strip()
+            for w in (raw.get("words") or []) if isinstance(w, dict) and str(w.get("word") or "").strip()]
+    joined = _join_subtitle_tokens(toks)
+    return " ".join(str(ed).split()) != " ".join(joined.split())
 
 
 def reflow_task(task: dict, *, selected=None, max_lines: int | None = None,

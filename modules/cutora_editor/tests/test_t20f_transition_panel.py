@@ -210,3 +210,282 @@ def test_preview_wav_filter_uses_esin_curve(tmp_path, monkeypatch):
     assert "curve=esin" in fc, fc
     assert "afade=t=in" in fc, fc
     assert "afade=t=out" in fc, fc
+
+
+def _run_qt(code: str, tmp_ud: str | None = None) -> None:
+    env = _child_env()
+    if tmp_ud:
+        env["CUTORA_USER_DATA"] = str(tmp_ud)
+        env["CUTORA_PYTEST_SESSION_UD"] = str(tmp_ud)
+    r = subprocess.run(
+        [VENV_PY if os.path.isfile(VENV_PY) else sys.executable, "-c", code],
+        cwd=REPO, env=env,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=90,
+    )
+    out = (r.stdout or "") + "\n" + (r.stderr or "")
+    assert r.returncode == 0 and "ALL_OK" in (r.stdout or ""), out[-4000:]
+
+
+def test_transition_samples_and_static_thumbnails(tmp_path):
+    """samples_available() is True and every video card renders a 128x72 16:9 sample frame."""
+    code = r"""
+from cutora.core.runtime import init_torch_runtime
+init_torch_runtime(render_child=False)
+from PySide6.QtCore import QSize
+from PySide6.QtWidgets import QApplication
+from cutora.ui.panels.transition_panel import (
+    THUMB_H, THUMB_W, TransitionPanel, samples_available,
+)
+
+app = QApplication.instance() or QApplication(['t20f-samples'])
+assert samples_available() is True, 'real 16:9 transition samples must be available'
+p = TransitionPanel()
+p.resize(470, 680)
+p.show()
+QApplication.processEvents()
+
+assert len(p._video_cards) >= 55
+for card in p._video_cards:
+    assert card.thumb.size() == QSize(THUMB_W, THUMB_H) == QSize(128, 72)
+    pix = card.thumb.static_pixmap()
+    assert pix is not None and not pix.isNull(), f'null pixmap for {card.preset}'
+    dpr = max(1.0, float(pix.devicePixelRatio()))
+    assert int(round(pix.width() / dpr)) == 128, (card.preset, pix.width(), dpr)
+    assert int(round(pix.height() / dpr)) == 72, (card.preset, pix.height(), dpr)
+    img = pix.toImage()
+    colors = {
+        img.pixel(x, y)
+        for y in range(0, img.height(), 4)
+        for x in range(0, img.width(), 4)
+    }
+    assert len(colors) >= 50, f'{card.preset} thumbnail is too uniform ({len(colors)} colors)'
+print('ALL_OK')
+"""
+    _run_qt(code, str(tmp_path))
+
+
+def test_transition_category_tabs_and_search(tmp_path):
+    """Category tabs (hot/all/camera/rhythm/graphic/light/audio/fav) and zh/en/pinyin search."""
+    code = r"""
+from cutora.core.runtime import init_torch_runtime
+init_torch_runtime(render_child=False)
+from PySide6.QtWidgets import QApplication
+from cutora.ui.panels.transition_panel import (
+    AUDIO_ITEMS, VIDEO_ITEMS, TransitionPanel, pinyin_initials,
+)
+
+app = QApplication.instance() or QApplication(['t20f-tabs-search'])
+p = TransitionPanel()
+p.resize(470, 680)
+p.show()
+QApplication.processEvents()
+
+for cat in ('hot', 'all', 'camera', 'rhythm', 'graphic', 'light', 'audio', 'fav'):
+    assert cat in p._cat_buttons, f'missing category tab {cat}'
+    p._set_category(cat)
+    QApplication.processEvents()
+    assert p.active_category() == cat
+    assert p._cat_buttons[cat].isChecked() is True
+    for other, btn in p._cat_buttons.items():
+        if other != cat:
+            assert btn.isChecked() is False
+    matched = p.matching_presets('', cat)
+    if cat == 'all':
+        assert len(matched) == len(VIDEO_ITEMS) + len(AUDIO_ITEMS)
+        assert p._video_box.isVisible() is True
+        assert p._audio_box.isVisible() is True
+    elif cat == 'audio':
+        assert len(matched) == len(AUDIO_ITEMS) == 5
+        assert p._video_box.isVisible() is False
+        assert p._audio_box.isVisible() is True
+    elif cat == 'fav':
+        assert matched == []
+        assert p._empty_lbl.isVisible() is True
+    else:
+        assert len(matched) >= 2, f'category {cat} should not be empty'
+        assert p._video_box.isVisible() is True
+        assert p._audio_box.isVisible() is False
+
+# Chinese name search
+zh_hits = p.matching_presets('溶解', 'all')
+assert 'cross_dissolve' in zh_hits and 'blur_dissolve' in zh_hits, zh_hits
+
+# English ID search
+en_hits = p.matching_presets('whip_pan_left', 'all')
+assert 'whip_pan_left' in en_hits, en_hits
+en_audio = p.matching_presets('audio_xfade_equal', 'all')
+assert 'audio_xfade_equal' in en_audio, en_audio
+
+# Pinyin initials search
+assert pinyin_initials('交叉溶解') == 'jcrj'
+py_hits = p.matching_presets('jcrj', 'all')
+assert 'cross_dissolve' in py_hits, py_hits
+py_sj = p.matching_presets('sjrj', 'all')
+assert 'bokeh_dissolve' in py_sj, py_sj
+
+# UI search box updates visible cards and empty state
+p._set_category('all')
+p._search_edit.setText('jcrj')
+QApplication.processEvents()
+vis_presets = [c.preset for c in p._video_cards if c.isVisible()]
+assert 'cross_dissolve' in vis_presets
+assert p._empty_lbl.isVisible() is False
+
+p._search_edit.setText('nonexistent_transition_xyz_999')
+QApplication.processEvents()
+assert p._empty_lbl.isVisible() is True
+p._search_edit.setText('')
+QApplication.processEvents()
+print('ALL_OK')
+"""
+    _run_qt(code, str(tmp_path))
+
+
+def test_transition_favorites_recent_and_sfx_persistence(tmp_path):
+    """set_favorite, note_used, and sfx_enabled / set_sfx_enabled persist across panels."""
+    code = r"""
+from cutora.core.runtime import init_torch_runtime
+init_torch_runtime(render_child=False)
+from PySide6.QtWidgets import QApplication
+from cutora.ui.panels.transition_panel import (
+    RECENT_MAX, TransitionPanel, set_sfx_enabled, sfx_enabled,
+)
+
+app = QApplication.instance() or QApplication(['t20f-persist'])
+p = TransitionPanel()
+p.resize(470, 680)
+p.show()
+QApplication.processEvents()
+
+# Favorites persistence
+p.set_favorite('cross_dissolve', True)
+p.set_favorite('whip_pan_left', True)
+assert p.favorites() == ['cross_dissolve', 'whip_pan_left']
+p._set_category('fav')
+QApplication.processEvents()
+assert set(p.matching_presets('', 'fav')) == {'cross_dissolve', 'whip_pan_left'}
+assert p._empty_lbl.isVisible() is False
+
+p.set_favorite('cross_dissolve', False)
+assert p.favorites() == ['whip_pan_left']
+
+# Recently used persistence & cap at RECENT_MAX
+presets = [c.preset for c in p._video_cards[:RECENT_MAX + 3]]
+for pr in presets:
+    p.note_used(pr, 'visual')
+p._after_recent_change()
+QApplication.processEvents()
+assert len(p.recent()) == RECENT_MAX
+assert p.recent()[0] == presets[-1]
+# Re-using an existing preset moves it to index 0 without duplication
+target = p.recent()[-1]
+p.note_used(target, 'visual')
+p._after_recent_change()
+assert p.recent()[0] == target
+assert len(p.recent()) == len(set(p.recent())) == RECENT_MAX
+
+p._set_category('hot')
+QApplication.processEvents()
+assert p._recent_box.isVisible() is True
+
+# SFX toggle
+set_sfx_enabled(True)
+assert sfx_enabled() is True
+set_sfx_enabled(False)
+assert sfx_enabled() is False
+p._sfx_check.setChecked(True)
+QApplication.processEvents()
+assert p.sfx_enabled() is True
+assert sfx_enabled() is True
+
+# Second panel instance restores favorites, recent, active tab, and sfx state
+p2 = TransitionPanel()
+assert p2.favorites() == ['whip_pan_left']
+assert p2.recent() == p.recent()
+assert p2.active_category() == 'hot'
+assert p2.sfx_enabled() is True
+p2._sfx_check.setChecked(False)
+QApplication.processEvents()
+assert p2.sfx_enabled() is False
+assert sfx_enabled() is False
+print('ALL_OK')
+"""
+    _run_qt(code, str(tmp_path))
+
+
+def test_transition_hover_frame_lru_and_perf_stats(tmp_path):
+    """_FRAMES LRU enforces entry/byte caps and perf_stats() tracks hover/paint metrics."""
+    code = r"""
+from cutora.core.runtime import init_torch_runtime
+init_torch_runtime(render_child=False)
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QApplication
+from cutora.ui.panels.transition_panel import (
+    ANIM_FRAMES, _FRAMES, _FrameLRU, TransitionPanel, perf_stats, reset_perf,
+)
+
+app = QApplication.instance() or QApplication(['t20f-lru-perf'])
+
+# Direct unit test of _FrameLRU entry cap and byte cap
+lru = _FrameLRU(max_entries=3, max_bytes=1024 * 1024)
+fake_pix = QPixmap(32, 32)
+for i in range(5):
+    k = ('preset_%d' % i, 'camera', False, 1.0)
+    lst = lru.frames(k, 4)
+    lru.store(k, 0, fake_pix)
+    assert len(lru) <= 3, f'LRU exceeded max_entries: {len(lru)}'
+assert ('preset_0', 'camera', False, 1.0) not in lru._d
+assert ('preset_1', 'camera', False, 1.0) not in lru._d
+assert ('preset_4', 'camera', False, 1.0) in lru._d
+
+# Touching preset_2 moves it to MRU so preset_3 is evicted next
+lru.frames(('preset_2', 'camera', False, 1.0), 4)
+lru.frames(('preset_5', 'camera', False, 1.0), 4)
+assert ('preset_2', 'camera', False, 1.0) in lru._d
+assert ('preset_3', 'camera', False, 1.0) not in lru._d
+
+# Byte cap eviction
+tiny_lru = _FrameLRU(max_entries=100, max_bytes=20000)
+big_pix = QPixmap(64, 64)  # ~16 KB at 32-bit depth
+for i in range(4):
+    k = ('b_%d' % i, 'camera', False, 1.0)
+    tiny_lru.frames(k, 2)
+    tiny_lru.store(k, 0, big_pix)
+assert tiny_lru.total_bytes <= 20000
+assert len(tiny_lru) == 1
+
+# Panel hover playback populates _FRAMES and perf_stats()
+_FRAMES.clear()
+reset_perf()
+st0 = perf_stats()
+assert st0['tick']['n'] == 0 and st0['paint']['n'] == 0
+assert st0['anim_cache_presets'] == 0
+
+p = TransitionPanel()
+p.resize(470, 680)
+p.show()
+QApplication.processEvents()
+
+card = p._video_cards[0]
+card.thumb.set_playing(True)
+for _ in range(6):
+    card.thumb._advance(step=1)
+card.thumb.repaint()
+QApplication.processEvents()
+card.thumb.set_playing(False)
+
+st = perf_stats()
+assert st['tick']['n'] >= 6, st
+assert st['paint']['n'] >= 1, st
+assert st['anim_cache_presets'] >= 1, st
+assert st['anim_cache_bytes'] > 0, st
+assert st['static_cache_count'] >= 1, st
+assert st['static_cache_bytes'] > 0, st
+assert st['sample_bytes'] > 0, st
+assert len(_FRAMES) <= _FRAMES.max_entries
+assert _FRAMES.total_bytes <= _FRAMES.max_bytes
+print('ALL_OK')
+"""
+    _run_qt(code, str(tmp_path))
+
