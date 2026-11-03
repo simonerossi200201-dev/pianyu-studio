@@ -43,9 +43,15 @@ from core.delivery_worker import get_delivery_worker
 
 
 def _bootstrap_studio_env() -> None:
-    """在受保护上下文中修正便携路径、快捷方式与右键表格工具注册（并自动清理旧版回收站残影键）。"""
+    """在受保护上下文中修正便携路径、自动静默合并同级模型包、隐藏内部杂乱目录、更新快捷方式与右键表格工具注册。"""
     try:
         write_launch_state("BOOTSTRAP_START", app_name="launcher")
+    except Exception:
+        pass
+    try:
+        from core.standalone_bootstrap import hide_internal_root_clutter, try_silent_merge_sibling_model_pack
+        try_silent_merge_sibling_model_pack(LTX_ROOT)
+        hide_internal_root_clutter(LTX_ROOT)
     except Exception:
         pass
     try:
@@ -162,6 +168,42 @@ def _detached_popen_kwargs() -> dict:
     return {"start_new_session": True, "close_fds": True}
 
 
+def _has_python_module(mod_name: str) -> bool:
+    """检查当前激活的 Python 环境是否已安装指定模块。"""
+    import importlib.util
+    try:
+        if importlib.util.find_spec(mod_name) is not None:
+            return True
+    except Exception:
+        pass
+    py = _python_exe(gui=False)
+    try:
+        r = subprocess.run(
+            [py, "-c", f"import importlib.util, sys; sys.exit(0 if importlib.util.find_spec({mod_name!r}) else 1)"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _spawn_bootstrap_console(app_target: str, extra_env: dict | None = None) -> subprocess.Popen:
+    """当用户仅下载了 02 轻量代码包、首次启动 Orante 或 CUTORA 需补齐轻量依赖时，弹出可见终端执行按需引导。"""
+    py_console = _python_exe(gui=False)
+    bootstrap_py = LTX_ROOT / "core" / "standalone_bootstrap.py"
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    if extra_env:
+        env.update(extra_env)
+    cmd = [py_console, str(bootstrap_py), "--app", app_target]
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
+        return subprocess.Popen(cmd, cwd=str(LTX_ROOT), env=env, creationflags=creationflags)
+    return subprocess.Popen(cmd, cwd=str(LTX_ROOT), env=env, **_detached_popen_kwargs())
+
+
 def launch_orante(start_node: str = "") -> bool:
     """启动 Orante 2.0。不限制多开数量；仅在两次启动间隔小于 5 秒时忽略（防误触只对 CUTORA 做单实例锁定）。"""
     if orante_cooldown_left() > 0.0:
@@ -180,6 +222,14 @@ def launch_orante(start_node: str = "") -> bool:
     )
     if start_node:
         env["ORANTE_START_NODE"] = start_node
+
+    if not _has_python_module("fastapi") or not _has_python_module("uvicorn"):
+        proc = _spawn_bootstrap_console("orante", extra_env={"ORANTE_START_NODE": start_node} if start_node else None)
+        _MODULE_PROCS["orante"] = proc
+        _ORANTE_PROCS.append(proc)
+        get_spine_db().emit_event("launcher.orante_bootstrap_started", "launcher", "orante", {"start_node": start_node})
+        return True
+
     cmd = [_python_exe(gui=True), "-m", "orante"]
     if orante_instance_count() > 0:
         cmd.append("--new")
@@ -218,6 +268,16 @@ def launch_cutora(room: str = "") -> bool:
     _CUTORA_LAUNCH_ACCEPTED = True
     _MODULE_CLICK_ACCEPTED.add("cutora")
     _CUTORA_START_TS = time.monotonic()
+
+    if not _has_python_module("PySide6") or not _has_python_module("pandas"):
+        _CUTORA_SESSION_ID = f"cutora-{int(time.time() * 1000)}"
+        extra = {"CUTORA_LAUNCH_SESSION_ID": _CUTORA_SESSION_ID}
+        if room:
+            extra["CUTORA_START_ROOM"] = room
+        _CUTORA_PROC = _spawn_bootstrap_console("cutora", extra_env=extra)
+        get_spine_db().emit_event("launcher.cutora_bootstrap_started", "launcher", "cutora", {"room": room})
+        return True
+
     try:
         if room == "stitch":
             prepare_cutora_stitch_handoff(auto_start=True, auto_ai=True, source="launcher")
@@ -313,6 +373,202 @@ def launch_studio_gateway() -> bool:
     return True
 
 
+def run_standalone_web_launcher() -> None:
+    """当用户仅下载了 02 轻量代码包、尚未安装 PySide6 时，使用纯 Python 标准库 + Edge/Chrome --app 独立窗口提供零依赖总控台。"""
+    import base64
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import shutil
+    import threading
+    import webbrowser
+
+    brand_dir = LTX_ROOT / "resources" / "brand"
+
+    def _b64_img(name: str) -> str:
+        p = brand_dir / name
+        if not p.is_file():
+            return ""
+        try:
+            return "data:image/png;base64," + base64.b64encode(p.read_bytes()).decode("ascii")
+        except Exception:
+            return ""
+
+    prof = get_hardware_guard().probe_system()
+    gpu_short = (prof.gpu_name or "CPU 模式").replace("NVIDIA GeForce ", "")
+    vram_gb = int(round(prof.gpu_vram_total_gb))
+    ram_gb = int(round(prof.ram_total_gb))
+    tier_cn = "旗舰工作站" if vram_gb >= 12 else ("主流独显档" if vram_gb >= 6 else "高内存 CPU 档")
+    hw_text = f"✦ {tier_cn} · {gpu_short} ({vram_gb}GB) · {prof.cpu_cores}核 CPU · {ram_gb}GB 内存"
+
+    app_icon_uri = _b64_img("app.png")
+    orante_icon_uri = _b64_img("orante_me.png")
+    cutora_icon_uri = _b64_img("cutora_me.png")
+    table_icon_uri = _b64_img("table_tool_me.png")
+
+    html_page = f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>片语工作室 v3.0</title>
+<style>
+*{{box-sizing:border-box;user-select:none;font-family:"Inter","Noto Sans SC","Microsoft YaHei UI",sans-serif;}}
+body{{margin:0;background:radial-gradient(circle at 50% 14%, #2B231B 0%, #141210 72%);color:#EFE7DA;height:100vh;display:flex;flex-direction:column;padding:14px 16px;overflow:hidden;}}
+.hdr{{font-size:10px;color:#C8A24A;letter-spacing:1.6px;font-weight:600;margin-bottom:6px;}}
+.hero{{text-align:center;margin:4px 0 8px 0;}}
+.hero img{{width:56px;height:56px;border-radius:50%;box-shadow:0 0 24px rgba(224,190,104,0.35);border:1px solid rgba(224,190,104,0.55);}}
+.hero h1{{margin:6px 0 4px 0;font-size:18px;letter-spacing:3px;color:#EFE7DA;}}
+.hw{{background:rgba(28,24,21,0.85);border:1px solid rgba(200,162,74,0.4);border-radius:12px;padding:4px 8px;font-size:10px;color:#D8CBB8;text-align:center;margin-bottom:10px;}}
+.cards{{display:flex;flex-direction:column;gap:9px;flex:1;}}
+.card{{background:linear-gradient(135deg, rgba(34,28,22,0.92), rgba(22,19,16,0.96));border:1px solid rgba(142,118,72,0.55);border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .16s ease;position:relative;}}
+.card:hover{{border-color:#E0BE68;transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,0.45);}}
+.card img{{width:48px;height:48px;border-radius:10px;flex-shrink:0;}}
+.card-body{{flex:1;}}
+.card-idx{{position:absolute;top:8px;right:12px;font-size:10px;color:#8A6E2E;font-weight:700;}}
+.card-title{{font-size:14px;font-weight:700;color:#EFE7DA;margin-bottom:6px;}}
+.btn-row{{display:flex;justify-content:flex-end;gap:6px;}}
+.btn{{background:linear-gradient(135deg,#D6B056,#9E7D34);color:#16120E;border:1px solid #E5C675;border-radius:7px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;}}
+.btn.sec{{background:rgba(38,32,25,0.9);color:#D8CBB8;border:1px solid rgba(142,118,72,0.6);}}
+.ftr{{display:flex;justify-content:center;gap:8px;margin-top:8px;}}
+.toast{{position:fixed;bottom:44px;left:16px;right:16px;background:rgba(24,20,16,0.96);border:1px solid #E0BE68;color:#EFE7DA;padding:7px 10px;border-radius:8px;font-size:11px;text-align:center;display:none;}}
+</style></head><body>
+<div class="hdr">◆ ORANTE · CUTORA · TABLE</div>
+<div class="hero"><img src="{app_icon_uri}"/><h1>片语工作室</h1></div>
+<div class="hw">{hw_text}</div>
+<div class="cards">
+  <div class="card" onclick="act('orante')">
+    <span class="card-idx">01</span><img src="{orante_icon_uri}"/>
+    <div class="card-body"><div class="card-title">制片台 Orante</div>
+      <div class="btn-row"><button class="btn">进入制片台 ▸</button></div>
+    </div>
+  </div>
+  <div class="card" onclick="act('cutora')">
+    <span class="card-idx">02</span><img src="{cutora_icon_uri}"/>
+    <div class="card-body"><div class="card-title">片语剪辑 Cutora</div>
+      <div class="btn-row"><button class="btn">打开剪辑台 ▸</button></div>
+    </div>
+  </div>
+  <div class="card" onclick="act('table')">
+    <span class="card-idx">03</span><img src="{table_icon_uri}"/>
+    <div class="card-body"><div class="card-title">右键表格工具</div>
+      <div class="btn-row"><button class="btn">打开表格工具 ▸</button></div>
+    </div>
+  </div>
+</div>
+<div class="ftr">
+  <button class="btn sec" onclick="act('purge')">🧹 释放系统内存</button>
+  <button class="btn sec" onclick="act('blackbox')">📦 导出黑匣子</button>
+</div>
+<div id="toast" class="toast"></div>
+<script>
+function showToast(msg){{const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>{{t.style.display='none';}},3500);}}
+async function act(cmd){{
+  showToast('正在执行请求，请稍候…');
+  try{{
+    const r=await fetch('/api/act?cmd='+encodeURIComponent(cmd),{{method:'POST'}});
+    const d=await r.json();
+    showToast(d.msg||'已执行');
+  }}catch(e){{showToast('请求失败: '+e);}}
+}}
+</script></body></html>""".encode("utf-8")
+
+    class _LauncherHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html_page)))
+            self.end_headers()
+            self.wfile.write(html_page)
+
+        def do_POST(self):
+            cmd = ""
+            if "?" in self.path:
+                for kv in self.path.split("?", 1)[1].split("&"):
+                    if kv.startswith("cmd="):
+                        cmd = kv.split("=", 1)[1]
+            msg = "已执行"
+            if cmd == "orante":
+                launch_orante()
+                msg = "✓ 已启动 Orante 2.0 制片台（首次运行若需补齐轻量组件会自动弹出终端）"
+            elif cmd == "cutora":
+                launch_cutora()
+                msg = "✓ 已启动片语剪辑台 CUTORA（首次运行若需补齐界面组件会自动弹出终端）"
+            elif cmd == "table":
+                launch_table_tool()
+                msg = "✓ 已启动右键表格工具"
+            elif cmd == "purge":
+                import gc
+                gc.collect()
+                msg = f"✓ 已执行系统内存回收 · 当前总内存 {ram_gb}GB 守护中"
+            elif cmd == "blackbox":
+                try:
+                    cutora_dir = LTX_ROOT / "modules" / "cutora_editor"
+                    if str(cutora_dir) not in sys.path:
+                        sys.path.insert(0, str(cutora_dir))
+                    from cutora.core.blackbox import export_blackbox_zip
+                    info = export_blackbox_zip(include_win_events=True)
+                    zp = Path(str(info.get("zip_path") or "")).name
+                    msg = f"✓ 已导出黑匣子至桌面：{zp}"
+                except Exception as e:
+                    msg = f"导出黑匣子失败：{e}"
+            payload = json.dumps({"ok": True, "msg": msg}, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    ThreadingHTTPServer.allow_reuse_address = True
+    ThreadingHTTPServer.daemon_threads = True
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _LauncherHandler)
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{port}/"
+    write_launch_state("MAIN_WINDOW_READY", app_name="launcher", detail={"mode": "web_standalone", "port": port})
+
+    # 优先使用 Edge/Chrome --app 独立小窗口打开
+    candidates = []
+    if os.name == "nt":
+        for p in (
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        ):
+            if os.path.isfile(p):
+                candidates.append(p)
+    elif sys.platform == "darwin":
+        for p in (
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        ):
+            if os.path.isfile(p):
+                candidates.append(p)
+    if candidates:
+        prof_dir = LTX_ROOT / "data" / "launcher_app_profile"
+        prof_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            proc = subprocess.Popen(
+                [
+                    candidates[0],
+                    f"--app={url}",
+                    "--window-size=350,600",
+                    f"--user-data-dir={prof_dir}",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            proc.wait()
+        except Exception:
+            webbrowser.open(url)
+    else:
+        webbrowser.open(url)
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        pass
+
+
 def run_gui(screenshot_path: str | None = None) -> None:
     if os.name == "nt":
         try:
@@ -320,36 +576,44 @@ def run_gui(screenshot_path: str | None = None) -> None:
         except Exception:
             pass
 
-    from PySide6.QtCore import (
-        QEasingCurve,
-        QPoint,
-        QPointF,
-        QRectF,
-        QSize,
-        Qt,
-        QTimer,
-        QVariantAnimation,
-        Signal,
-    )
-    from PySide6.QtGui import (
-        QColor,
-        QFont,
-        QFontDatabase,
-        QIcon,
-        QLinearGradient,
-        QPainter,
-        QPainterPath,
-        QPen,
-        QPixmap,
-        QRadialGradient,
-    )
-    from PySide6.QtWidgets import (
-        QApplication,
-        QHBoxLayout,
-        QLabel,
-        QVBoxLayout,
-        QWidget,
-    )
+    if "--web-launcher" in sys.argv:
+        run_standalone_web_launcher()
+        return
+
+    try:
+        from PySide6.QtCore import (
+            QEasingCurve,
+            QPoint,
+            QPointF,
+            QRectF,
+            QSize,
+            Qt,
+            QTimer,
+            QVariantAnimation,
+            Signal,
+        )
+        from PySide6.QtGui import (
+            QColor,
+            QFont,
+            QFontDatabase,
+            QIcon,
+            QLinearGradient,
+            QPainter,
+            QPainterPath,
+            QPen,
+            QPixmap,
+            QRadialGradient,
+        )
+        from PySide6.QtWidgets import (
+            QApplication,
+            QHBoxLayout,
+            QLabel,
+            QVBoxLayout,
+            QWidget,
+        )
+    except ImportError:
+        run_standalone_web_launcher()
+        return
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("片语工作室")
@@ -1207,7 +1471,8 @@ def run_gui(screenshot_path: str | None = None) -> None:
                 self._toast.show_toast(f"Orante 2.0 刚刚启动，{left:.0f} 秒后可再开一个窗口（支持多开）")
                 return
             from core.pack_manager import is_module_installed
-            if not is_module_installed("pack-app-orante"):
+            orante_main = LTX_ROOT / "modules" / "orante_desk" / "orante" / "main.py"
+            if not orante_main.is_file() and not is_module_installed("pack-app-orante"):
                 self._toast.show_toast("当前版本尚未安装 Orante 2.0 制片台扩展包，可一键无缝安装！")
                 self._on_open_pack_manager(highlight_pack_id="pack-app-orante")
                 return

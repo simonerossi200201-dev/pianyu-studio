@@ -29,12 +29,13 @@ def self_check_dependencies():
     _emit_launch_stage("ENV_CHECK_START")
     missing = []
     errors = {}
-    # 使用 find_spec 毫秒级探测核心依赖包是否存在，避免在闪屏弹出前同步 import pandas/transformers 造成 2 秒冷启动卡顿
+    # 使用 find_spec 毫秒级探测核心桌面与剪辑依赖包是否存在（AI 字幕与重型模型依赖按需加载，不阻断独立剪辑启动）
     for pkg_import, pkg_pip in [
+        ("PySide6", "PySide6"),
         ("yaml", "PyYAML"),
         ("pandas", "pandas"),
-        ("tokenizers", "tokenizers"),
-        ("transformers", "transformers"),
+        ("numpy", "numpy"),
+        ("PIL", "Pillow"),
     ]:
         try:
             spec = importlib.util.find_spec(pkg_import)

@@ -50,6 +50,14 @@ def resolve_ffmpeg_tool(name: str) -> str:
     found = shutil.which(name)
     if found:
         return found
+    if name.lower() == "ffmpeg":
+        try:
+            import imageio_ffmpeg
+            ff = imageio_ffmpeg.get_ffmpeg_exe()
+            if ff and os.path.isfile(ff):
+                return ff
+        except Exception:
+            pass
     return os.path.join(FFMPEG_DIR, exe)
 
 

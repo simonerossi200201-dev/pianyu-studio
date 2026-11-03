@@ -68,12 +68,29 @@ FORBIDDEN_CONTENT_PATTERNS = (
 OAUTH_REFRESH_RE = re.compile(r"1//0[0-9A-Za-z\-_]{20,}")
 
 CORE_SHELL_AND_CUTORA_ROOTS = [
+    # ── 用户可见的清爽根入口 (Windows 5 个 + macOS 5 个 + 说明书) ──
+    "1_片语工作室_总控台.bat",
+    "2_右键表格工具_独立运行与注册右键.bat",
+    "3_Orante制片台_独立运行.bat",
+    "4_片语剪辑台_独立运行.bat",
+    "5_安装与修复体检.bat",
+    "1_启动片语工作室.command",
+    "2_打开右键表格工具.command",
+    "3_打开Orante制片台.command",
+    "4_打开片语剪辑台.command",
+    "5_安装与体检.command",
+    "片语工作室_安装与使用说明书.pdf",
+    # ── 内部模块与便携 Python 底座（解压后自动设为隐藏属性，保持根目录清爽） ──
     "config",
     "core",
     "licenses",
     "resources/brand",
-    "片语工作室 me.png",
-    "片语工作室_安装与使用说明书.pdf",
+    "runtime/python",
+    "runtime/bin/rclone.exe",
+    "runtime/bin/cutora_rust_core.dll",
+    "runtime/bin/portable_venv_python.exe",
+    "runtime/bin/portable_venv_pythonw.exe",
+    "runtime/mimalloc",
     "runtime/venv/Lib/site-packages/cutora_rust_core",
     "modules/table_tool/app/表格工具.py",
     "modules/table_tool/install.py",
@@ -87,30 +104,40 @@ CORE_SHELL_AND_CUTORA_ROOTS = [
     "modules/orante_desk/ui",
     "modules/orante_desk/extension",
     "modules/studio_gateway",
+    # ── 内部兼容入口与热更新/诊断脚本（解压后自动隐藏） ──
     "studio_launcher.py",
     "install_studio.py",
-    "下载多语种对齐模型.py",
-    "打包分发.py",
     "片语工作室.bat",
     "片语工作室.vbs",
-    "代码热更新_双击同步最新功能.bat",
-    "创建桌面快捷方式.bat",
-    "一键打包分发.bat",
-    "启动本地算力网关.bat",
     "打开表格工具.bat",
     "安装与体检.bat",
     "启动片语工作室.command",
     "安装与体检.command",
+    "代码热更新_双击同步最新功能.bat",
     "收集卡死诊断信息.bat",
     "收集卡死诊断信息.ps1",
-    "README.md",
-    "安装与扩展包使用指南.md",
-    "SECURITY_AUDIT_REPORT.md",
-    "MODEL_LICENSE_COMPLIANCE.md",
     "requirements.txt",
     "requirements-macos-arm64.lock",
-    ".env.example",
 ]
+
+VISIBLE_ROOT_ITEMS_WIN = {
+    "1_片语工作室_总控台.bat",
+    "2_右键表格工具_独立运行与注册右键.bat",
+    "3_Orante制片台_独立运行.bat",
+    "4_片语剪辑台_独立运行.bat",
+    "5_安装与修复体检.bat",
+    "片语工作室_安装与使用说明书.pdf",
+    "packs",
+}
+
+HIDDEN_ROOT_DIRS = (
+    "config",
+    "core",
+    "licenses",
+    "modules",
+    "resources",
+    "runtime",
+)
 
 
 BASE_APP_ROOTS = list(CORE_SHELL_AND_CUTORA_ROOTS)
@@ -386,13 +413,21 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
 
     STORED_EXTS = {
         ".safetensors", ".pth", ".bin", ".onnx", ".pt", ".ckpt", ".npz",
-        ".dll", ".pyd", ".exe", ".lib", ".so", ".dylib", ".png", ".jpg", ".ico", ".ttf", ".otf", ".whl",
+        ".png", ".jpg", ".ico", ".whl",
     }
 
     print(f"[打包开始] 正在生成主程序包: {zip_name} ...", flush=True)
     arc_prefix = "片语工作室/" if edition in ("code-only", "standard", "models-once") else ""
+    is_light_code_edition = edition in ("code-only", "standard", "cutora-only")
 
     def _add_file_to_zip(zf_obj: zipfile.ZipFile, src_p: Path, arc_name: str, comp_type: int) -> None:
+        rel_inside = arc_name[len(arc_prefix):] if (arc_prefix and arc_name.startswith(arc_prefix)) else arc_name
+        is_root_file = "/" not in rel_inside
+        should_hide_win_root_file = (
+            target_platform == "win-x64"
+            and is_root_file
+            and rel_inside not in VISIBLE_ROOT_ITEMS_WIN
+        )
         is_unix_exec = (
             src_p.suffix.lower() in (".command", ".sh")
             or "/bin/" in arc_name.replace("\\", "/")
@@ -413,16 +448,34 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
             with src_p.open("rb") as fsrc, zf_obj.open(zi, "w") as fdst:
                 import shutil as _sh
                 _sh.copyfileobj(fsrc, fdst, 1024 * 1024 * 4)
+        elif should_hide_win_root_file:
+            zi = zipfile.ZipInfo.from_file(src_p, arc_name)
+            zi.compress_type = comp_type
+            zi.create_system = 0  # MS-DOS / Windows
+            zi.external_attr = 0x20 | 0x02  # FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_HIDDEN
+            with src_p.open("rb") as fsrc, zf_obj.open(zi, "w") as fdst:
+                import shutil as _sh
+                _sh.copyfileobj(fsrc, fdst, 1024 * 1024 * 4)
         else:
             zf_obj.write(src_p, arc_name, compress_type=comp_type)
 
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as zf:
+        # Windows 端：预先写入隐藏目录条目，使解压后 config/core/licenses/modules/resources/runtime 默认隐藏，根目录只显示清爽入口
+        if target_platform == "win-x64" and is_light_code_edition:
+            now_tuple = time.localtime()[:6]
+            for hdir in HIDDEN_ROOT_DIRS:
+                dzi = zipfile.ZipInfo(f"{arc_prefix}{hdir}/", now_tuple)
+                dzi.compress_type = zipfile.ZIP_STORED
+                dzi.create_system = 0
+                dzi.external_attr = 0x10 | 0x02  # FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN
+                zf.writestr(dzi, b"")
+
         if edition == "models-once":
             zf.writestr(
                 arc_prefix + "README_模型与环境底座包.txt",
                 "这是《片语工作室》的模型与运行环境底座包，只需下载一次。\n"
                 "请把它和《02_代码主程序包》解压到同一个位置（两个包内都是「片语工作室」文件夹，会自动合并）。\n"
-                "然后双击「片语工作室\\安装与体检.bat」（macOS 双击「安装与体检.command」）即可。以后升级只需重新下载代码包并解压覆盖。\n",
+                "然后双击「片语工作室\\1_片语工作室_总控台.bat」或「5_安装与修复体检.bat」（macOS 双击「1_启动片语工作室.command」）即可。以后升级只需重新下载代码包并解压覆盖。\n",
             )
         if target_platform == "macos-arm64":
             zf.writestr(
@@ -430,35 +483,37 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
                 "====================================================================\n"
                 "  《片语工作室》(Pianyu Studio v3.0) — macOS Apple Silicon (M1~M4) 版\n"
                 "====================================================================\n\n"
-                "1. 模型包与代码包说明：\n"
+                "1. 独立运行说明（无需下载 17GB 模型包即可独立运行任意软件）：\n"
+                "   - 只用『右键表格工具』：直接双击『2_打开右键表格工具.command』即可秒开！\n"
+                "   - 只用『Orante 2.0 制片台』：直接双击『3_打开Orante制片台.command』即可独立运行！\n"
+                "   - 只用『片语剪辑台 CUTORA』：直接双击『4_打开片语剪辑台.command』即可独立剪辑导出！\n"
+                "   - 打开『片语工作室总控台』：双击『1_启动片语工作室.command』。\n\n"
+                "2. 如需使用本地 AI 自动字幕 / 抠像 / 降噪模型（01_模型与环境底座包）：\n"
                 "   - 『01_模型与环境底座包.zip』中的 AI 模型权重 (runtime/models) 在 Windows 与 Mac 上 100% 通用！\n"
-                "   - 您只需把『01_模型与环境底座包.zip』与本包放在同一目录（或保留在「下载 Downloads」文件夹，甚至无需手动解压 01 包），\n"
-                "     或者若已用 Finder 双击解压出「片语工作室 2」，双击本包内的『安装与体检.command』会自动为您提取/合并通用 AI 模型，\n"
-                "     并自动跳过 Windows 专属的 .exe/.dll 文件！\n\n"
-                "2. 一键安装与体检：\n"
-                "   - 双击运行『安装与体检.command』（若首次提示安全拦截，右键 -> 打开）：\n"
-                "   - 自动配置 ARM64 原生 Python 环境与 Metal / VideoToolbox / Accelerate 硬件加速\n"
-                "   - 自动在桌面生成《片语工作室.app》与《右键表格工具.app》\n"
-                "   - 自动注册 macOS 访达 (Finder) 右键『快速操作 -> 用表格工具打开』\n\n"
-                "3. 日常启动：\n"
-                "   - 双击桌面《片语工作室.app》或目录内『启动片语工作室.command』即可启动。\n",
+                "   - 双击『5_安装与体检.command』会自动为您合并模型并生成桌面快捷图标。\n",
             )
         zf.writestr(
             arc_prefix + "packs/README_如何安装扩展包.txt",
-            "将从网盘按需下载的 .ltxpack 扩展包（如 02_Orante、03_ComfyUI、04_LTX2.5视频模型等）直接放入本目录 (packs/)，\n"
-            "然后双击根目录的《安装与体检.bat》（macOS 双击《安装与体检.command》）或打开《片语工作室》点击右上角【📦 模块与模型扩展中心】，即可一键无缝拼装！\n",
+            "将从网盘按需下载的 .ltxpack 扩展包（如 03_ComfyUI、04_LTX2.5视频模型等）直接放入本目录 (packs/)，\n"
+            "然后双击根目录的《5_安装与修复体检.bat》（macOS 双击《5_安装与体检.command》）即可一键无缝拼装！\n",
         )
         for item in include_roots:
-            if target_platform == "macos-arm64" and item.endswith(("cutora_rust_core", ".bat", ".vbs", ".ps1")):
+            if target_platform == "macos-arm64" and (
+                item in ("runtime/python", "runtime/mimalloc")
+                or item.endswith(("cutora_rust_core", ".bat", ".vbs", ".ps1", ".exe", ".dll"))
+            ):
+                continue
+            if target_platform == "win-x64" and item.endswith((".command", "requirements-macos-arm64.lock")):
                 continue
             target = LTX_ROOT / item
             is_runtime_tree = item.startswith("runtime/")
+            store_runtime_uncompressed = is_runtime_tree and not is_light_code_edition
             if target.is_file():
                 rel = str(target.relative_to(LTX_ROOT))
                 if is_path_allowed(rel):
                     if target.suffix == ".py" and not is_runtime_tree:
                         py_compile.compile(str(target), doraise=True)
-                    comp = zipfile.ZIP_STORED if (is_runtime_tree or target.suffix.lower() in STORED_EXTS) else zipfile.ZIP_DEFLATED
+                    comp = zipfile.ZIP_STORED if (store_runtime_uncompressed or target.suffix.lower() in STORED_EXTS) else zipfile.ZIP_DEFLATED
                     _add_file_to_zip(zf, target, arc_prefix + rel.replace("\\", "/"), comp)
                     files_added += 1
             elif target.is_dir():
@@ -470,7 +525,7 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
                         if not is_path_allowed(rel):
                             continue
                         sfx = p.suffix.lower()
-                        if sfx in (".pyc", ".pyo", ".mp4", ".mov", ".zip", ".ltxpack", ".ltxpart"):
+                        if sfx in (".pyc", ".pyo", ".mp4", ".mov", ".zip", ".ltxpack", ".ltxpart", ".pdb"):
                             continue
                         if target_platform == "macos-arm64" and sfx in (".pyd", ".exe", ".dll", ".bat", ".vbs", ".ps1"):
                             continue
@@ -484,7 +539,7 @@ def verify_and_build_zip(edition: str = "code-only", target_platform: str = "win
                                     security_violations.append(f"{rel}: contains OAuth refresh token")
                             except Exception:
                                 pass
-                        comp = zipfile.ZIP_STORED if (is_runtime_tree or sfx in STORED_EXTS) else zipfile.ZIP_DEFLATED
+                        comp = zipfile.ZIP_STORED if (store_runtime_uncompressed or sfx in STORED_EXTS) else zipfile.ZIP_DEFLATED
                         _add_file_to_zip(zf, p, arc_prefix + rel.replace("\\", "/"), comp)
                         files_added += 1
 
@@ -537,15 +592,19 @@ def write_cloud_drive_readme() -> Path:
 一、我该下载哪几个文件？（对号入座）
 --------------------------------------------------------------------------------
 
-1. 【所有人必下（仅需下载这 1 个底座包即可直接用 CUTORA + 右键表格工具）】：
-   👉 01_【必下底座_17.5GB】片语工作室_标准核心版_含CUTORA_表格工具_运行环境_25G核心字幕抠像立体声模型_*.zip
-   · 内含：片语工作室统一主界面、CUTORA 智能剪辑台、右键表格工具、便携 Python 环境、FFmpeg 硬件加速套件，
-     以及日常必备的四大核心 AI 模型（Whisper 自动字幕、智能拼接、SAM2.1/RMBG2 视频图像抠像、Demucs/Resemble 立体声与降噪、人像提亮修复）。
-   · 硬件要求：普通办公本 / i7 + 32GB 内存（无独立显卡也可流畅运行，导出速度 >= 400 fps）或 Apple Silicon Mac。
+1. 【轻量独立使用（只用右键表格工具 / 云端 Orante 制片 / 基础剪辑，无需下载 17GB 大模型！）】：
+   👉 只需下载：02_【代码主程序包_日常更新只下此包】片语工作室_v3.0_全功能代码包.zip
+   · 本包自带便携 Python 解释器与完整三款软件代码（~240MB），解压后目录清爽直观，直接双击即可独立运行：
+     - 双击『2_右键表格工具_独立运行与注册右键.bat』：0.3 秒直接打开表格工具并自动注册系统右键菜单！
+     - 双击『3_Orante制片台_独立运行.bat』：独立运行 Orante 2.0 制片台（自动引导轻量 Web 组件，无需下载 17GB 模型）！
+     - 双击『4_片语剪辑台_独立运行.bat』：独立运行 CUTORA 剪辑台！
+     - 双击『1_片语工作室_总控台.bat』：打开片语工作室三合一总控台！
 
-2. 【按需选下：独立软件模块包（体积很小，想用哪个软件就多下哪个）】：
-   👉 02_【可选软件模块_15MB】Orante2.0制片台_pack-app-orante.ltxpack
-      （需要用 Orante 2.0 批量排片、调用云端 Grok/Flow 生片、审片的同事下载）
+2. 【完整本地 AI 版（需要使用 CUTORA 本地 Whisper 自动字幕、SAM2 视频抠像、人声降噪等 25GB 本地模型）】：
+   👉 下载 01 + 02 解压到同一目录：
+   · 01_【模型与环境底座包_只需下载一次】片语工作室_v3.0_AI模型与运行环境包.zip (17.5GB，只需下载一次)
+   · 02_【代码主程序包_日常更新只下此包】片语工作室_v3.0_全功能代码包.zip (日常更新只下此包)
+   · 硬件要求：普通办公本 / i7 + 32GB 内存（无独立显卡也可流畅运行，导出速度 >= 400 fps）或 Apple Silicon Mac。
 
 3. 【按需选下：高阶音频与超分追踪模型包（中等配置电脑 / 有进阶剪辑需求的同事下载）】：
    👉 07_【可选语音配乐模型_25.6GB】AI语音克隆与配乐生成_pack-audio-tts-bgm.ltxpack

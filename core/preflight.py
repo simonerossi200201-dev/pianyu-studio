@@ -89,10 +89,18 @@ def _resolve_media_bin(name: str) -> tuple[bool, str]:
     found = shutil.which(name)
     if found:
         return True, found
+    if name.lower() == "ffmpeg":
+        try:
+            import imageio_ffmpeg
+            ff = imageio_ffmpeg.get_ffmpeg_exe()
+            if ff and os.path.isfile(ff):
+                return True, ff
+        except Exception:
+            pass
     return False, f"{name} not found in runtime/bin, runtime/ffmpeg/bin, or PATH"
 
 
-def run_preflight() -> dict[str, Any]:
+def run_preflight(require_ai: bool = False) -> dict[str, Any]:
     py_ver = platform.python_version()
     machine = platform.machine().lower()
     ver_parts = sys.version_info[:2]
@@ -101,11 +109,14 @@ def run_preflight() -> dict[str, Any]:
     missing_core: list[dict[str, str]] = []
     passed_core: list[str] = []
 
-    for tier_label, pkg_list in (
+    core_tiers = [
         ("desktop_core", DESKTOP_CORE_PKGS),
         ("media_core", MEDIA_CORE_PKGS),
-        ("ai_core", AI_CORE_PKGS),
-    ):
+    ]
+    if require_ai:
+        core_tiers.append(("ai_core", AI_CORE_PKGS))
+
+    for tier_label, pkg_list in core_tiers:
         for mod_name, pip_name in pkg_list:
             ok, info = _check_spec(mod_name)
             if ok:
@@ -122,8 +133,6 @@ def run_preflight() -> dict[str, Any]:
     ffprobe_ok, ffprobe_path = _resolve_media_bin("ffprobe")
     if not ffmpeg_ok:
         missing_core.append({"tier": "media_core", "import_name": "ffmpeg", "pip_name": "ffmpeg", "error": ffmpeg_path})
-    if not ffprobe_ok:
-        missing_core.append({"tier": "media_core", "import_name": "ffprobe", "pip_name": "ffprobe", "error": ffprobe_path})
 
     # Essential base models check
     models_root = LTX_ROOT / "runtime" / "models"

@@ -7851,6 +7851,78 @@ def _bind_table_win_icon(window):
         pass
 
 
+def _open_standalone_browser_app(url: str, width: int = 1320, height: int = 860) -> subprocess.Popen | None:
+    """在未安装 pywebview 的精简独立运行模式下，优先调用系统内置 Edge / Chrome 的 --app 独立窗口模式打开。"""
+    candidates: list[str] = []
+    if os.name == "nt":
+        for p in (
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            os.path.expandvars(r"%LocalAppData%\Microsoft\Edge\Application\msedge.exe"),
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+        ):
+            if p and os.path.isfile(p):
+                candidates.append(p)
+        for cmd_name in ("msedge", "chrome"):
+            w = shutil.which(cmd_name)
+            if w and w not in candidates:
+                candidates.append(w)
+    elif sys.platform == "darwin":
+        for p in (
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        ):
+            if os.path.isfile(p):
+                candidates.append(p)
+
+    if not candidates:
+        return None
+
+    profile_dir = os.path.join(_LTX_ROOT_DIR, "data", "table_tool_app_profile")
+    try:
+        os.makedirs(profile_dir, exist_ok=True)
+    except Exception:
+        pass
+
+    browser_exe = candidates[0]
+    args = [
+        browser_exe,
+        f"--app={url}",
+        f"--window-size={width},{height}",
+        f"--user-data-dir={profile_dir}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-extensions",
+    ]
+    try:
+        return subprocess.Popen(
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return None
+
+
+def _bg_self_register_and_tidy() -> None:
+    """后台静默自愈：自动注册右键菜单（清理旧版残影键）并隐藏根目录内部技术文件夹。"""
+    try:
+        if _LTX_ROOT_DIR not in sys.path:
+            sys.path.insert(0, _LTX_ROOT_DIR)
+        from core.shortcut import ensure_table_tool_registered
+        ensure_table_tool_registered(_LTX_ROOT_DIR, quiet=True)
+    except Exception:
+        pass
+    try:
+        from core.standalone_bootstrap import hide_internal_root_clutter
+        hide_internal_root_clutter(_LTX_ROOT_DIR)
+    except Exception:
+        pass
+
+
 def main():
     import atexit
     import traceback
@@ -7862,6 +7934,8 @@ def main():
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("LTXStudio.TableTool.3.0")
         except Exception:
             pass
+
+    threading.Thread(target=_bg_self_register_and_tidy, daemon=True).start()
 
     raw_arg = sys.argv[1] if len(sys.argv) > 1 and not str(sys.argv[1]).startswith("--") else ""
     target = _sanitize_arg_dir(raw_arg)
@@ -7880,14 +7954,17 @@ def main():
     _emit_table_launch_state("SERVER_READY", detail={"port": port, "target": target})
     atexit.register(lambda: _emit_table_launch_state("PROCESS_EXIT", detail={"port": port}))
 
+    prefs = load_prefs()
+    win_w = int(prefs.get("width") or 1320)
+    win_h = int(prefs.get("height") or 860)
+
     if not force_browser:
         try:
             import webview  # pywebview：原生窗口，体验最好
-            prefs = load_prefs()
             win = webview.create_window(
                 "%s — %s" % (APP_NAME, target), url,
-                width=int(prefs.get("width") or 1320),
-                height=int(prefs.get("height") or 860),
+                width=win_w,
+                height=win_h,
                 min_size=(900, 560),
             )
             _bind_table_win_icon(win)
@@ -7913,10 +7990,24 @@ def main():
             webview.start()
             os._exit(0)
         except Exception as exc:
-            # 无论因缺失 pywebview 还是 Windows 缺少 Edge WebView2 Runtime / .NET 初始化异常，
-            # 均记录日志并自动无缝降级为默认浏览器打开，确保用户 100% 能打开表格工具！
-            sys.stderr.write("[table_tool] pywebview 窗口模式降级为系统浏览器: %s\n" % exc)
-            traceback.print_exc()
+            # 无论因缺失 pywebview（如仅下载 02 轻量代码包）还是缺少 WebView2 Runtime，
+            # 优先使用系统 Edge / Chrome 的 --app 独立窗口模式打开，若无则降级为默认浏览器！
+            sys.stderr.write("[table_tool] pywebview 不可用，切换为独立 App 窗口/浏览器模式: %s\n" % exc)
+
+        app_proc = _open_standalone_browser_app(url, width=win_w, height=win_h)
+        if app_proc is not None:
+            _emit_table_launch_state("MAIN_WINDOW_READY", detail={"port": port, "mode": "edge_chrome_app", "target": target})
+            try:
+                app_proc.wait()
+            except KeyboardInterrupt:
+                pass
+            # 若独立窗口进程立即退出（如复用已有浏览器进程），保持后台服务存活
+            try:
+                while True:
+                    time.sleep(3600)
+            except KeyboardInterrupt:
+                pass
+            return
 
     _emit_table_launch_state("MAIN_WINDOW_READY", detail={"port": port, "mode": "browser_fallback", "target": target})
     webbrowser.open(url)

@@ -53,6 +53,14 @@ def resolve_runtime_bin(name: str) -> Path:
     which = shutil.which(stem)
     if which:
         return Path(which)
+    if stem.lower() == "ffmpeg":
+        try:
+            import imageio_ffmpeg
+            ff = imageio_ffmpeg.get_ffmpeg_exe()
+            if ff and os.path.isfile(ff):
+                return Path(ff)
+        except Exception:
+            pass
     return BIN_DIR / (f"{stem}.exe" if os.name == "nt" else stem)
 
 

@@ -16,10 +16,7 @@ for arg in "$@"; do
     esac
 done
 
-# 每次启动前执行轻量级核心 Preflight，若虚拟环境未创建、目录被移动或缺少 pandas/PySide6 等核心包则自动调用《安装与体检.command》修复
-if [ ! -x "$DIR/runtime/venv/bin/python3" ] || ! "$DIR/runtime/venv/bin/python3" "$DIR/core/preflight.py" --core >/dev/null 2>&1; then
-    echo "检测到 macOS 运行环境尚未完成初始化或缺少核心组件，正在自动运行《安装与体检.command》修复..."
-    bash "$DIR/安装与体检.command"
+if [ -x "$DIR/runtime/venv/bin/python3" ]; then
+    exec "$DIR/runtime/venv/bin/python3" "$DIR/studio_launcher.py" "${ARGS[@]}"
 fi
-
-exec "$DIR/runtime/venv/bin/python3" "$DIR/studio_launcher.py" "${ARGS[@]}"
+exec bash "$DIR/1_启动片语工作室.command" "${ARGS[@]}"

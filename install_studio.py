@@ -118,7 +118,7 @@ def main() -> None:
         if cutora_root not in sys.path:
             sys.path.insert(0, cutora_root)
         from cutora.core.blackbox import export_blackbox_zip
-        bb_info = export_blackbox_zip(dest_dir=str(LTX_ROOT / "data"), include_win_events=True)
+        bb_info = export_blackbox_zip(dest_dir=str(LTX_ROOT / "data"), include_win_events=False)
         print(f"📦 [黑匣子] 已生成当前电脑专属《设备自适应与开发者性能调优报告》及诊断包:")
         print(f"  · 设备性能分级 : {bb_info.get('hardware_tier')}")
         print(f"  · 开发者建议数 : {bb_info.get('developer_findings_count')} 条")
@@ -126,6 +126,12 @@ def main() -> None:
         print(f"  · 诊断包路径   : {bb_info.get('zip_path')}")
     except Exception as _bb_err:
         print(f"  [提示] 黑匣子附加分析跳过: {_bb_err}")
+
+    try:
+        from core.standalone_bootstrap import hide_internal_root_clutter
+        hide_internal_root_clutter(LTX_ROOT)
+    except Exception:
+        pass
 
 
 

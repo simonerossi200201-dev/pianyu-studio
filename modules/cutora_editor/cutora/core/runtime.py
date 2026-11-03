@@ -127,8 +127,11 @@ def pin_cv2_num_threads(n: int = CV2_NUM_THREADS) -> None:
     Small remaps oversubscribe at the default 32. Changing the count
     mid-call races the preview decoder's cv2.resize (T04f-5).
     """
-    import cv2
-    cv2.setNumThreads(int(n))
+    try:
+        import cv2
+        cv2.setNumThreads(int(n))
+    except ImportError:
+        pass
 
 
 def mimalloc_status() -> str:
@@ -310,9 +313,12 @@ def init_torch_runtime(render_child: bool = False) -> None:
         eager = True
 
     if eager:
-        import torch
-        torch.set_num_threads(4)
-        _CUDA_WARMUP_OK, _CUDA_DEVICE_NAME = _warmup_cuda(torch)
+        try:
+            import torch
+            torch.set_num_threads(4)
+            _CUDA_WARMUP_OK, _CUDA_DEVICE_NAME = _warmup_cuda(torch)
+        except ImportError:
+            _CUDA_WARMUP_OK, _CUDA_DEVICE_NAME = None, (_nvidia_gpu_name() or "cpu")
     else:
         _CUDA_WARMUP_OK, _CUDA_DEVICE_NAME = None, (_nvidia_gpu_name() or "cpu")
 
