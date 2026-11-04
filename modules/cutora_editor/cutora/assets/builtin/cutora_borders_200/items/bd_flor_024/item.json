@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_024",
+  "type": "frame",
+  "name": "晚香玉月光清雅上下框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "lily_pearl",
+    "two_sides_h",
+    "晚香玉月光清雅上下框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_024",
+    "style": "floral_vine",
+    "recipe": "lily_pearl",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "two_sides_h",
+    "thickness": 10,
+    "length_ratio": 1.0,
+    "corner_radius": 14,
+    "color_mode": "dual_gradient",
+    "primary_color": "#E8F5E9",
+    "secondary_color": "#C8E6C9",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

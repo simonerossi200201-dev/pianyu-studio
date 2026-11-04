@@ -1,0 +1,47 @@
+{
+  "id": "lt_cult_059",
+  "type": "lower_third",
+  "name": "敦煌飞天藻井流金标题卡 · Ⅴ",
+  "license": "CUTORA-original",
+  "subcat": "东方/西方/多语种",
+  "tags": [
+    "东方",
+    "西方",
+    "多语种",
+    "国风",
+    "古典",
+    "cultural",
+    "东方国风",
+    "guofeng_scroll",
+    "敦煌飞天藻井流金标题卡 · Ⅴ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_cult_059",
+    "family": "cultural_global",
+    "category": "东方/西方/多语种",
+    "layout_type": "guofeng_scroll",
+    "badge_shape": "seal",
+    "icon_glyph": "seal",
+    "icon_path": "",
+    "plate_name": "plate_guofeng_scroll_jade.png",
+    "show_icon": true,
+    "primary_color": "#143632",
+    "secondary_color": "#F4C44E",
+    "text_color": "#FFFDF9",
+    "bg_opacity": 234,
+    "anim_in": "ink_unroll_fade",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.48,
+    "default_text": "敦煌飞天藻井流金标题卡\n支持中文 · English · العربية 多语种自适应排版",
+    "lines": [
+      "敦煌飞天藻井流金标题卡",
+      "支持中文 · English · العربية 多语种自适应排版"
+    ]
+  }
+}

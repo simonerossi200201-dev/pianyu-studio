@@ -2275,28 +2275,34 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         """返回属于 track_obj 的 overlay 列表（带原始索引）。
         list_name: 'text_overlays' 或 'image_overlays'。
         返回 [(原始索引, overlay_dict), ...]。
-        没有 _track_id 的旧 overlay 归到该类型的第一条轨道。"""
+        支持跨视觉轨道归属（根据 ov['_track_id']），无 _track_id 的旧 overlay 归到同类型的第一条轨道。"""
         all_ovs = self.task_data.get(list_name, [])
         track_id = getattr(track_obj, "id", None)
-        # 找到同类型的第一条轨道 id（用于分配旧 overlay）
         tl = _tl_of(self.task_data)
         t_type = getattr(track_obj, "type", "")
-        first_track_id = None
+        first_by_type = {}
         if tl:
             for t in tl.tracks:
-                if getattr(t, "type", None) == t_type:
-                    first_track_id = getattr(t, "id", None)
-                    break
+                tt = getattr(t, "type", None)
+                if tt and tt not in first_by_type:
+                    first_by_type[tt] = getattr(t, "id", None)
+        drag_sel = self.selected_overlay if getattr(self, "mode", None) == "move_overlay" else None
+        drag_target = getattr(self, "_drag_target_track", None) if drag_sel is not None else None
+        drag_target_id = getattr(drag_target, "id", None) if drag_target is not None else None
         result = []
-        want_adjust = t_type == "adjust"          # Q174：调整轨只认调整图层，图片轨不认它
         for i, ov in enumerate(all_ovs):
-            if list_name == "image_overlays" and (ov.get("type") == "adjust") != want_adjust:
+            is_adj = (list_name == "image_overlays" and ov.get("type") == "adjust")
+            if is_adj and t_type != "adjust":
                 continue
+            native_type = "text" if list_name == "text_overlays" else ("adjust" if is_adj else "image")
             ov_tid = ov.get('_track_id')
+            if drag_sel == (list_name, i) and drag_target_id is not None:
+                if not (is_adj and getattr(drag_target, "type", None) != "adjust"):
+                    ov_tid = drag_target_id
             if ov_tid == track_id:
                 result.append((i, ov))
-            elif ov_tid is None and track_id == first_track_id:
-                # 旧 overlay 没有 _track_id → 归到第一条轨道
+            elif ov_tid is None and t_type == native_type and track_id == first_by_type.get(native_type):
+                # 旧 overlay 没有 _track_id → 归到原生类型的第一条轨道
                 result.append((i, ov))
         return result
 
@@ -2327,10 +2333,12 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                 label)
 
     def _paint_image_track(self, painter, track_obj, row_y, row_h, visible_left, visible_right):
-        """绘制图片覆层轨道内容（每条 image 轨道只绘制属于自己的 overlay）。"""
+        """绘制图片覆层轨道内容（每条轨道绘制属于自己的非调整类 image_overlay）。"""
         tl = _tl_of(self.task_data)
         my_ovs = self._get_overlays_for_track(track_obj, 'image_overlays')
         for i, ov in my_ovs:
+            if ov.get("type") == "adjust":
+                continue
             sx = ov['start'] * self.pixels_per_second
             sw = (ov['end'] - ov['start']) * self.pixels_per_second
             rect = QRectF(sx, row_y, sw, row_h)
@@ -2361,7 +2369,7 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                         drawn_w = tw
                 except Exception:
                     drawn_w = 0
-            name = _file_label(img_path) or ov.get("type", "image")
+            name = _file_label(img_path) or ov.get("name") or ov.get("type", "image")
             if drawn_w:
                 self._draw_clip_label(painter, name, rect.left() + 2 + drawn_w + 6, rect.right() - 4, rect)
             else:
@@ -3112,16 +3120,24 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                         try:
                             if t_type in ("subs", "subtitle"):
                                 self._paint_subs_track(painter, row_y, row_h, visible_left, visible_right, track_obj=t_obj)
+                                self._paint_text_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
+                                self._paint_image_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
                             elif t_type == "audio":
                                 self._paint_audio_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
                             elif t_type == "text":
                                 self._paint_text_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
+                                self._paint_image_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
                             elif t_type == "image":
                                 self._paint_image_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
+                                self._paint_text_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
                             elif t_type == "adjust":
                                 self._paint_adjust_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
+                                self._paint_text_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
+                                self._paint_image_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
                             elif t_type == "video":
                                 self._paint_video_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
+                                self._paint_text_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
+                                self._paint_image_track(painter, t_obj, row_y, row_h, visible_left, visible_right)
                         finally:
                             painter.restore()
 
@@ -3529,7 +3545,23 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             if y < row_y or y > row_y + row_h:
                 continue
             t_type = getattr(t_obj, "type", "")
-            if t_type in ("video", "audio"):
+            if t_type != "audio":
+                for _lname in ("image_overlays", "text_overlays"):
+                    for _i, ov in reversed(self._get_overlays_for_track(t_obj, _lname)):
+                        sx = float(ov.get("start") or 0.0) * self.pixels_per_second
+                        sw = (float(ov.get("end") or 0.0) - float(ov.get("start") or 0.0)) * self.pixels_per_second
+                        if abs(real_x - sx) <= self.HANDLE_PX / 2 and sw >= 1:
+                            hit = ("clip", ov, "left")
+                            break
+                        elif abs(real_x - (sx + sw)) <= self.HANDLE_PX / 2 and sw >= 1:
+                            hit = ("clip", ov, "right")
+                            break
+                        elif sx <= real_x <= sx + sw:
+                            hit = ("clip", ov, "body")
+                            break
+                    if hit:
+                        break
+            if hit is None and t_type in ("video", "audio"):
                 for clip_obj in getattr(t_obj, "clips", []) or []:
                     start_t = float(getattr(clip_obj, "start_t", 0.0))
                     eff = float(getattr(clip_obj, "effective_duration", 0.0) or 0.0)
@@ -3557,21 +3589,7 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                             hit = ("clip", clip_obj, "body")
                     if hit:
                         break
-            elif t_type == "text":
-                for _i, ov in self._get_overlays_for_track(t_obj, "text_overlays"):
-                    sx = float(ov.get("start") or 0.0) * self.pixels_per_second
-                    sw = (float(ov.get("end") or 0.0) - float(ov.get("start") or 0.0)) * self.pixels_per_second
-                    if sx <= real_x <= sx + sw:
-                        hit = ("clip", ov, "body")
-                        break
-            elif t_type in ("image", "adjust"):
-                for _i, ov in self._get_overlays_for_track(t_obj, "image_overlays"):
-                    sx = float(ov.get("start") or 0.0) * self.pixels_per_second
-                    sw = (float(ov.get("end") or 0.0) - float(ov.get("start") or 0.0)) * self.pixels_per_second
-                    if sx <= real_x <= sx + sw:
-                        hit = ("clip", ov, "body")
-                        break
-            elif t_type in ("subs", "subtitle"):
+            elif hit is None and t_type in ("subs", "subtitle"):
                 segs = list((self.task_data or {}).get("segments") or [])
                 for item in self._normalize_segments():
                     idx = item.get("idx")
@@ -4448,7 +4466,7 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         _alt = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier) and not _ctrl
         _linked = not _alt
 
-        # Video clip hit test（遍历所有 video 轨道）
+        # Video clip hit test（遍历所有 video 轨道；若该视频轨上有跨轨放入的覆层则优先命中覆层）
         tl = _tl_of(self.task_data) if self.task_data else None
         if tl is not None:
             for (t_obj, row_y, row_h) in tracks.get("rows", []):
@@ -4458,6 +4476,8 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                     continue
                 if not (row_y <= y <= row_y + row_h):
                     continue
+                if self._try_hit_overlay_on_row(t_obj, row_y, row_h, real_x, y, event):
+                    return
                 for clip_obj in reversed(getattr(t_obj, "clips", []) or []):
                     start_t = float(getattr(clip_obj, "start_t", 0.0))
                     eff_dur = float(getattr(clip_obj, "effective_duration", 0.0))
@@ -4646,73 +4666,10 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                         return
                 break  # 只处理包含 y 的那一条音频轨道
 
-        # Overlay hit test (text/image tracks) — 多轨道支持
-        # 遍历所有同类型轨道行，只检测属于该轨道的 overlay
-        for list_name, track_type_key, edit_key in [('text_overlays', 'text', 'text'), ('image_overlays', 'image', 'images'),
-                                                    ('image_overlays', 'adjust', 'images')]:
-            if not self.can_edit_track(edit_key):
-                continue
-            # 遍历所有该类型的轨道行
-            for (t_obj, row_y_t, row_h_t) in tracks.get("rows", []):
-                if getattr(t_obj, "type", "") != track_type_key:
-                    continue
-                ov_top = row_y_t
-                ov_bottom = ov_top + row_h_t
-                if not (ov_top <= y <= ov_bottom):
-                    continue
-                # 只取属于这条轨道的 overlay
-                my_ovs = self._get_overlays_for_track(t_obj, list_name)
-                for idx, ov in reversed(my_ovs):
-                    sx = ov['start'] * self.pixels_per_second
-                    sw = (ov['end'] - ov['start']) * self.pixels_per_second
-                    left_center = sx
-                    right_center = sx + sw
-                    if sw < self.HANDLE_PX * 2:
-                        if (sx - self.HANDLE_PX / 2) <= real_x <= (sx + sw + self.HANDLE_PX / 2):
-                            mode = 'resize_overlay_right' if abs(real_x - right_center) < abs(real_x - left_center) else 'resize_overlay_left'
-                            self._select_overlay_item(t_obj, list_name, idx)
-                            self._drag_source_track = t_obj
-                            self._drag_target_track = t_obj
-                            self.mode = mode
-                            self.update()
-                            self.item_selected.emit('overlay', (list_name, idx))
-                            self.setFocus()
-                            return
-                    else:
-                        right_rect = QRectF(sx + sw - self.HANDLE_PX / 2, ov_top, self.HANDLE_PX, row_h_t)
-                        left_rect = QRectF(sx - self.HANDLE_PX / 2, ov_top, self.HANDLE_PX, row_h_t)
-                        if right_rect.contains(real_x, y):
-                            self._select_overlay_item(t_obj, list_name, idx)
-                            self._drag_source_track = t_obj
-                            self._drag_target_track = t_obj
-                            self.mode = 'resize_overlay_right'
-                            self.update()
-                            self.item_selected.emit('overlay', (list_name, idx))
-                            self.setFocus()
-                            return
-                        if left_rect.contains(real_x, y):
-                            self._select_overlay_item(t_obj, list_name, idx)
-                            self._drag_source_track = t_obj
-                            self._drag_target_track = t_obj
-                            self.mode = 'resize_overlay_left'
-                            self.update()
-                            self.item_selected.emit('overlay', (list_name, idx))
-                            self.setFocus()
-                            return
-                    if sx <= real_x <= sx + sw:
-                        _ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
-                        self._select_overlay_item(t_obj, list_name, idx, ctrl=_ctrl, keep_group=True)
-                        self._ov_group_ctrl = _ctrl
-                        self._drag_source_track = t_obj
-                        self._drag_target_track = t_obj
-                        self.mode = 'move_overlay'
-                        self._ov_drag_start_x = real_x
-                        self._ov_drag_orig_start = ov['start']
-                        self._ov_drag_orig_end = ov['end']
-                        self.item_selected.emit('overlay', (list_name, idx))
-                        self.update()
-                        self.setFocus()
-                        return
+        # Overlay hit test (all visual tracks) — 多轨道与跨轨支持
+        for (t_obj, row_y_t, row_h_t) in tracks.get("rows", []):
+            if self._try_hit_overlay_on_row(t_obj, row_y_t, row_h_t, real_x, y, event):
+                return
 
         if subs_top <= y <= subs_bottom and self.can_edit_track("subs"):
             # 0. Handle hit test (right -> left)
@@ -4856,6 +4813,75 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         else:
             self.mode = 'seek'
             self.seek_request.emit(int(real_x/self.pixels_per_second*1000))
+
+    def _try_hit_overlay_on_row(self, t_obj, row_y_t, row_h_t, real_x, y, event) -> bool:
+        """检测指定视觉轨道行上的文字/图片/边框/贴纸覆层命中。"""
+        if not self.can_edit_track(t_obj):
+            return False
+        t_type = getattr(t_obj, "type", "")
+        if t_type == "audio" or getattr(t_obj, "domain", "visual") == "audio":
+            return False
+        ov_top = row_y_t
+        ov_bottom = ov_top + row_h_t
+        if not (ov_top <= y <= ov_bottom):
+            return False
+        for list_name in ("image_overlays", "text_overlays"):
+            edit_key = "text" if list_name == "text_overlays" else "images"
+            if t_type in ("text", "image") and not self.can_edit_track(edit_key):
+                continue
+            my_ovs = self._get_overlays_for_track(t_obj, list_name)
+            for idx, ov in reversed(my_ovs):
+                sx = ov['start'] * self.pixels_per_second
+                sw = (ov['end'] - ov['start']) * self.pixels_per_second
+                left_center = sx
+                right_center = sx + sw
+                if sw < self.HANDLE_PX * 2:
+                    if (sx - self.HANDLE_PX / 2) <= real_x <= (sx + sw + self.HANDLE_PX / 2):
+                        mode = 'resize_overlay_right' if abs(real_x - right_center) < abs(real_x - left_center) else 'resize_overlay_left'
+                        self._select_overlay_item(t_obj, list_name, idx)
+                        self._drag_source_track = t_obj
+                        self._drag_target_track = t_obj
+                        self.mode = mode
+                        self.update()
+                        self.item_selected.emit('overlay', (list_name, idx))
+                        self.setFocus()
+                        return True
+                else:
+                    right_rect = QRectF(sx + sw - self.HANDLE_PX / 2, ov_top, self.HANDLE_PX, row_h_t)
+                    left_rect = QRectF(sx - self.HANDLE_PX / 2, ov_top, self.HANDLE_PX, row_h_t)
+                    if right_rect.contains(real_x, y):
+                        self._select_overlay_item(t_obj, list_name, idx)
+                        self._drag_source_track = t_obj
+                        self._drag_target_track = t_obj
+                        self.mode = 'resize_overlay_right'
+                        self.update()
+                        self.item_selected.emit('overlay', (list_name, idx))
+                        self.setFocus()
+                        return True
+                    if left_rect.contains(real_x, y):
+                        self._select_overlay_item(t_obj, list_name, idx)
+                        self._drag_source_track = t_obj
+                        self._drag_target_track = t_obj
+                        self.mode = 'resize_overlay_left'
+                        self.update()
+                        self.item_selected.emit('overlay', (list_name, idx))
+                        self.setFocus()
+                        return True
+                if sx <= real_x <= sx + sw:
+                    _ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+                    self._select_overlay_item(t_obj, list_name, idx, ctrl=_ctrl, keep_group=True)
+                    self._ov_group_ctrl = _ctrl
+                    self._drag_source_track = t_obj
+                    self._drag_target_track = t_obj
+                    self.mode = 'move_overlay'
+                    self._ov_drag_start_x = real_x
+                    self._ov_drag_orig_start = ov['start']
+                    self._ov_drag_orig_end = ov['end']
+                    self.item_selected.emit('overlay', (list_name, idx))
+                    self.update()
+                    self.setFocus()
+                    return True
+        return False
 
     def prepare_retime(self):
         # Snapshot current state
@@ -5170,10 +5196,12 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                     return
                 target_track = self._pos_to_track(event.pos().y())
                 if target_track is not None and self.can_edit_track(target_track):
-                    if list_name == "text_overlays" and getattr(target_track, "type", None) == "text":
-                        self._drag_target_track = target_track
-                    elif list_name == "image_overlays" and getattr(target_track, "type", None) == (
-                            "adjust" if ov.get("type") == "adjust" else "image"):
+                    t_type = getattr(target_track, "type", None)
+                    t_dom = getattr(target_track, "domain", "visual")
+                    if list_name == "image_overlays" and ov.get("type") == "adjust":
+                        if t_type == "adjust":
+                            self._drag_target_track = target_track
+                    elif t_dom != "audio" and t_type in ("text", "image", "video", "subs", "subtitle", "adjust"):
                         self._drag_target_track = target_track
                 self.update()
         elif self.mode in ['resize_right', 'resize_left'] and self._active_resize_idx is not None:
@@ -5295,19 +5323,20 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                     clip_rect = QRectF(sx, row_y, sw, row_h)
                     if world_rect.intersects(clip_rect):
                         self._clip_sel.append((tid, i))
-            # Q145：框选也框文字 / 图片
+            # Q145：框选也框文字 / 图片（支持跨轨）
             self._ov_multi = []
             for (t_obj, row_y, row_h) in tracks.get("rows", []):
                 t_type = getattr(t_obj, "type", "")
-                name = {"text": "text_overlays", "image": "image_overlays", "adjust": "image_overlays"}.get(t_type)
-                if name is None:
+                if t_type == "audio":
                     continue
-                for _i, ov in self._get_overlays_for_track(t_obj, name):
-                    sx = float(ov.get("start") or 0.0) * self.pixels_per_second
-                    sw = max(1.0, (float(ov.get("end") or 0.0) - float(ov.get("start") or 0.0))
-                             * self.pixels_per_second)
-                    if world_rect.intersects(QRectF(sx, row_y, sw, row_h)):
-                        self._ov_multi.append(ov)
+                for name in ("text_overlays", "image_overlays"):
+                    for _i, ov in self._get_overlays_for_track(t_obj, name):
+                        sx = float(ov.get("start") or 0.0) * self.pixels_per_second
+                        sw = max(1.0, (float(ov.get("end") or 0.0) - float(ov.get("start") or 0.0))
+                                 * self.pixels_per_second)
+                        if world_rect.intersects(QRectF(sx, row_y, sw, row_h)):
+                            if not any(x is ov for x in self._ov_multi):
+                                self._ov_multi.append(ov)
             self._publish_selection()
             self.update()
         
@@ -5450,11 +5479,13 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                 target_track = self._drag_target_track
                 source_track = self._drag_source_track
                 if target_track is not None and source_track is not None and target_track is not source_track:
-                    if list_name == "text_overlays" and getattr(target_track, "type", None) == "text":
-                        ov["_track_id"] = getattr(target_track, "id", None)
-                        self.selected_track = target_track
-                    elif list_name == "image_overlays" and getattr(target_track, "type", None) == (
-                            "adjust" if ov.get("type") == "adjust" else "image"):
+                    t_type = getattr(target_track, "type", None)
+                    t_dom = getattr(target_track, "domain", "visual")
+                    if list_name == "image_overlays" and ov.get("type") == "adjust":
+                        if t_type == "adjust":
+                            ov["_track_id"] = getattr(target_track, "id", None)
+                            self.selected_track = target_track
+                    elif t_dom != "audio" and t_type in ("text", "image", "video", "subs", "subtitle", "adjust"):
                         ov["_track_id"] = getattr(target_track, "id", None)
                         self.selected_track = target_track
 
@@ -5687,16 +5718,12 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                 self._popup_audio_clip_menu(event, hit_track, hit_clip)
                 return
 
-        # ── 检测图片轨 (`image_overlays`) / 文本轨 (`text_overlays`) 上的覆层条右键菜单 ──
+        # ── 检测视觉轨上的覆层条右键菜单（支持跨轨） ──
         if hit_clip is None:
             hit_ov_info = None
-            for list_name, track_type_key in (
-                ("image_overlays", "image"),
-                ("image_overlays", "adjust"),
-                ("text_overlays", "text"),
-            ):
+            for list_name in ("image_overlays", "text_overlays"):
                 for (t_obj, row_y_t, row_h_t) in tracks.get("rows", []):
-                    if getattr(t_obj, "type", "") != track_type_key:
+                    if getattr(t_obj, "type", "") == "audio":
                         continue
                     if not (row_y_t <= y <= row_y_t + row_h_t):
                         continue

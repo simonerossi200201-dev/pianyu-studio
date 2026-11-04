@@ -1,0 +1,38 @@
+{
+  "id": "bd_luxu_014",
+  "type": "frame",
+  "name": "青金石星空金箔画框",
+  "license": "CUTORA-original",
+  "subcat": "材质质感",
+  "tags": [
+    "材质质感",
+    "luxury_texture",
+    "glow_frame",
+    "hammered_gold",
+    "four_sides",
+    "青金石星空金箔画框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_luxu_014",
+    "style": "glow_frame",
+    "recipe": "hammered_gold",
+    "family": "luxury_texture",
+    "category": "材质质感",
+    "edge_mode": "four_sides",
+    "thickness": 13,
+    "length_ratio": 1.0,
+    "corner_radius": 10,
+    "color_mode": "dual_gradient",
+    "primary_color": "#1A237E",
+    "secondary_color": "#FFD54F",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

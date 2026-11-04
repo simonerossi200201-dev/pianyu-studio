@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_002",
+  "type": "frame",
+  "name": "希腊雅典娜橄榄枝桂冠框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "olive_wreath",
+    "four_sides",
+    "希腊雅典娜橄榄枝桂冠框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_002",
+    "style": "floral_vine",
+    "recipe": "olive_wreath",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "four_sides",
+    "thickness": 11,
+    "length_ratio": 1.0,
+    "corner_radius": 18,
+    "color_mode": "gold_gradient",
+    "primary_color": "#D4AF37",
+    "secondary_color": "#689F38",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

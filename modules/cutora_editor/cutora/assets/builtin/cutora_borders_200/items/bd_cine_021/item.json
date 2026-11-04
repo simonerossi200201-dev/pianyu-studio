@@ -1,0 +1,38 @@
+{
+  "id": "bd_cine_021",
+  "type": "frame",
+  "name": "诺兰 IMAX 巨幕上下黑金遮幅",
+  "license": "CUTORA-original",
+  "subcat": "电影取景",
+  "tags": [
+    "电影取景",
+    "cinematic_film",
+    "viewfinder_hud",
+    "anamorphic_bars",
+    "two_sides_h",
+    "诺兰 IMAX 巨幕上下黑金遮幅"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cine_021",
+    "style": "viewfinder_hud",
+    "recipe": "anamorphic_bars",
+    "family": "cinematic_film",
+    "category": "电影取景",
+    "edge_mode": "two_sides_h",
+    "thickness": 22,
+    "length_ratio": 1.0,
+    "corner_radius": 0,
+    "color_mode": "dual_gradient",
+    "primary_color": "#0D0D0D",
+    "secondary_color": "#E5C158",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

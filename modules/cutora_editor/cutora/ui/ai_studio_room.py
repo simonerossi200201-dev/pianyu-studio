@@ -3347,7 +3347,7 @@ def _run_rmbg_single_file(src_img_or_vid: str, frame_sec: float = 0.0) -> tuple[
     if not in_png.is_file():
         return False, "", "无法读取待抠图的画面帧或图片。"
 
-    py_rmbg = LLM_ROOT / "tools" / "venv_rmbg" / "Scripts" / "python.exe"
+    py_rmbg = _resolve_tool_py("tools/venv_rmbg/Scripts/python.exe")
     runner_rmbg = LLM_ROOT / "tools" / "rmbg" / "rmbg.py"
     if not (py_rmbg.is_file() and runner_rmbg.is_file()):
         try:

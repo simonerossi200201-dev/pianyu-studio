@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_023",
+  "type": "frame",
+  "name": "向日葵梵高星空金辉框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "peony_bloom",
+    "four_sides",
+    "向日葵梵高星空金辉框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_023",
+    "style": "floral_vine",
+    "recipe": "peony_bloom",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "four_sides",
+    "thickness": 13,
+    "length_ratio": 1.0,
+    "corner_radius": 16,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFCA28",
+    "secondary_color": "#1565C0",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

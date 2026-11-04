@@ -1,0 +1,44 @@
+{
+  "id": "lt_graf_024",
+  "type": "lower_third",
+  "name": "皇家蓝宝石星月几何画报 · Ⅲ",
+  "license": "CUTORA-original",
+  "subcat": "图形画报肌理",
+  "tags": [
+    "图形画报",
+    "肌理",
+    "graphic",
+    "poster",
+    "plate_arabesque_royal_sapphire.png",
+    "皇家蓝宝石星月几何画报 · Ⅲ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_graf_024",
+    "family": "graphic_texture",
+    "category": "图形画报肌理",
+    "layout_type": "textured_plate",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "plate_arabesque_royal_sapphire.png",
+    "show_icon": false,
+    "primary_color": "#0B192C",
+    "secondary_color": "#FFD700",
+    "text_color": "#F0F8FF",
+    "bg_opacity": 238,
+    "anim_in": "gold_shimmer_sweep",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.5,
+    "default_text": "皇家蓝宝石星月几何画报\n高定艺术肌理底板与多行排版",
+    "lines": [
+      "皇家蓝宝石星月几何画报",
+      "高定艺术肌理底板与多行排版"
+    ]
+  }
+}

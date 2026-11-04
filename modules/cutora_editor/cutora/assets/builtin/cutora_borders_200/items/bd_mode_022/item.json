@@ -1,0 +1,38 @@
+{
+  "id": "bd_mode_022",
+  "type": "frame",
+  "name": "左侧强调色视觉引导线",
+  "license": "CUTORA-original",
+  "subcat": "现代极简",
+  "tags": [
+    "现代极简",
+    "modern_minimal",
+    "double_line",
+    "editorial_double",
+    "one_side_left",
+    "左侧强调色视觉引导线"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_mode_022",
+    "style": "double_line",
+    "recipe": "editorial_double",
+    "family": "modern_minimal",
+    "category": "现代极简",
+    "edge_mode": "one_side_left",
+    "thickness": 8,
+    "length_ratio": 1.0,
+    "corner_radius": 4,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FF4081",
+    "secondary_color": "#FFFFFF",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

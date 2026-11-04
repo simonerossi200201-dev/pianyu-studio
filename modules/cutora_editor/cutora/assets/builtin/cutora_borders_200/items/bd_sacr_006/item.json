@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_006",
+  "type": "frame",
+  "name": "千叶金莲禅意佛光静心框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "golden_lotus",
+    "four_sides",
+    "千叶金莲禅意佛光静心框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_006",
+    "style": "sacred_halo",
+    "recipe": "golden_lotus",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 18,
+    "color_mode": "gold_gradient",
+    "primary_color": "#FFD54F",
+    "secondary_color": "#BF360C",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

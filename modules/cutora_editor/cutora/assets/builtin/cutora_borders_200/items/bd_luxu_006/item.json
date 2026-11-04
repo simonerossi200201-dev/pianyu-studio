@@ -1,0 +1,38 @@
+{
+  "id": "bd_luxu_006",
+  "type": "frame",
+  "name": "中世纪火烧羊皮卷古框",
+  "license": "CUTORA-original",
+  "subcat": "材质质感",
+  "tags": [
+    "材质质感",
+    "luxury_texture",
+    "glow_frame",
+    "parchment_edge",
+    "four_sides",
+    "中世纪火烧羊皮卷古框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_luxu_006",
+    "style": "glow_frame",
+    "recipe": "parchment_edge",
+    "family": "luxury_texture",
+    "category": "材质质感",
+    "edge_mode": "four_sides",
+    "thickness": 15,
+    "length_ratio": 1.0,
+    "corner_radius": 8,
+    "color_mode": "dual_gradient",
+    "primary_color": "#D7B377",
+    "secondary_color": "#5D4037",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

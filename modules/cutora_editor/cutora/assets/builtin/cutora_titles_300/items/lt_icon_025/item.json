@@ -1,0 +1,44 @@
+{
+  "id": "lt_icon_025",
+  "type": "lower_third",
+  "name": "国风朱砂印章出标题 · Ⅱ",
+  "license": "CUTORA-original",
+  "subcat": "带图标/缩略图",
+  "tags": [
+    "带图标",
+    "缩略图",
+    "icon",
+    "seal",
+    "rounded_square",
+    "国风朱砂印章出标题 · Ⅱ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_icon_025",
+    "family": "icon_badge",
+    "category": "带图标/缩略图",
+    "layout_type": "icon_card",
+    "badge_shape": "rounded_square",
+    "icon_glyph": "seal",
+    "icon_path": "D:\\0_LTX\\modules\\cutora_editor\\resources\\title_art_plates\\sticker_guofeng_vermilion_seal.png",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#1F1212",
+    "secondary_color": "#E53935",
+    "text_color": "#FFFDF9",
+    "bg_opacity": 232,
+    "anim_in": "ink_unroll_fade",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "国风朱砂印章出标题\n支持多行与长段落自动排版换行",
+    "lines": [
+      "国风朱砂印章出标题",
+      "支持多行与长段落自动排版换行"
+    ]
+  }
+}

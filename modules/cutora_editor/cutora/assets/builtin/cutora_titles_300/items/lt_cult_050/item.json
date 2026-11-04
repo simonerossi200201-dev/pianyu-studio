@@ -1,0 +1,47 @@
+{
+  "id": "lt_cult_050",
+  "type": "lower_third",
+  "name": "牛津古典羊皮卷学术铭牌 · Ⅳ",
+  "license": "CUTORA-original",
+  "subcat": "东方/西方/多语种",
+  "tags": [
+    "东方",
+    "西方",
+    "多语种",
+    "国风",
+    "古典",
+    "cultural",
+    "西方古典",
+    "western_opera",
+    "牛津古典羊皮卷学术铭牌 · Ⅳ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_cult_050",
+    "family": "cultural_global",
+    "category": "东方/西方/多语种",
+    "layout_type": "western_opera",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "plate_vintage_parchment_wax.png",
+    "show_icon": false,
+    "primary_color": "#281C12",
+    "secondary_color": "#C5A059",
+    "text_color": "#FAF0E6",
+    "bg_opacity": 234,
+    "anim_in": "gold_shimmer_sweep",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.48,
+    "default_text": "牛津古典羊皮卷学术铭牌\n支持中文 · English · العربية 多语种自适应排版",
+    "lines": [
+      "牛津古典羊皮卷学术铭牌",
+      "支持中文 · English · العربية 多语种自适应排版"
+    ]
+  }
+}

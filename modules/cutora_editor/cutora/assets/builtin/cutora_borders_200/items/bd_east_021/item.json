@@ -1,0 +1,38 @@
+{
+  "id": "bd_east_021",
+  "type": "frame",
+  "name": "千里江山青绿山水框",
+  "license": "CUTORA-original",
+  "subcat": "东方国风",
+  "tags": [
+    "东方国风",
+    "eastern_guofeng",
+    "guofeng_pattern",
+    "auspicious_cloud",
+    "four_sides",
+    "千里江山青绿山水框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_east_021",
+    "style": "guofeng_pattern",
+    "recipe": "auspicious_cloud",
+    "family": "eastern_guofeng",
+    "category": "东方国风",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 14,
+    "color_mode": "dual_gradient",
+    "primary_color": "#1ABC9C",
+    "secondary_color": "#2E86C1",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

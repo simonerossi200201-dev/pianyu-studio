@@ -1,0 +1,14 @@
+{
+  "id": "el_gui_gold_underline_sweep",
+  "name": "金笔横扫下划线动图",
+  "type": "element",
+  "subcat": "指引标注",
+  "file": "el_gui_gold_underline_sweep.gif",
+  "license": "CUTORA-original",
+  "is_animated_gif": true,
+  "tags": [
+    "指引标注",
+    "动图",
+    "金笔横扫下划线动图"
+  ]
+}

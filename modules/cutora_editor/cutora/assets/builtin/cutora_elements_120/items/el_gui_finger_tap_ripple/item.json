@@ -1,0 +1,14 @@
+{
+  "id": "el_gui_finger_tap_ripple",
+  "name": "手指点击波纹扩散动图",
+  "type": "element",
+  "subcat": "指引标注",
+  "file": "el_gui_finger_tap_ripple.gif",
+  "license": "CUTORA-original",
+  "is_animated_gif": true,
+  "tags": [
+    "指引标注",
+    "动图",
+    "手指点击波纹扩散动图"
+  ]
+}

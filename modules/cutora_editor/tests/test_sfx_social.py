@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Unit tests for Stable Audio Open 1.0 generated short-video SFX (100) and BGM beds (6)."""
+"""Unit tests for 200 Studio-Quality SFX, 20 Melodic Viral BGM beds, and Pre-Transition Audio Controls."""
 from __future__ import annotations
 
 import os
@@ -12,7 +12,25 @@ from cutora.model.timeline_model import Track, TransitionItem
 
 
 def test_sfx_social_catalog_and_provenance():
-    assert len(sfx_social.CATALOG) == 100
+    assert len(sfx_social.CATALOG) == 200
+    assert sfx_social.GROUPS == [
+        "转场音效",
+        "自然天气",
+        "江河流水",
+        "鸟鸣生灵",
+        "掌声欢笑",
+        "城市火焰",
+        "拟音场景",
+    ]
+    trans_items = [m for m in sfx_social.CATALOG if m["group"] == "转场音效"]
+    scene_items = [m for m in sfx_social.CATALOG if m["group"] != "转场音效"]
+    assert len(trans_items) == 60
+    assert len(scene_items) == 140
+    for m in trans_items:
+        assert 2.0 <= float(m["duration"]) <= 3.0, (m["id"], m["duration"])
+    for m in scene_items:
+        assert float(m["duration"]) >= 8.0, (m["id"], m["duration"])
+
     assert sfx_social.missing_files() == []
     ok, errs = sfx_social.verify_provenance()
     assert ok, errs
@@ -35,12 +53,15 @@ def test_sfx_social_audio_specs_and_peaks():
         assert np.all(np.isfinite(st)), sid
         pk = sfx_social.peak_dbfs(st)
         assert -24.0 <= pk <= -0.9, (sid, pk)
-        # Clean fade-in / fade-out (no click at boundaries)
+        sf = sfx_social.spectral_flatness(st)
+        assert sf <= 0.22, (sid, sf)
+        # Clean S-curve fade-in / fade-out (no click at boundaries)
         assert float(np.max(np.abs(st[0]))) <= 0.02, (sid, st[0])
         assert float(np.max(np.abs(st[-1]))) <= 0.02, (sid, st[-1])
 
 
 def test_attach_and_detach_transition_sfx_idempotent():
+    sfx_social.set_pre_transition_sfx_id("auto")
     tl = Timeline(1920, 1080, 30.0)
     vtr = Track("video")
     tl.add_track(vtr)
@@ -49,8 +70,12 @@ def test_attach_and_detach_transition_sfx_idempotent():
 
     clip1 = sfx_social.attach_transition_sfx(tl, vtr, trans, "whoosh_heavy")
     assert clip1 is not None
-    # Midpoint is 2.0 + 0.4 = 2.4s; whoosh_heavy peak_offset = 0.50s -> start_t = 1.90s
-    assert abs(clip1.start_t - 1.90) < 1e-3
+    by_id = sfx_social.catalog_by_id()
+    expected_start = 2.4 - float(by_id["whoosh_heavy"]["peak_offset"])
+    assert abs(clip1.start_t - expected_start) < 1e-3
+    assert 2.0 <= clip1.duration <= 3.0
+    assert abs(clip1.fade_in - 0.35) < 1e-6
+    assert abs(clip1.fade_out - 0.55) < 1e-6
     assert clip1.audio_role == "sfx"
 
     # Calling again with same sfx_id updates in-place without duplicating
@@ -80,6 +105,33 @@ def test_attach_and_detach_transition_sfx_idempotent():
     assert sfx_social.active_transition_sfx_id(tl, vtr, trans) == "none"
 
 
+def test_place_transition_sfx_on_timeline():
+    tl = Timeline(1920, 1080, 30.0)
+    clip = sfx_social.place_transition_sfx_on_timeline(
+        tl,
+        transition_start=3.0,
+        transition_dur=0.6,
+        sfx_id="trans_harp_gliss_up",
+    )
+    assert clip is not None
+    assert clip.audio_role == "sfx"
+    assert 2.0 <= clip.duration <= 3.0
+    assert abs(clip.fade_in - 0.35) < 1e-6
+    assert abs(clip.fade_out - 0.55) < 1e-6
+
+
+def test_iter_all_audio_library_items():
+    items = sfx_social.iter_all_audio_library_items()
+    assert len(items) == 220
+    bgm_items = [x for x in items if x["audio_kind"] == "bgm"]
+    sfx_items = [x for x in items if x["audio_kind"] == "sfx"]
+    assert len(bgm_items) == 20
+    assert len(sfx_items) == 200
+    for item in items:
+        assert os.path.isfile(item["path"]), item["id"]
+        assert item["duration"] > 0
+
+
 def test_preview_and_stop_preview_sfx():
     assert sfx_social.preview_sfx("nonexistent_sfx_id") is False
     assert sfx_social.preview_sfx("none") is False
@@ -88,7 +140,7 @@ def test_preview_and_stop_preview_sfx():
 
 
 def test_bgm_beds_catalog_and_provenance():
-    assert len(bgm_beds.CATALOG) == 6
+    assert len(bgm_beds.CATALOG) == 20
     assert bgm_beds.missing_files() == []
     ok, errs = bgm_beds.verify_provenance()
     assert ok, errs
@@ -102,10 +154,13 @@ def test_bgm_beds_catalog_and_provenance():
         assert p and os.path.isfile(p), bid
         st, sr, nch, sw = bgm_beds.read_wav16(p)
         assert sr == 48000 and nch == 2 and sw == 2
+        assert 12.0 <= float(c["duration"]) <= 16.0, (bid, c["duration"])
         pk = sfx_social.peak_dbfs(st)
         lufs = sfx_social.integrated_lufs(st)
+        sf = sfx_social.spectral_flatness(st)
         assert -20.0 <= pk <= -0.9, (bid, pk)
         assert -20.0 <= lufs <= -12.0, (bid, lufs)
+        assert sf <= 0.22, (bid, sf)
 
 
 def test_place_bgm_bed_on_timeline():
@@ -115,3 +170,29 @@ def test_place_bgm_bed_on_timeline():
     assert clip.audio_role == "bgm"
     assert clip.loop is True
     assert abs(clip.out_t - 30.0) < 1e-3
+
+    clip2 = bgm_beds.place_bgm_bed(tl, "bgm_acoustic_sunny_vlog", start_t=5.0, duration=20.0)
+    assert clip2 is not None
+    assert clip2.audio_role == "bgm"
+
+
+def test_transition_panel_pre_sfx_controls():
+    from PySide6.QtWidgets import QApplication
+    from cutora.ui.panels.transition_panel import TransitionPanel, set_sfx_enabled
+
+    _app = QApplication.instance() or QApplication([])
+    set_sfx_enabled(True)
+    panel = TransitionPanel()
+    assert hasattr(panel, "chk_auto_sfx")
+    assert hasattr(panel, "pre_sfx_combo")
+    assert hasattr(panel, "btn_pre_sfx_audition")
+    assert panel.chk_auto_sfx.isChecked() is True
+    assert panel.selected_pre_sfx_id() == "auto"
+    # 1 ("auto") + 200 SFX + 1 ("none") = 202 entries
+    assert panel.pre_sfx_combo.count() == 202
+
+    panel.set_pre_sfx_id("trans_guzheng_gliss")
+    assert panel.selected_pre_sfx_id() == "trans_guzheng_gliss"
+    assert sfx_social.get_pre_transition_sfx_id() == "trans_guzheng_gliss"
+    assert panel.effective_audition_sfx_id() == "trans_guzheng_gliss"
+    sfx_social.set_pre_transition_sfx_id("auto")

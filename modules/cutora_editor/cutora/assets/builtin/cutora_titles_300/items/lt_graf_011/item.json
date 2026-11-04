@@ -1,0 +1,44 @@
+{
+  "id": "lt_graf_011",
+  "type": "lower_third",
+  "name": "巴洛克皇室黑金浮雕铭牌 · Ⅱ",
+  "license": "CUTORA-original",
+  "subcat": "图形画报肌理",
+  "tags": [
+    "图形画报",
+    "肌理",
+    "graphic",
+    "poster",
+    "plate_baroque_royal_gold.png",
+    "巴洛克皇室黑金浮雕铭牌 · Ⅱ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_graf_011",
+    "family": "graphic_texture",
+    "category": "图形画报肌理",
+    "layout_type": "textured_plate",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "plate_baroque_royal_gold.png",
+    "show_icon": false,
+    "primary_color": "#1A120B",
+    "secondary_color": "#F5C451",
+    "text_color": "#FFF8E1",
+    "bg_opacity": 238,
+    "anim_in": "gold_shimmer_sweep",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.5,
+    "default_text": "巴洛克皇室黑金浮雕铭牌\n高定艺术肌理底板与多行排版",
+    "lines": [
+      "巴洛克皇室黑金浮雕铭牌",
+      "高定艺术肌理底板与多行排版"
+    ]
+  }
+}

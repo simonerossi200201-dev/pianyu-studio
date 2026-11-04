@@ -10,10 +10,15 @@ import zlib
 import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LTX_ROOT = os.path.dirname(os.path.dirname(REPO))
 FFMPEG = os.path.join(REPO, "runtime", "ffmpeg", "ffmpeg.exe")
 FFPROBE = os.path.join(REPO, "runtime", "ffmpeg", "ffprobe.exe")
 if not os.path.isfile(FFMPEG):
+    FFMPEG = os.path.join(LTX_ROOT, "runtime", "ffmpeg", "ffmpeg.exe")
+if not os.path.isfile(FFMPEG):
     FFMPEG = "ffmpeg"
+if not os.path.isfile(FFPROBE):
+    FFPROBE = os.path.join(LTX_ROOT, "runtime", "ffmpeg", "ffprobe.exe")
 if not os.path.isfile(FFPROBE):
     FFPROBE = "ffprobe"
 

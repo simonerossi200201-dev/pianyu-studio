@@ -1,0 +1,38 @@
+{
+  "id": "bd_mode_024",
+  "type": "frame",
+  "name": "几何圆点四角锚点极简框",
+  "license": "CUTORA-original",
+  "subcat": "现代极简",
+  "tags": [
+    "现代极简",
+    "modern_minimal",
+    "double_line",
+    "corner_dots",
+    "four_sides",
+    "几何圆点四角锚点极简框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_mode_024",
+    "style": "double_line",
+    "recipe": "corner_dots",
+    "family": "modern_minimal",
+    "category": "现代极简",
+    "edge_mode": "four_sides",
+    "thickness": 4,
+    "length_ratio": 1.0,
+    "corner_radius": 8,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFFFFF",
+    "secondary_color": "#00E676",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

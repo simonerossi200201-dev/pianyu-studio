@@ -1,0 +1,44 @@
+{
+  "id": "lt_split_023",
+  "type": "lower_third",
+  "name": "Vogue 时尚画报撞色通栏 · Ⅲ",
+  "license": "CUTORA-original",
+  "subcat": "色彩分区/通栏",
+  "tags": [
+    "色彩分区",
+    "通栏",
+    "split",
+    "banner",
+    "full_banner",
+    "Vogue 时尚画报撞色通栏 · Ⅲ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_split_023",
+    "family": "color_split",
+    "category": "色彩分区/通栏",
+    "layout_type": "full_banner",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": false,
+    "primary_color": "#111111",
+    "secondary_color": "#E6C253",
+    "text_color": "#FFFFFF",
+    "bg_opacity": 236,
+    "anim_in": "split_reveal_slide",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "Vogue 时尚画报撞色通栏\n多行分区自适应延展标题模板",
+    "lines": [
+      "Vogue 时尚画报撞色通栏",
+      "多行分区自适应延展标题模板"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_010",
+  "type": "frame",
+  "name": "奥林匹亚胜利金桂冠荣耀框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "peace_dove_halo",
+    "four_sides",
+    "奥林匹亚胜利金桂冠荣耀框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_010",
+    "style": "sacred_halo",
+    "recipe": "peace_dove_halo",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "four_sides",
+    "thickness": 13,
+    "length_ratio": 1.0,
+    "corner_radius": 16,
+    "color_mode": "gold_gradient",
+    "primary_color": "#FFD700",
+    "secondary_color": "#FFA000",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

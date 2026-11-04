@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_002",
+  "type": "frame",
+  "name": "机甲战士战术切角 HUD 框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "mecha_chamfer",
+    "four_sides",
+    "机甲战士战术切角 HUD 框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_002",
+    "style": "cyber_neon",
+    "recipe": "mecha_chamfer",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "four_sides",
+    "thickness": 8,
+    "length_ratio": 1.0,
+    "corner_radius": 0,
+    "color_mode": "dual_gradient",
+    "primary_color": "#00E5FF",
+    "secondary_color": "#2979FF",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

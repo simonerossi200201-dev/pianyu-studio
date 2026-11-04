@@ -1,0 +1,38 @@
+{
+  "id": "bd_mode_025",
+  "type": "frame",
+  "name": "极简黑曜石暗调细边款",
+  "license": "CUTORA-original",
+  "subcat": "现代极简",
+  "tags": [
+    "现代极简",
+    "modern_minimal",
+    "double_line",
+    "golden_inset",
+    "four_sides",
+    "极简黑曜石暗调细边款"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_mode_025",
+    "style": "double_line",
+    "recipe": "golden_inset",
+    "family": "modern_minimal",
+    "category": "现代极简",
+    "edge_mode": "four_sides",
+    "thickness": 6,
+    "length_ratio": 1.0,
+    "corner_radius": 10,
+    "color_mode": "dual_gradient",
+    "primary_color": "#263238",
+    "secondary_color": "#90A4AE",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

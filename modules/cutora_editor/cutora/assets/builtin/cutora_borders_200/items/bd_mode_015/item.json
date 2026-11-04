@@ -1,0 +1,38 @@
+{
+  "id": "bd_mode_015",
+  "type": "frame",
+  "name": "时尚画册上下平行金线框",
+  "license": "CUTORA-original",
+  "subcat": "现代极简",
+  "tags": [
+    "现代极简",
+    "modern_minimal",
+    "double_line",
+    "editorial_double",
+    "two_sides_h",
+    "时尚画册上下平行金线框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_mode_015",
+    "style": "double_line",
+    "recipe": "editorial_double",
+    "family": "modern_minimal",
+    "category": "现代极简",
+    "edge_mode": "two_sides_h",
+    "thickness": 5,
+    "length_ratio": 1.0,
+    "corner_radius": 0,
+    "color_mode": "gold_gradient",
+    "primary_color": "#D4AF37",
+    "secondary_color": "#FFF8E1",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

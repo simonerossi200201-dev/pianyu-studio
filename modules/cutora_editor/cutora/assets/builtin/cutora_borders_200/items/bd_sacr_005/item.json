@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_005",
+  "type": "frame",
+  "name": "和平鸽与橄榄枝神圣光环框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "peace_dove_halo",
+    "four_sides",
+    "和平鸽与橄榄枝神圣光环框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_005",
+    "style": "sacred_halo",
+    "recipe": "peace_dove_halo",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "four_sides",
+    "thickness": 11,
+    "length_ratio": 1.0,
+    "corner_radius": 16,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFFFFF",
+    "secondary_color": "#FFD700",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

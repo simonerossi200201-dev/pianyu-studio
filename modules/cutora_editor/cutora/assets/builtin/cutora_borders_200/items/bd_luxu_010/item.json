@@ -1,0 +1,38 @@
+{
+  "id": "bd_luxu_010",
+  "type": "frame",
+  "name": "流沙星钻香槟夜宴框",
+  "license": "CUTORA-original",
+  "subcat": "材质质感",
+  "tags": [
+    "材质质感",
+    "luxury_texture",
+    "glow_frame",
+    "crystal_diamond",
+    "four_sides",
+    "流沙星钻香槟夜宴框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_luxu_010",
+    "style": "glow_frame",
+    "recipe": "crystal_diamond",
+    "family": "luxury_texture",
+    "category": "材质质感",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 16,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFE082",
+    "secondary_color": "#FF6F00",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

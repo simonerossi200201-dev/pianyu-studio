@@ -1,0 +1,44 @@
+{
+  "id": "lt_icon_030",
+  "type": "lower_third",
+  "name": "金牌主播麦克风人声条 · Ⅱ",
+  "license": "CUTORA-original",
+  "subcat": "带图标/缩略图",
+  "tags": [
+    "带图标",
+    "缩略图",
+    "icon",
+    "mic",
+    "rounded_square",
+    "金牌主播麦克风人声条 · Ⅱ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_icon_030",
+    "family": "icon_badge",
+    "category": "带图标/缩略图",
+    "layout_type": "icon_pill",
+    "badge_shape": "rounded_square",
+    "icon_glyph": "mic",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#121824",
+    "secondary_color": "#00E676",
+    "text_color": "#FFFFFF",
+    "bg_opacity": 232,
+    "anim_in": "split_reveal_slide",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "金牌主播麦克风人声条\n支持多行与长段落自动排版换行",
+    "lines": [
+      "金牌主播麦克风人声条",
+      "支持多行与长段落自动排版换行"
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "id": "lt_icon_022",
+  "type": "lower_third",
+  "name": "圣洁和平白鸽标题条 · Ⅱ",
+  "license": "CUTORA-original",
+  "subcat": "带图标/缩略图",
+  "tags": [
+    "带图标",
+    "缩略图",
+    "icon",
+    "dove",
+    "rounded_square",
+    "圣洁和平白鸽标题条 · Ⅱ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_icon_022",
+    "family": "icon_badge",
+    "category": "带图标/缩略图",
+    "layout_type": "icon_pill",
+    "badge_shape": "rounded_square",
+    "icon_glyph": "dove",
+    "icon_path": "D:\\0_LTX\\modules\\cutora_editor\\resources\\title_art_plates\\sticker_divine_peace_dove.png",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#0F1E36",
+    "secondary_color": "#80D8FF",
+    "text_color": "#FFFFFF",
+    "bg_opacity": 232,
+    "anim_in": "elastic_card_rise",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "圣洁和平白鸽标题条\n支持多行与长段落自动排版换行",
+    "lines": [
+      "圣洁和平白鸽标题条",
+      "支持多行与长段落自动排版换行"
+    ]
+  }
+}

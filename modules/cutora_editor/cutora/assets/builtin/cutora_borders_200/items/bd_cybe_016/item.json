@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_016",
+  "type": "frame",
+  "name": "全息六边形蜂巢护盾边框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "holo_scan",
+    "four_sides",
+    "全息六边形蜂巢护盾边框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_016",
+    "style": "cyber_neon",
+    "recipe": "holo_scan",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "four_sides",
+    "thickness": 10,
+    "length_ratio": 1.0,
+    "corner_radius": 8,
+    "color_mode": "dual_gradient",
+    "primary_color": "#00E5FF",
+    "secondary_color": "#304FFE",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

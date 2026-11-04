@@ -1,0 +1,14 @@
+{
+  "id": "el_gui_magnifier_frame",
+  "name": "高光放大镜聚焦框",
+  "type": "element",
+  "subcat": "指引标注",
+  "file": "el_gui_magnifier_frame.png",
+  "license": "CUTORA-original",
+  "is_animated_gif": false,
+  "tags": [
+    "指引标注",
+    "高清元素",
+    "高光放大镜聚焦框"
+  ]
+}

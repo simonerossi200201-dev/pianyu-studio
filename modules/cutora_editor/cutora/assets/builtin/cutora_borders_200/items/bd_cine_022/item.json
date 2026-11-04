@@ -1,0 +1,38 @@
+{
+  "id": "bd_cine_022",
+  "type": "frame",
+  "name": "复古胶卷时间码侧边栏框",
+  "license": "CUTORA-original",
+  "subcat": "电影取景",
+  "tags": [
+    "电影取景",
+    "cinematic_film",
+    "viewfinder_hud",
+    "film_sprocket",
+    "one_side_left",
+    "复古胶卷时间码侧边栏框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cine_022",
+    "style": "viewfinder_hud",
+    "recipe": "film_sprocket",
+    "family": "cinematic_film",
+    "category": "电影取景",
+    "edge_mode": "one_side_left",
+    "thickness": 20,
+    "length_ratio": 1.0,
+    "corner_radius": 0,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FF6D00",
+    "secondary_color": "#212121",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

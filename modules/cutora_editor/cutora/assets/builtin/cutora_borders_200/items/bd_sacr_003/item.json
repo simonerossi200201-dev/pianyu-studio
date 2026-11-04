@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_003",
+  "type": "frame",
+  "name": "炽天使羽翼金辉守护框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "angel_wings",
+    "four_sides",
+    "炽天使羽翼金辉守护框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_003",
+    "style": "sacred_halo",
+    "recipe": "angel_wings",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 18,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFF3E0",
+    "secondary_color": "#FFD54F",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

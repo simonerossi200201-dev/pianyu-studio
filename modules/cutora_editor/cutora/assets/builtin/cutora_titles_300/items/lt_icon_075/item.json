@@ -1,0 +1,44 @@
+{
+  "id": "lt_icon_075",
+  "type": "lower_third",
+  "name": "圣光十字福音赞美条 · Ⅳ",
+  "license": "CUTORA-original",
+  "subcat": "带图标/缩略图",
+  "tags": [
+    "带图标",
+    "缩略图",
+    "icon",
+    "cross",
+    "diamond_badge",
+    "圣光十字福音赞美条 · Ⅳ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_icon_075",
+    "family": "icon_badge",
+    "category": "带图标/缩略图",
+    "layout_type": "icon_card",
+    "badge_shape": "diamond_badge",
+    "icon_glyph": "cross",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#1F1912",
+    "secondary_color": "#FFD700",
+    "text_color": "#FFFDE7",
+    "bg_opacity": 232,
+    "anim_in": "gold_shimmer_sweep",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "圣光十字福音赞美条\n支持多行与长段落自动排版换行",
+    "lines": [
+      "圣光十字福音赞美条",
+      "支持多行与长段落自动排版换行"
+    ]
+  }
+}

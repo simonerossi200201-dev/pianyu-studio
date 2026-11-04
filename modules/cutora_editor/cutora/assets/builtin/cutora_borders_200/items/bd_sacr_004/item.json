@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_004",
+  "type": "frame",
+  "name": "古卷圣经羊皮纸烫金框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "scripture_scroll",
+    "four_sides",
+    "古卷圣经羊皮纸烫金框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_004",
+    "style": "sacred_halo",
+    "recipe": "scripture_scroll",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "four_sides",
+    "thickness": 13,
+    "length_ratio": 1.0,
+    "corner_radius": 10,
+    "color_mode": "dual_gradient",
+    "primary_color": "#E6C253",
+    "secondary_color": "#5D4037",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

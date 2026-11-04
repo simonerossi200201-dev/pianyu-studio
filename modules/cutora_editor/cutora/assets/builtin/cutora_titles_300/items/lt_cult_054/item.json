@@ -1,0 +1,47 @@
+{
+  "id": "lt_cult_054",
+  "type": "lower_third",
+  "name": "京都枯山水侘寂木纹字幕 · Ⅳ",
+  "license": "CUTORA-original",
+  "subcat": "东方/西方/多语种",
+  "tags": [
+    "东方",
+    "西方",
+    "多语种",
+    "国风",
+    "古典",
+    "cultural",
+    "东方国风",
+    "guofeng_scroll",
+    "京都枯山水侘寂木纹字幕 · Ⅳ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_cult_054",
+    "family": "cultural_global",
+    "category": "东方/西方/多语种",
+    "layout_type": "guofeng_scroll",
+    "badge_shape": "seal",
+    "icon_glyph": "seal",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#241E1A",
+    "secondary_color": "#D7CCC8",
+    "text_color": "#FAF8F5",
+    "bg_opacity": 234,
+    "anim_in": "ink_unroll_fade",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.48,
+    "default_text": "京都枯山水侘寂木纹字幕\n支持中文 · English · العربية 多语种自适应排版",
+    "lines": [
+      "京都枯山水侘寂木纹字幕",
+      "支持中文 · English · العربية 多语种自适应排版"
+    ]
+  }
+}

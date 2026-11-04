@@ -1,0 +1,38 @@
+{
+  "id": "bd_luxu_004",
+  "type": "frame",
+  "name": "深海幻彩珍珠母贝框",
+  "license": "CUTORA-original",
+  "subcat": "材质质感",
+  "tags": [
+    "材质质感",
+    "luxury_texture",
+    "glow_frame",
+    "mother_of_pearl",
+    "four_sides",
+    "深海幻彩珍珠母贝框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_luxu_004",
+    "style": "glow_frame",
+    "recipe": "mother_of_pearl",
+    "family": "luxury_texture",
+    "category": "材质质感",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 16,
+    "color_mode": "dual_gradient",
+    "primary_color": "#F3E5F5",
+    "secondary_color": "#80DEEA",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

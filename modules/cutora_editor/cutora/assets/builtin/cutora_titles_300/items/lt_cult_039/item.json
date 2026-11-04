@@ -1,0 +1,47 @@
+{
+  "id": "lt_cult_039",
+  "type": "lower_third",
+  "name": "圣殿福音万丈金光经文卡 · Ⅲ",
+  "license": "CUTORA-original",
+  "subcat": "东方/西方/多语种",
+  "tags": [
+    "东方",
+    "西方",
+    "多语种",
+    "国风",
+    "古典",
+    "cultural",
+    "多语种",
+    "sacred_scripture",
+    "圣殿福音万丈金光经文卡 · Ⅲ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_cult_039",
+    "family": "cultural_global",
+    "category": "东方/西方/多语种",
+    "layout_type": "sacred_scripture",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "plate_sacred_gold_rays.png",
+    "show_icon": false,
+    "primary_color": "#1F160A",
+    "secondary_color": "#FFD700",
+    "text_color": "#FFFDE7",
+    "bg_opacity": 234,
+    "anim_in": "gold_shimmer_sweep",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.48,
+    "default_text": "圣殿福音万丈金光经文卡\n支持中文 · English · العربية 多语种自适应排版",
+    "lines": [
+      "圣殿福音万丈金光经文卡",
+      "支持中文 · English · العربية 多语种自适应排版"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_005",
+  "type": "frame",
+  "name": "电竞 RGB 幻彩流光溢彩框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "rgb_esports",
+    "four_sides",
+    "电竞 RGB 幻彩流光溢彩框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_005",
+    "style": "cyber_neon",
+    "recipe": "rgb_esports",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "four_sides",
+    "thickness": 11,
+    "length_ratio": 1.0,
+    "corner_radius": 16,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FF1744",
+    "secondary_color": "#00E5FF",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

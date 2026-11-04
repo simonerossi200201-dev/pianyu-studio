@@ -1,0 +1,38 @@
+{
+  "id": "bd_east_006",
+  "type": "frame",
+  "name": "宋代汝窑天青金丝框",
+  "license": "CUTORA-original",
+  "subcat": "东方国风",
+  "tags": [
+    "东方国风",
+    "eastern_guofeng",
+    "guofeng_pattern",
+    "song_hairline",
+    "four_sides",
+    "宋代汝窑天青金丝框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_east_006",
+    "style": "guofeng_pattern",
+    "recipe": "song_hairline",
+    "family": "eastern_guofeng",
+    "category": "东方国风",
+    "edge_mode": "four_sides",
+    "thickness": 7,
+    "length_ratio": 1.0,
+    "corner_radius": 14,
+    "color_mode": "dual_gradient",
+    "primary_color": "#A8C6C0",
+    "secondary_color": "#D4AF37",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

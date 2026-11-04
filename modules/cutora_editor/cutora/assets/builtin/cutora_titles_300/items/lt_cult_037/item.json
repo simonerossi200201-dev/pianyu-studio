@@ -1,0 +1,47 @@
+{
+  "id": "lt_cult_037",
+  "type": "lower_third",
+  "name": "阿拉伯皇室蓝金星月铭文条 · Ⅲ",
+  "license": "CUTORA-original",
+  "subcat": "东方/西方/多语种",
+  "tags": [
+    "东方",
+    "西方",
+    "多语种",
+    "国风",
+    "古典",
+    "cultural",
+    "多语种",
+    "arabic_arch",
+    "阿拉伯皇室蓝金星月铭文条 · Ⅲ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_cult_037",
+    "family": "cultural_global",
+    "category": "东方/西方/多语种",
+    "layout_type": "arabic_arch",
+    "badge_shape": "diamond_badge",
+    "icon_glyph": "star",
+    "icon_path": "",
+    "plate_name": "plate_arabesque_royal_sapphire.png",
+    "show_icon": true,
+    "primary_color": "#0A1E3C",
+    "secondary_color": "#FFD700",
+    "text_color": "#FFFFFF",
+    "bg_opacity": 234,
+    "anim_in": "gold_shimmer_sweep",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.48,
+    "default_text": "阿拉伯皇室蓝金星月铭文条\n支持中文 · English · العربية 多语种自适应排版",
+    "lines": [
+      "阿拉伯皇室蓝金星月铭文条",
+      "支持中文 · English · العربية 多语种自适应排版"
+    ]
+  }
+}

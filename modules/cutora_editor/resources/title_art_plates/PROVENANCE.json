@@ -1,0 +1,150 @@
+{
+  "description": "AI-generated original commercial-safe artistic backdrop plates for CUTORA lower-thirds, elements, and stickers (EXIF-stripped).",
+  "license": "CUTORA-original (100% commercial use permitted)",
+  "items": [
+    {
+      "file": "plate_sacred_gold_rays.png",
+      "size": [
+        640,
+        360
+      ],
+      "bytes": 372990,
+      "sha256": "b4cdf34d0a696e996cbe4116f69f0dd794c1896ac6fca34225b8fc50eae1affa"
+    },
+    {
+      "file": "plate_guofeng_scroll_jade.png",
+      "size": [
+        640,
+        360
+      ],
+      "bytes": 414046,
+      "sha256": "bb355cf01a8f3d3e19ae6fe7feb1bc5eee239eddcc87bc30436279cd34061ac5"
+    },
+    {
+      "file": "plate_baroque_royal_gold.png",
+      "size": [
+        640,
+        360
+      ],
+      "bytes": 425220,
+      "sha256": "73255cf10c8ed042a1faf0b7a647a560a66a8a6c70a28461e49bd366ee4e7743"
+    },
+    {
+      "file": "plate_watercolor_gold_foil.png",
+      "size": [
+        640,
+        360
+      ],
+      "bytes": 391151,
+      "sha256": "589d2c7fecc913db0d773733e16fc43a546dbb4a873d2ff13fc0c5f871bebfeb"
+    },
+    {
+      "file": "plate_cyber_hologram_hud.png",
+      "size": [
+        640,
+        360
+      ],
+      "bytes": 296344,
+      "sha256": "48d7fdb0616ce80558b32e46a4d0fc594d93524a0675a961c5c14c257bb0cedb"
+    },
+    {
+      "file": "plate_vintage_parchment_wax.png",
+      "size": [
+        640,
+        360
+      ],
+      "bytes": 475256,
+      "sha256": "1863a6aaf3291348d310ed85d1c964956ec93447d530c1454c1c3fee67799ae9"
+    },
+    {
+      "file": "plate_champagne_starlight_bokeh.png",
+      "size": [
+        640,
+        360
+      ],
+      "bytes": 412752,
+      "sha256": "985bf8071b6eb81388fb2aebf5fa6705f7080dbf8fca62d7ad8407a15e892eeb"
+    },
+    {
+      "file": "plate_arabesque_royal_sapphire.png",
+      "size": [
+        640,
+        360
+      ],
+      "bytes": 511155,
+      "sha256": "4054a82cdd62efe1007a10c56706470aa969faf82406826e95c456355e9a18b8"
+    },
+    {
+      "file": "sticker_sakura_gold_petals.png",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 421872,
+      "sha256": "b65cc846f5ad987e6e3b8ee225f6e03040c337e29b43dae1724ed04582161b29"
+    },
+    {
+      "file": "sticker_divine_peace_dove.png",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 386444,
+      "sha256": "6f46fd17b156e5eac0426b2ba7c1cb4e0feecdf7d0005426061eca3ccb0c0d71"
+    },
+    {
+      "file": "sticker_royal_wax_seal_crown.png",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 546005,
+      "sha256": "10bc3e8b8509f403137864fab847eb56d4aa86a3c6980b8baa7136b64b988702"
+    },
+    {
+      "file": "sticker_anamorphic_cinema_flare.png",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 252366,
+      "sha256": "c73d1891e5272460604bf6e1ccf7f7e086f00049d569e974accbaae0cf5157ba"
+    },
+    {
+      "file": "sticker_guofeng_vermilion_seal.png",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 718736,
+      "sha256": "1f0e8eaa54cf1d1aba8be8cf380b25a2a40da3b1e46cd747e409bb4570b1507d"
+    },
+    {
+      "file": "sticker_social_gold_heart_3d.png",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 382616,
+      "sha256": "2836100e4d7858f32ab07d340829f71031c3c8ec5363033f9d6033a56c6f7af1"
+    },
+    {
+      "file": "sticker_holy_bible_scroll_light.png",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 438497,
+      "sha256": "0995d74506818ff1622a29ab83f448c3f99e7002e64ffc96f1ad1a88e3ea8cf2"
+    },
+    {
+      "file": "sticker_golden_lotus_zen.png",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 433424,
+      "sha256": "b05113264121e8b491759bf5e45823e86692f27b929c2c716644938f82f88f60"
+    }
+  ]
+}

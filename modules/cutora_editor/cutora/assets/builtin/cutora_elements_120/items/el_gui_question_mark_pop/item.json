@@ -1,0 +1,14 @@
+{
+  "id": "el_gui_question_mark_pop",
+  "name": "立体金问号弹出摇晃动图",
+  "type": "element",
+  "subcat": "指引标注",
+  "file": "el_gui_question_mark_pop.gif",
+  "license": "CUTORA-original",
+  "is_animated_gif": true,
+  "tags": [
+    "指引标注",
+    "动图",
+    "立体金问号弹出摇晃动图"
+  ]
+}

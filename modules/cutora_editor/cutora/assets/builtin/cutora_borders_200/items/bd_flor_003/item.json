@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_003",
+  "type": "frame",
+  "name": "京都春日垂枝樱花框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "sakura_branch",
+    "four_sides",
+    "京都春日垂枝樱花框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_003",
+    "style": "floral_vine",
+    "recipe": "sakura_branch",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 20,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFB7C5",
+    "secondary_color": "#FFF0F5",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

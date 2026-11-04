@@ -1,0 +1,38 @@
+{
+  "id": "bd_cine_019",
+  "type": "frame",
+  "name": "王家卫胶片抽帧暖调边框",
+  "license": "CUTORA-original",
+  "subcat": "电影取景",
+  "tags": [
+    "电影取景",
+    "cinematic_film",
+    "viewfinder_hud",
+    "super8_film",
+    "four_sides",
+    "王家卫胶片抽帧暖调边框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cine_019",
+    "style": "viewfinder_hud",
+    "recipe": "super8_film",
+    "family": "cinematic_film",
+    "category": "电影取景",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 8,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFB300",
+    "secondary_color": "#BF360C",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

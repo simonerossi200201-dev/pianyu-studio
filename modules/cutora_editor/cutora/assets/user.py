@@ -254,6 +254,11 @@ def iter_user_assets(category: str | None = None,
     return out
 
 
+def load_user_assets(project_dir: str | None = None,
+                     category: str | None = None) -> list[dict]:
+    return iter_user_assets(category=category, project_dir=project_dir)
+
+
 def _image_wh(path: str) -> tuple[int, int]:
     ext = os.path.splitext(path or "")[1].lower()
     if ext == ".svg":
@@ -282,9 +287,13 @@ def _image_wh(path: str) -> tuple[int, int]:
                 if tag == b"IHDR":
                     w, h = struct.unpack(">II", fh.read(8))
                     return int(w), int(h)
+            elif sig[:6] in (b"GIF87a", b"GIF89a"):
+                fh.seek(6)
+                w, h = struct.unpack("<HH", fh.read(4))
+                return int(w), int(h)
     except Exception:
         pass
-    return 200, 200
+    return 240, 240
 
 
 def build_image_overlay(path: str, start_t: float, tw: int, th: int,
@@ -324,6 +333,38 @@ def _ensure_image_track(tl):
     return track
 
 
+def _ensure_text_track(tl):
+    from cutora.model.timeline_model import Track
+    for tr in tl.tracks:
+        if getattr(tr, "type", None) == "text":
+            return tr
+    track = Track("text")
+    tl.add_track(track)
+    return track
+
+
+def _resolve_overlay_target_track(tl, target_track, default_kind: str = "image"):
+    if target_track is not None and getattr(target_track, "type", None) in (
+        "text", "image", "video", "subs", "subtitle", "adjust",
+    ):
+        return target_track
+    if default_kind == "text":
+        return _ensure_text_track(tl)
+    return _ensure_image_track(tl)
+
+
+def _append_overlay_to_bag(tl, task, bag_name: str, ov: dict) -> dict:
+    if isinstance(task, dict):
+        task.setdefault(bag_name, []).append(ov)
+        return task[bag_name][-1]
+    stash = getattr(tl, bag_name, None)
+    if stash is None:
+        stash = []
+        setattr(tl, bag_name, stash)
+    stash.append(ov)
+    return ov
+
+
 def overlay_video_track(tl):
     """Non-main video track stacked above the main video track."""
     from cutora.model.timeline_model import Track
@@ -343,14 +384,8 @@ def overlay_video_track(tl):
     return overlay
 
 
-def _place_image_overlay(tl, item: dict, start_t: float, task):
-    path = item.get("stored_path") or ""
-    if not path or not os.path.isfile(path):
-        raise FileNotFoundError(path)
-    track = _ensure_image_track(tl)
-    tw = int(getattr(tl, "width", 0) or 0) or 1080
-    th = int(getattr(tl, "height", 0) or 0) or 1920
-    duration = 5.0
+def _default_overlay_duration(tl, task, start_t: float, requested: float = 5.0) -> float:
+    duration = float(requested or 5.0)
     if isinstance(task, dict):
         main_dur = 0.0
         try:
@@ -372,28 +407,113 @@ def _place_image_overlay(tl, item: dict, start_t: float, task):
             remaining = max(0.0, float(main_dur) - float(start_t))
             if remaining > 0:
                 duration = min(duration, remaining)
-        task.setdefault("image_overlays", []).append(
-            build_image_overlay(
-                path, start_t, tw, th,
-                track_id=getattr(track, "id", None), duration=duration))
-        return task["image_overlays"][-1]
+    return max(0.2, duration)
+
+
+def _place_image_overlay(tl, item: dict, start_t: float, task, target_track=None):
+    path = item.get("stored_path") or item.get("source_path") or ""
+    if not path or not os.path.isfile(path):
+        raise FileNotFoundError(path)
+    track = _resolve_overlay_target_track(tl, target_track, default_kind="image")
+    tw = int(getattr(tl, "width", 0) or 0) or 1080
+    th = int(getattr(tl, "height", 0) or 0) or 1920
+    duration = _default_overlay_duration(tl, task, start_t, float(item.get("duration") or 5.0))
     ov = build_image_overlay(
         path, start_t, tw, th,
         track_id=getattr(track, "id", None), duration=duration)
-    stash = getattr(tl, "image_overlays", None)
-    if stash is None:
-        tl.image_overlays = []
-        stash = tl.image_overlays
-    stash.append(ov)
-    return ov
+    if item.get("name"):
+        ov["name"] = str(item["name"])
+    is_gif = bool(item.get("is_animated_gif") or str(path).lower().endswith(".gif"))
+    if is_gif:
+        ov["animated_gif"] = True
+        for el in ov.get("elements") or []:
+            if isinstance(el, dict):
+                el["animated_gif"] = True
+    return _append_overlay_to_bag(tl, task, "image_overlays", ov)
 
 
-def place_on_timeline(tl, item: dict, start_t: float = 0.0, task=None):
+def _place_lower_third_overlay(tl, item: dict, start_t: float, task, target_track=None) -> dict:
+    import copy
+    from cutora.model.factory_defaults import overlay_defaults
+
+    track = _resolve_overlay_target_track(tl, target_track, default_kind="text")
+    tw = int(getattr(tl, "width", 0) or 0) or 1080
+    th = int(getattr(tl, "height", 0) or 0) or 1920
+    spec = copy.deepcopy(item.get("lower_third_spec") or {})
+    duration = _default_overlay_duration(
+        tl, task, start_t, float(item.get("duration") or spec.get("duration") or 5.0)
+    )
+    ov = overlay_defaults(
+        "text",
+        canvas_w=tw,
+        canvas_h=th,
+        start=float(start_t),
+        duration=duration,
+        track_id=getattr(track, "id", None),
+        ov_id=f"lt_{uuid.uuid4().hex[:10]}",
+    )
+    lines = spec.get("lines")
+    lines_text = "\n".join(str(x) for x in lines if str(x).strip()) if isinstance(lines, list) else ""
+    default_text = str(
+        lines_text
+        or spec.get("default_text")
+        or item.get("default_text")
+        or f"{item.get('name', '主标题内容')}\n副标题描述文字"
+    )
+    ov["content"] = default_text
+    ov["name"] = str(item.get("name") or spec.get("name") or "字幕条")
+    ov["x"] = int(spec.get("x", int(tw * 0.06)))
+    ov["y"] = int(spec.get("y", int(th * 0.72)))
+    ov["w"] = int(spec.get("w", int(tw * 0.68)))
+    ov["h"] = int(spec.get("h", int(th * 0.16)))
+    ov["lower_third_spec"] = spec
+    return _append_overlay_to_bag(tl, task, "text_overlays", ov)
+
+
+def _place_border_overlay(tl, item: dict, start_t: float, task, target_track=None) -> dict:
+    import copy
+    from cutora.model.factory_defaults import overlay_defaults
+
+    track = _resolve_overlay_target_track(tl, target_track, default_kind="image")
+    tw = int(getattr(tl, "width", 0) or 0) or 1080
+    th = int(getattr(tl, "height", 0) or 0) or 1920
+    spec = copy.deepcopy(item.get("border_spec") or {})
+    duration = _default_overlay_duration(
+        tl, task, start_t, float(item.get("duration") or spec.get("duration") or 5.0)
+    )
+    ov = overlay_defaults(
+        "image",
+        canvas_w=tw,
+        canvas_h=th,
+        path="",
+        start=float(start_t),
+        duration=duration,
+        track_id=getattr(track, "id", None),
+        ov_id=f"bd_{uuid.uuid4().hex[:10]}",
+    )
+    ov["elements"] = []
+    ov["name"] = str(item.get("name") or spec.get("name") or "装饰边框")
+    ov["x"] = int(spec.get("x", 0))
+    ov["y"] = int(spec.get("y", 0))
+    ov["w"] = int(spec.get("w", tw))
+    ov["h"] = int(spec.get("h", th))
+    ov["lock_aspect"] = False
+    ov["keep_aspect"] = False
+    ov["border_spec"] = spec
+    return _append_overlay_to_bag(tl, task, "image_overlays", ov)
+
+
+def place_on_timeline(tl, item: dict, start_t: float = 0.0, task=None, target_track=None):
     """Put a user/builtin asset onto ``tl``. Images → image_overlays; alpha video → overlay track."""
     from cutora.model.timeline_model import Clip, MediaSource, Track
 
     kind = item.get("type")
-    path = item.get("stored_path") or ""
+    if isinstance(item.get("lower_third_spec"), dict):
+        return _place_lower_third_overlay(tl, item, start_t, task, target_track=target_track)
+    if isinstance(item.get("border_spec"), dict):
+        return _place_border_overlay(tl, item, start_t, task, target_track=target_track)
+
+    path = item.get("stored_path") or item.get("source_path") or ""
     if kind == "animated":
         from cutora.media.animated import (
             SEQUENCE_RE, import_animated_as_clip, persistent_anim_dir,
@@ -416,7 +536,9 @@ def place_on_timeline(tl, item: dict, start_t: float = 0.0, task=None):
     if kind in IMAGE_KINDS or (
             kind not in ("video", "animated", "audio")
             and os.path.splitext(path)[1].lower() in _IMAGE_EXT):
-        return _place_image_overlay(tl, dict(item, stored_path=path), start_t, task)
+        return _place_image_overlay(
+            tl, dict(item, stored_path=path), start_t, task, target_track=target_track
+        )
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(path)
     src = MediaSource(path)
@@ -464,19 +586,24 @@ def place_on_timeline(tl, item: dict, start_t: float = 0.0, task=None):
                     _LOG.exception("persist preview_path failed: %s", meta)
     tl.sources[src.id] = src
     if kind == "audio":
-        track = None
-        for tr in tl.tracks:
-            if getattr(tr, "type", None) == "audio":
-                track = tr
-                break
+        track = target_track if getattr(target_track, "type", None) in ("audio", "bgm", "sfx") else None
+        if track is None:
+            for tr in tl.tracks:
+                if getattr(tr, "type", None) == "audio":
+                    track = tr
+                    break
         if track is None:
             track = Track("audio")
             tl.add_track(track)
     else:
         track = overlay_video_track(tl)
-    dur = float(src.duration or 0.0) or 2.0
+    dur = float(src.duration or 0.0) or float(item.get("duration") or 0.0) or 2.0
     clip = Clip(src.id, 0.0, dur, float(start_t))
     clip.alpha = bool(src.alpha)
+    if item.get("name"):
+        clip.name = str(item["name"])
+    if kind == "audio" and item.get("audio_kind") in ("bgm", "sfx"):
+        clip.audio_role = str(item["audio_kind"])
     if kind == "animated":
         clip.loop = True
     track.clips.append(clip)

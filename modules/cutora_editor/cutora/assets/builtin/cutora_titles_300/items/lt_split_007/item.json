@@ -1,0 +1,44 @@
+{
+  "id": "lt_split_007",
+  "type": "lower_third",
+  "name": "赛博霓虹青紫双拼胶囊条 · Ⅰ",
+  "license": "CUTORA-original",
+  "subcat": "色彩分区/通栏",
+  "tags": [
+    "色彩分区",
+    "通栏",
+    "split",
+    "banner",
+    "pill_split",
+    "赛博霓虹青紫双拼胶囊条 · Ⅰ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_split_007",
+    "family": "color_split",
+    "category": "色彩分区/通栏",
+    "layout_type": "pill_split",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": false,
+    "primary_color": "#120C2B",
+    "secondary_color": "#00F5D4",
+    "text_color": "#FFFFFF",
+    "bg_opacity": 236,
+    "anim_in": "split_reveal_slide",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "赛博霓虹青紫双拼胶囊条\n多行分区自适应延展标题模板",
+    "lines": [
+      "赛博霓虹青紫双拼胶囊条",
+      "多行分区自适应延展标题模板"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_015",
+  "type": "frame",
+  "name": "赛博底部能量充能进度框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "mecha_chamfer",
+    "one_side_bottom",
+    "赛博底部能量充能进度框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_015",
+    "style": "cyber_neon",
+    "recipe": "mecha_chamfer",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "one_side_bottom",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 4,
+    "color_mode": "rainbow_neon",
+    "primary_color": "#76FF03",
+    "secondary_color": "#00B0FF",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

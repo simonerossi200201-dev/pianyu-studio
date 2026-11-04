@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_006",
+  "type": "frame",
+  "name": "黑客帝国矩阵数字流边框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "holo_scan",
+    "two_sides_v",
+    "黑客帝国矩阵数字流边框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_006",
+    "style": "cyber_neon",
+    "recipe": "holo_scan",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "two_sides_v",
+    "thickness": 10,
+    "length_ratio": 1.0,
+    "corner_radius": 4,
+    "color_mode": "rainbow_neon",
+    "primary_color": "#00E676",
+    "secondary_color": "#004D40",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

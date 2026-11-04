@@ -1,0 +1,14 @@
+{
+  "id": "el_cta_double_tap_burst",
+  "name": "双击屏幕爱心迸发动图",
+  "type": "element",
+  "subcat": "社交互动",
+  "file": "el_cta_double_tap_burst.gif",
+  "license": "CUTORA-original",
+  "is_animated_gif": true,
+  "tags": [
+    "社交互动",
+    "动图",
+    "双击屏幕爱心迸发动图"
+  ]
+}

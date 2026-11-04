@@ -1,0 +1,14 @@
+{
+  "id": "el_cta_subscribe_bell_ring",
+  "name": "订阅开启小铃铛摇晃动图",
+  "type": "element",
+  "subcat": "社交互动",
+  "file": "el_cta_subscribe_bell_ring.gif",
+  "license": "CUTORA-original",
+  "is_animated_gif": true,
+  "tags": [
+    "社交互动",
+    "动图",
+    "订阅开启小铃铛摇晃动图"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "lt_icon_059",
+  "type": "lower_third",
+  "name": "手作咖啡慢生活日记条 · Ⅲ",
+  "license": "CUTORA-original",
+  "subcat": "带图标/缩略图",
+  "tags": [
+    "带图标",
+    "缩略图",
+    "icon",
+    "coffee",
+    "hexagon",
+    "手作咖啡慢生活日记条 · Ⅲ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_icon_059",
+    "family": "icon_badge",
+    "category": "带图标/缩略图",
+    "layout_type": "icon_card",
+    "badge_shape": "hexagon",
+    "icon_glyph": "coffee",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#261C15",
+    "secondary_color": "#E6CCB2",
+    "text_color": "#FFFDF9",
+    "bg_opacity": 232,
+    "anim_in": "elastic_card_rise",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "手作咖啡慢生活日记条\n支持多行与长段落自动排版换行",
+    "lines": [
+      "手作咖啡慢生活日记条",
+      "支持多行与长段落自动排版换行"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_west_024",
+  "type": "frame",
+  "name": "凯旋门石雕铭文上下框",
+  "license": "CUTORA-original",
+  "subcat": "西方古典",
+  "tags": [
+    "西方古典",
+    "western_classic",
+    "vintage_filigree",
+    "greek_meander",
+    "two_sides_h",
+    "凯旋门石雕铭文上下框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_west_024",
+    "style": "vintage_filigree",
+    "recipe": "greek_meander",
+    "family": "western_classic",
+    "category": "西方古典",
+    "edge_mode": "two_sides_h",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 2,
+    "color_mode": "dual_gradient",
+    "primary_color": "#E2C478",
+    "secondary_color": "#846727",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_cine_020",
+  "type": "frame",
+  "name": "韦斯·安德森对称糖果画框",
+  "license": "CUTORA-original",
+  "subcat": "电影取景",
+  "tags": [
+    "电影取景",
+    "cinematic_film",
+    "viewfinder_hud",
+    "silent_era",
+    "four_sides",
+    "韦斯·安德森对称糖果画框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cine_020",
+    "style": "viewfinder_hud",
+    "recipe": "silent_era",
+    "family": "cinematic_film",
+    "category": "电影取景",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 14,
+    "color_mode": "dual_gradient",
+    "primary_color": "#F48FB1",
+    "secondary_color": "#FFF59D",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

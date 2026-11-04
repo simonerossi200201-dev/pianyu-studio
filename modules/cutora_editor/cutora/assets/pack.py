@@ -63,12 +63,34 @@ def load_item_json(path: str) -> dict:
     return data
 
 
+_PACK_ITEMS_CACHE: dict[tuple[str, float, int], list[dict]] = {}
+
+
+def _item_sort_key(name: str) -> tuple[int, str, str]:
+    if name.startswith("lt_icon_"):
+        return (0, name, name)
+    if "_" in name:
+        suffix = name.rsplit("_", 1)[-1]
+        if suffix.isdigit():
+            return (1, suffix, name)
+    return (2, name, name)
+
+
 def iter_pack_items(pack_dir: str) -> list[dict]:
     items_root = os.path.join(pack_dir, "items")
     out = []
     if not os.path.isdir(items_root):
         return out
-    for name in sorted(os.listdir(items_root)):
+    names = sorted(os.listdir(items_root), key=_item_sort_key)
+    try:
+        mtime = os.path.getmtime(items_root)
+    except OSError:
+        mtime = 0.0
+    cache_key = (os.path.abspath(pack_dir), mtime, len(names))
+    cached = _PACK_ITEMS_CACHE.get(cache_key)
+    if cached is not None:
+        return [dict(r) for r in cached]
+    for name in names:
         item_dir = os.path.join(items_root, name)
         meta = os.path.join(item_dir, "item.json")
         if not os.path.isfile(meta):
@@ -77,7 +99,8 @@ def iter_pack_items(pack_dir: str) -> list[dict]:
         rec["_dir"] = item_dir
         rec["_pack_dir"] = pack_dir
         out.append(rec)
-    return out
+    _PACK_ITEMS_CACHE[cache_key] = out
+    return [dict(r) for r in out]
 
 
 def discover_packs(extra_dirs: list[str] | None = None) -> list[dict]:
@@ -90,7 +113,10 @@ def discover_packs(extra_dirs: list[str] | None = None) -> list[dict]:
     for root in roots:
         if not os.path.isdir(root):
             continue
-        for name in sorted(os.listdir(root)):
+        for name in sorted(
+            os.listdir(root),
+            key=lambda n: (1 if ("starter" in n or n == "default") else 0, n),
+        ):
             pdir = os.path.join(root, name)
             meta = os.path.join(pdir, "pack.json")
             if not os.path.isfile(meta):

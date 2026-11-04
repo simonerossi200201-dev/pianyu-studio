@@ -1,0 +1,38 @@
+{
+  "id": "bd_cine_001",
+  "type": "frame",
+  "name": "IMAX 70mm 胶片齿孔边框",
+  "license": "CUTORA-original",
+  "subcat": "电影取景",
+  "tags": [
+    "电影取景",
+    "cinematic_film",
+    "viewfinder_hud",
+    "film_sprocket",
+    "two_sides_v",
+    "IMAX 70mm 胶片齿孔边框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cine_001",
+    "style": "viewfinder_hud",
+    "recipe": "film_sprocket",
+    "family": "cinematic_film",
+    "category": "电影取景",
+    "edge_mode": "two_sides_v",
+    "thickness": 22,
+    "length_ratio": 1.0,
+    "corner_radius": 2,
+    "color_mode": "dual_gradient",
+    "primary_color": "#1A1A1A",
+    "secondary_color": "#F5F5F5",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

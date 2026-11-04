@@ -989,6 +989,142 @@ class PropertyPanel(QWidget):
         row_order = QHBoxLayout(); row_order.setSpacing(4); row_order.addWidget(self.ov_bring_front); row_order.addWidget(self.ov_move_up); row_order.addWidget(self.ov_move_down)
         _row = QWidget(); _row.setLayout(row_order); self.ov_element_order_grp.addWidget(_row)
 
+        # ═══ Section 9b: 边框专属属性 (border_spec) ═══
+        self.ov_border_grp = CollapsibleSection("边框专属属性")
+        border_form = _mkform()
+        self.ov_border_style = QComboBox()
+        for _blab, _bval in (
+            ("纯色直线 (Solid)", "solid"),
+            ("双层细框 (Double Line)", "double_line"),
+            ("虚线焦点框 (Dashed)", "dashed"),
+            ("欧式雕花边框 (Vintage Filigree)", "vintage_filigree"),
+            ("中式回纹国风 (Guofeng Pattern)", "guofeng_pattern"),
+            ("植物藤蔓花边 (Floral Vine)", "floral_vine"),
+            ("赛博霓虹光轨 (Cyber Neon)", "cyber_neon"),
+            ("相机取景器 HUD (Viewfinder HUD)", "viewfinder_hud"),
+            ("神圣几何光环 (Sacred Halo)", "sacred_halo"),
+            ("四角折角支架 (Corner Brackets)", "corner_brackets"),
+            ("柔光发光边 (Glow Frame)", "glow_frame"),
+            ("复古邮票锯齿 (Stamp Edge)", "stamp_edge"),
+        ):
+            self.ov_border_style.addItem(_blab, _bval)
+        self.ov_border_style.currentIndexChanged.connect(self._on_change_border_spec)
+        border_form.addRow("花纹样式:", self.ov_border_style)
+
+        self.ov_border_edge_mode = QComboBox()
+        for _emlab, _emval in (
+            ("四边环绕 (Four Sides)", "four_sides"),
+            ("上下双边 (Top & Bottom)", "two_sides_h"),
+            ("左右双边 (Left & Right)", "two_sides_v"),
+            ("四角折角 (Corners Only)", "corners"),
+            ("顶部单边 (Top Only)", "one_side_top"),
+            ("底部单边 (Bottom Only)", "one_side_bottom"),
+            ("左侧单边 (Left Only)", "one_side_left"),
+            ("右侧单边 (Right Only)", "one_side_right"),
+        ):
+            self.ov_border_edge_mode.addItem(_emlab, _emval)
+        self.ov_border_edge_mode.currentIndexChanged.connect(self._on_change_border_spec)
+        border_form.addRow("边框形态:", self.ov_border_edge_mode)
+
+        _bs_thick = SliderSpin(1, 80, 1, 0)
+        _bs_thick.setSuffix(" px")
+        _bs_thick.valueChanged.connect(self._on_change_border_spec)
+        add_inspect_row(border_form, "线条粗细:", _bs_thick)
+        self.ov_border_thickness, self.ov_border_thickness_sl = _bs_thick.spin, _bs_thick.slider
+
+        _bs_len = SliderSpin(5, 100, 1, 0)
+        _bs_len.setSuffix(" %")
+        _bs_len.setToolTip("调节四边线段覆盖比例（也可在画布拖拽金色端点或按住 Shift 拖边调节）")
+        _bs_len.valueChanged.connect(self._on_change_border_spec)
+        add_inspect_row(border_form, "线段长度:", _bs_len)
+        self.ov_border_length, self.ov_border_length_sl = _bs_len.spin, _bs_len.slider
+
+        _bs_rad = SliderSpin(0, 120, 1, 0)
+        _bs_rad.setSuffix(" px")
+        _bs_rad.valueChanged.connect(self._on_change_border_spec)
+        add_inspect_row(border_form, "圆角半径:", _bs_rad)
+        self.ov_border_corner_radius, self.ov_border_corner_radius_sl = _bs_rad.spin, _bs_rad.slider
+
+        self.ov_border_color_mode = QComboBox()
+        for _cmlab, _cmval in (
+            ("单色 (Solid)", "solid"),
+            ("鎏金渐变 (Gold Gradient)", "gold_gradient"),
+            ("双色渐变 (Dual Gradient)", "dual_gradient"),
+            ("彩虹霓虹 (Rainbow Neon)", "rainbow_neon"),
+        ):
+            self.ov_border_color_mode.addItem(_cmlab, _cmval)
+        self.ov_border_color_mode.currentIndexChanged.connect(self._on_change_border_spec)
+        border_form.addRow("色彩模式:", self.ov_border_color_mode)
+
+        border_col_row = QHBoxLayout()
+        border_col_row.setSpacing(6)
+        self.ov_border_primary_btn = QPushButton("主色")
+        self.ov_border_primary_btn.clicked.connect(lambda: self._pick_border_color("primary_color"))
+        self.ov_border_secondary_btn = QPushButton("副色")
+        self.ov_border_secondary_btn.clicked.connect(lambda: self._pick_border_color("secondary_color"))
+        border_col_row.addWidget(self.ov_border_primary_btn)
+        border_col_row.addWidget(self.ov_border_secondary_btn)
+        border_col_row.addStretch(1)
+        border_form.addRow("边框颜色:", border_col_row)
+
+        self.ov_border_target_link = QComboBox()
+        self.ov_border_target_link.addItem("自由尺寸 / 独立调节", "none")
+        self.ov_border_target_link.addItem("自动贴合全屏画布", "canvas")
+        self.ov_border_target_link.currentIndexChanged.connect(self._on_change_border_spec)
+        border_form.addRow("贴合方式:", self.ov_border_target_link)
+
+        _bw = QWidget(); _bw.setLayout(border_form); self.ov_border_grp.addWidget(_bw)
+        self.ov_border_grp.hide()
+
+        # ═══ Section 9c: 字幕条专属属性 (lower_third_spec) ═══
+        self.ov_lower_third_grp = CollapsibleSection("字幕条专属属性")
+        lt_form = _mkform()
+        from PySide6.QtWidgets import QPlainTextEdit
+        self.ov_lt_lines_edit = QPlainTextEdit()
+        self.ov_lt_lines_edit.setFixedHeight(76)
+        self.ov_lt_lines_edit.setPlaceholderText("每行对应一条字幕（支持 1/2/3/4+ 行动态自适应高度与宽度）")
+        self.ov_lt_lines_edit.textChanged.connect(self._on_change_lower_third_spec)
+        lt_form.addRow("多行文字:", self.ov_lt_lines_edit)
+
+        lt_col_row = QHBoxLayout()
+        lt_col_row.setSpacing(6)
+        self.ov_lt_primary_btn = QPushButton("主色")
+        self.ov_lt_primary_btn.clicked.connect(lambda: self._pick_lower_third_color("primary_color"))
+        self.ov_lt_secondary_btn = QPushButton("副色")
+        self.ov_lt_secondary_btn.clicked.connect(lambda: self._pick_lower_third_color("secondary_color"))
+        self.ov_lt_text_color_btn = QPushButton("文字色")
+        self.ov_lt_text_color_btn.clicked.connect(lambda: self._pick_lower_third_color("text_color"))
+        lt_col_row.addWidget(self.ov_lt_primary_btn)
+        lt_col_row.addWidget(self.ov_lt_secondary_btn)
+        lt_col_row.addWidget(self.ov_lt_text_color_btn)
+        lt_col_row.addStretch(1)
+        lt_form.addRow("配色方案:", lt_col_row)
+
+        lt_icon_row = QHBoxLayout()
+        lt_icon_row.setSpacing(6)
+        self.ov_lt_show_icon = QCheckBox("显示图标/徽章")
+        self.ov_lt_show_icon.toggled.connect(self._on_change_lower_third_spec)
+        self.ov_lt_icon_btn = QPushButton("更换图标…")
+        self.ov_lt_icon_btn.clicked.connect(self._on_pick_lower_third_icon)
+        self.ov_lt_clear_icon_btn = QPushButton("默认")
+        self.ov_lt_clear_icon_btn.clicked.connect(self._on_clear_lower_third_icon)
+        lt_icon_row.addWidget(self.ov_lt_show_icon)
+        lt_icon_row.addWidget(self.ov_lt_icon_btn)
+        lt_icon_row.addWidget(self.ov_lt_clear_icon_btn)
+        lt_icon_row.addStretch(1)
+        lt_form.addRow("左侧徽章:", lt_icon_row)
+
+        self.ov_lt_anim_dur = QDoubleSpinBox()
+        self.ov_lt_anim_dur.setRange(0.1, 3.0)
+        self.ov_lt_anim_dur.setSingleStep(0.05)
+        self.ov_lt_anim_dur.setDecimals(2)
+        self.ov_lt_anim_dur.setSuffix(" s")
+        self.ov_lt_anim_dur.valueChanged.connect(self._on_change_lower_third_spec)
+        lt_form.addRow("动效时长:", self.ov_lt_anim_dur)
+
+        _ltw = QWidget(); _ltw.setLayout(lt_form); self.ov_lower_third_grp.addWidget(_ltw)
+        self.ov_lower_third_grp.hide()
+
         self.sync_intro_style_btn = QPushButton("同步到所有视频开场（样式）")
         self.sync_intro_style_btn.clicked.connect(self.sync_intro_style.emit)
         self.sync_intro_style_btn.setVisible(False)
@@ -999,6 +1135,8 @@ class PropertyPanel(QWidget):
 
         # ═══ 装配 ═══
         container_layout.addWidget(self.image_basic_group)
+        container_layout.addWidget(self.ov_border_grp)
+        container_layout.addWidget(self.ov_lower_third_grp)
         container_layout.addWidget(self.ov_text_grp)
         container_layout.addWidget(sec_fill)
         container_layout.addWidget(sec_stroke)
@@ -4247,6 +4385,11 @@ class PropertyPanel(QWidget):
             self.trk_split_rot, self.trk_split_feather,
             self.trk_split_border_style, self.trk_split_border_width,
             self.trk_split_border_curve, self.trk_split_border_shadow,
+            self.ov_border_style, self.ov_border_thickness, self.ov_border_thickness_sl,
+            self.ov_border_length, self.ov_border_length_sl,
+            self.ov_border_corner_radius, self.ov_border_corner_radius_sl,
+            self.ov_border_color_mode, self.ov_border_target_link,
+            self.ov_lt_lines_edit, self.ov_lt_show_icon, self.ov_lt_anim_dur,
         ]
         widgets.extend(list(iter_fx_widgets(self)))
         for w in widgets:
@@ -4274,6 +4417,9 @@ class PropertyPanel(QWidget):
             ("ov_x", "ov_x_sl"), ("ov_y", "ov_y_sl"), ("ov_w", "ov_w_sl"),
             ("ov_h", "ov_h_sl"), ("ov_rot", "ov_rot_sl"), ("ov_op", "ov_op_sl"),
             ("trans_angle_sp", "trans_angle_sl"),
+            ("ov_border_thickness", "ov_border_thickness_sl"),
+            ("ov_border_length", "ov_border_length_sl"),
+            ("ov_border_corner_radius", "ov_border_corner_radius_sl"),
         ]
         for sp_name, sl_name in pairs:
             sp = getattr(self, sp_name, None)
@@ -4299,6 +4445,16 @@ class PropertyPanel(QWidget):
             self.ov_adjust.setVisible(_is_adj)
             if _is_adj:
                 self.ov_adjust.load(data)
+        if hasattr(self, "ov_border_grp"):
+            _has_border = type_ == "overlay" and isinstance(data, dict) and isinstance(data.get("border_spec"), dict)
+            self.ov_border_grp.setVisible(_has_border)
+            if _has_border:
+                self._load_border_spec_widgets(data)
+        if hasattr(self, "ov_lower_third_grp"):
+            _has_lt = type_ == "overlay" and isinstance(data, dict) and isinstance(data.get("lower_third_spec"), dict)
+            self.ov_lower_third_grp.setVisible(_has_lt)
+            if _has_lt:
+                self._load_lower_third_spec_widgets(data)
         if type_ == 'overlay':
             self.stack.setCurrentIndex(1)
             ov = data
@@ -4807,6 +4963,13 @@ class PropertyPanel(QWidget):
         if not isinstance(ov, dict) or ov.get("type") != "text":
             return
         ov["content"] = text
+        if isinstance(ov.get("lower_third_spec"), dict):
+            lines = [ln for ln in str(text or "").splitlines() if ln.strip()]
+            ov["lower_third_spec"]["lines"] = lines or [str(text or "").strip() or "标题"]
+            if hasattr(self, "ov_lt_lines_edit"):
+                self.ov_lt_lines_edit.blockSignals(True)
+                self.ov_lt_lines_edit.setPlainText("\n".join(ov["lower_third_spec"]["lines"]))
+                self.ov_lt_lines_edit.blockSignals(False)
         if runs:
             ov["runs"] = list(runs)
         else:
@@ -5105,6 +5268,14 @@ class PropertyPanel(QWidget):
         if hasattr(self, "ov_writing_mode"):
             ov["writing_mode"] = self.ov_writing_mode.currentData() or "horizontal"
             ov["fit_mode"] = self.ov_fit_mode.currentData() or "none"
+        if isinstance(ov.get("lower_third_spec"), dict):
+            raw_txt = str(ov.get("content") or "")
+            lines = [ln for ln in raw_txt.splitlines() if ln.strip()]
+            ov["lower_third_spec"]["lines"] = lines or [raw_txt.strip() or "标题"]
+            if hasattr(self, "ov_lt_lines_edit"):
+                self.ov_lt_lines_edit.blockSignals(True)
+                self.ov_lt_lines_edit.setPlainText("\n".join(ov["lower_third_spec"]["lines"]))
+                self.ov_lt_lines_edit.blockSignals(False)
         self._write_ov_fx(ov)
 
     def _write_ov_fx(self, ov):
@@ -5843,6 +6014,15 @@ class PropertyPanel(QWidget):
                 ov['lock_aspect'] = locked
                 ov['keep_aspect'] = locked
                 ov['feather'] = self.ov_feather.value()
+                if isinstance(ov.get("border_spec"), dict) and sender in (
+                    self.ov_x, self.ov_y, self.ov_w, self.ov_h,
+                    self.ov_x_sl, self.ov_y_sl, self.ov_w_sl, self.ov_h_sl,
+                ):
+                    ov["border_spec"]["target_link"] = "none"
+                    if hasattr(self, "ov_border_target_link"):
+                        self.ov_border_target_link.blockSignals(True)
+                        self._set_combo_by_data(self.ov_border_target_link, "none", "none")
+                        self.ov_border_target_link.blockSignals(False)
         else:
             # sticker: nested image element on an image overlay
             if ov.get("sticker_id"):
@@ -5858,6 +6038,193 @@ class PropertyPanel(QWidget):
                 parent_ov['lock_aspect'] = locked
                 parent_ov['keep_aspect'] = locked
                 parent_ov['feather'] = self.ov_feather.value()
+        self.param_changed.emit(None)
+
+    def _style_swatch_button(self, btn, hex_col: str, label: str) -> None:
+        if btn is None:
+            return
+        col = str(hex_col or "#FFFFFF")
+        btn.setText(f"{label} {col}")
+        btn.setStyleSheet(
+            f"QPushButton {{ background: {col}; color: #11161F; font-weight: 700; "
+            f"border: 1px solid #3E4A61; border-radius: 5px; padding: 3px 8px; }}"
+        )
+
+    def _load_border_spec_widgets(self, ov: dict) -> None:
+        bs = ov.get("border_spec")
+        if not isinstance(bs, dict):
+            return
+        self._set_combo_by_data(self.ov_border_style, str(bs.get("style") or "solid"), "solid")
+        if hasattr(self, "ov_border_edge_mode"):
+            self._set_combo_by_data(self.ov_border_edge_mode, str(bs.get("edge_mode") or "four_sides"), "four_sides")
+        thick = max(1, min(80, int(round(float(bs.get("thickness", 6) or 6)))))
+        self.ov_border_thickness.setValue(thick)
+        self.ov_border_thickness_sl.setValue(thick)
+        pct = max(5, min(100, int(round(float(bs.get("length_ratio", 1.0) or 1.0) * 100.0))))
+        self.ov_border_length.setValue(pct)
+        self.ov_border_length_sl.setValue(pct)
+        rad = max(0, min(120, int(round(float(bs.get("corner_radius", 12) or 0)))))
+        self.ov_border_corner_radius.setValue(rad)
+        self.ov_border_corner_radius_sl.setValue(rad)
+        self._set_combo_by_data(
+            self.ov_border_color_mode, str(bs.get("color_mode") or "solid"), "solid"
+        )
+        self._style_swatch_button(
+            self.ov_border_primary_btn, str(bs.get("primary_color") or "#F5C451"), "主色"
+        )
+        self._style_swatch_button(
+            self.ov_border_secondary_btn, str(bs.get("secondary_color") or "#FFF2B2"), "副色"
+        )
+        tlink = "canvas" if str(bs.get("target_link") or "none") == "canvas" else "none"
+        self._set_combo_by_data(self.ov_border_target_link, tlink, "none")
+
+    def _on_change_border_spec(self, *_args) -> None:
+        if self.block_signals or self.current_type != "overlay":
+            return
+        ov = self.current_data
+        if not isinstance(ov, dict) or not isinstance(ov.get("border_spec"), dict):
+            return
+        bs = ov["border_spec"]
+        bs["style"] = str(self.ov_border_style.currentData() or "solid")
+        if hasattr(self, "ov_border_edge_mode"):
+            bs["edge_mode"] = str(self.ov_border_edge_mode.currentData() or "four_sides")
+        bs["thickness"] = int(self.ov_border_thickness.value())
+        bs["length_ratio"] = round(max(0.05, min(1.0, float(self.ov_border_length.value()) / 100.0)), 3)
+        bs["corner_radius"] = int(self.ov_border_corner_radius.value())
+        bs["color_mode"] = str(self.ov_border_color_mode.currentData() or "solid")
+        bs["target_link"] = str(self.ov_border_target_link.currentData() or "none")
+        if bs["target_link"] == "canvas":
+            cw, ch = self._ov_canvas_size()
+            pad = max(16, int(round(min(cw, ch) * 0.03)))
+            ov["x"] = pad
+            ov["y"] = pad
+            ov["w"] = max(32, cw - pad * 2)
+            ov["h"] = max(32, ch - pad * 2)
+            self.block_signals = True
+            try:
+                self.ov_x.setValue(int(ov["x"]))
+                self.ov_y.setValue(int(ov["y"]))
+                self.ov_w.setValue(int(ov["w"]))
+                self.ov_h.setValue(int(ov["h"]))
+                self._sync_mirror_sliders()
+            finally:
+                self.block_signals = False
+        self.param_changed.emit(None)
+
+    def _pick_border_color(self, key: str) -> None:
+        if self.current_type != "overlay" or not isinstance(self.current_data, dict):
+            return
+        bs = self.current_data.get("border_spec")
+        if not isinstance(bs, dict):
+            return
+        cur = str(bs.get(key) or "#F5C451")
+        c = QColorDialog.getColor(QColor(cur), self, "选择边框颜色")
+        if not c.isValid():
+            return
+        bs[key] = c.name()
+        self._load_border_spec_widgets(self.current_data)
+        self.param_changed.emit(None)
+
+    def _load_lower_third_spec_widgets(self, ov: dict) -> None:
+        lt = ov.get("lower_third_spec")
+        if not isinstance(lt, dict):
+            return
+        lines = lt.get("lines")
+        if not isinstance(lines, list) or not lines:
+            raw = str(ov.get("content") or "")
+            lines = [ln for ln in raw.splitlines() if ln.strip()] or ["主标题"]
+            lt["lines"] = lines
+        self.ov_lt_lines_edit.setPlainText("\n".join(str(x) for x in lines))
+        self._style_swatch_button(
+            self.ov_lt_primary_btn, str(lt.get("primary_color") or "#00F5D4"), "主色"
+        )
+        self._style_swatch_button(
+            self.ov_lt_secondary_btn, str(lt.get("secondary_color") or "#7B2CBF"), "副色"
+        )
+        self._style_swatch_button(
+            self.ov_lt_text_color_btn, str(lt.get("text_color") or "#FFFFFF"), "文字色"
+        )
+        self.ov_lt_show_icon.setChecked(bool(lt.get("show_icon", True)))
+        self.ov_lt_anim_dur.setValue(float(lt.get("anim_dur", 0.45) or 0.45))
+
+    def _on_change_lower_third_spec(self, *_args) -> None:
+        if self.block_signals or self.current_type != "overlay":
+            return
+        ov = self.current_data
+        if not isinstance(ov, dict) or not isinstance(ov.get("lower_third_spec"), dict):
+            return
+        lt = ov["lower_third_spec"]
+        raw = self.ov_lt_lines_edit.toPlainText()
+        lines = [ln for ln in raw.splitlines() if ln.strip()]
+        if not lines:
+            lines = [raw.strip() or "标题"]
+        lt["lines"] = lines
+        lt["show_icon"] = bool(self.ov_lt_show_icon.isChecked())
+        lt["anim_dur"] = float(self.ov_lt_anim_dur.value())
+        new_content = "\n".join(lines)
+        ov["content"] = new_content
+        prev = self.block_signals
+        self.block_signals = True
+        try:
+            if hasattr(self, "ov_rich") and self.ov_rich is not None:
+                self.ov_rich.set_text_runs(
+                    new_content,
+                    ov.get("runs") or [],
+                    {
+                        "font_family": ov.get("font_family"),
+                        "fontsize": ov.get("fontsize", 40),
+                        "bold": ov.get("bold", False),
+                        "italic": ov.get("italic", False),
+                        "color": self._overlay_fill_hex(ov),
+                    },
+                )
+            elif hasattr(self, "ov_content") and self.ov_content is not None:
+                self.ov_content.setPlainText(new_content)
+        finally:
+            self.block_signals = prev
+        self.param_changed.emit(None)
+
+    def _pick_lower_third_color(self, key: str) -> None:
+        if self.current_type != "overlay" or not isinstance(self.current_data, dict):
+            return
+        lt = self.current_data.get("lower_third_spec")
+        if not isinstance(lt, dict):
+            return
+        cur = str(lt.get(key) or "#00F5D4")
+        c = QColorDialog.getColor(QColor(cur), self, "选择字幕条颜色")
+        if not c.isValid():
+            return
+        lt[key] = c.name()
+        if key == "text_color":
+            self.current_data["color"] = c.name()
+        self._load_lower_third_spec_widgets(self.current_data)
+        self.param_changed.emit(None)
+
+    def _on_pick_lower_third_icon(self) -> None:
+        if self.current_type != "overlay" or not isinstance(self.current_data, dict):
+            return
+        lt = self.current_data.get("lower_third_spec")
+        if not isinstance(lt, dict):
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择字幕条徽章图标", "", "图片 (*.png *.jpg *.jpeg *.webp *.gif)"
+        )
+        if not path:
+            return
+        lt["icon_path"] = path
+        lt["show_icon"] = True
+        self.block_signals = True
+        self.ov_lt_show_icon.setChecked(True)
+        self.block_signals = False
+        self.param_changed.emit(None)
+
+    def _on_clear_lower_third_icon(self) -> None:
+        if self.current_type != "overlay" or not isinstance(self.current_data, dict):
+            return
+        lt = self.current_data.get("lower_third_spec")
+        if not isinstance(lt, dict):
+            return
+        lt["icon_path"] = ""
         self.param_changed.emit(None)
 
     def set_audio_targets(self, clips):

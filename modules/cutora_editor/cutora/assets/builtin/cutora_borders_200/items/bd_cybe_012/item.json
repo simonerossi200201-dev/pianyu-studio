@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_012",
+  "type": "frame",
+  "name": "AI 神经网络节点脉冲框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "quantum_pulse",
+    "four_sides",
+    "AI 神经网络节点脉冲框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_012",
+    "style": "cyber_neon",
+    "recipe": "quantum_pulse",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "four_sides",
+    "thickness": 7,
+    "length_ratio": 1.0,
+    "corner_radius": 12,
+    "color_mode": "rainbow_neon",
+    "primary_color": "#651FFF",
+    "secondary_color": "#00E5FF",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

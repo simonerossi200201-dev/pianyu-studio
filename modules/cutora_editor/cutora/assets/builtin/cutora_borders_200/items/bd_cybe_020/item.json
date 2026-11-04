@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_020",
+  "type": "frame",
+  "name": "东京夜雨霓虹招牌闪烁框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "glitch_split",
+    "four_sides",
+    "东京夜雨霓虹招牌闪烁框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_020",
+    "style": "cyber_neon",
+    "recipe": "glitch_split",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "four_sides",
+    "thickness": 10,
+    "length_ratio": 1.0,
+    "corner_radius": 10,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FF007F",
+    "secondary_color": "#00F5D4",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_east_024",
+  "type": "frame",
+  "name": "金石篆刻朱文印章角框",
+  "license": "CUTORA-original",
+  "subcat": "东方国风",
+  "tags": [
+    "东方国风",
+    "eastern_guofeng",
+    "guofeng_pattern",
+    "cn_fret",
+    "corners",
+    "金石篆刻朱文印章角框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_east_024",
+    "style": "guofeng_pattern",
+    "recipe": "cn_fret",
+    "family": "eastern_guofeng",
+    "category": "东方国风",
+    "edge_mode": "corners",
+    "thickness": 12,
+    "length_ratio": 0.38,
+    "corner_radius": 2,
+    "color_mode": "dual_gradient",
+    "primary_color": "#B03A2E",
+    "secondary_color": "#FDEDEC",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

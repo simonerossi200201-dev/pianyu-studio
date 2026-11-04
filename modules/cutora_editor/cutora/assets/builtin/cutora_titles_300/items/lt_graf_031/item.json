@@ -1,0 +1,44 @@
+{
+  "id": "lt_graf_031",
+  "type": "lower_third",
+  "name": "香槟星光焦外梦幻标题卡 · Ⅳ",
+  "license": "CUTORA-original",
+  "subcat": "图形画报肌理",
+  "tags": [
+    "图形画报",
+    "肌理",
+    "graphic",
+    "poster",
+    "plate_champagne_starlight_bokeh.png",
+    "香槟星光焦外梦幻标题卡 · Ⅳ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_graf_031",
+    "family": "graphic_texture",
+    "category": "图形画报肌理",
+    "layout_type": "textured_plate",
+    "badge_shape": "circle",
+    "icon_glyph": "star",
+    "icon_path": "",
+    "plate_name": "plate_champagne_starlight_bokeh.png",
+    "show_icon": true,
+    "primary_color": "#1C1610",
+    "secondary_color": "#FFE082",
+    "text_color": "#FFFFFF",
+    "bg_opacity": 238,
+    "anim_in": "gold_shimmer_sweep",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.5,
+    "default_text": "香槟星光焦外梦幻标题卡\n高定艺术肌理底板与多行排版",
+    "lines": [
+      "香槟星光焦外梦幻标题卡",
+      "高定艺术肌理底板与多行排版"
+    ]
+  }
+}

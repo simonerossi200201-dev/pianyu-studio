@@ -1,0 +1,38 @@
+{
+  "id": "bd_mode_029",
+  "type": "frame",
+  "name": "时尚特写中心聚焦折角",
+  "license": "CUTORA-original",
+  "subcat": "现代极简",
+  "tags": [
+    "现代极简",
+    "modern_minimal",
+    "double_line",
+    "corner_l_clean",
+    "corners",
+    "时尚特写中心聚焦折角"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_mode_029",
+    "style": "double_line",
+    "recipe": "corner_l_clean",
+    "family": "modern_minimal",
+    "category": "现代极简",
+    "edge_mode": "corners",
+    "thickness": 5,
+    "length_ratio": 0.38,
+    "corner_radius": 8,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFF59D",
+    "secondary_color": "#FFFFFF",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

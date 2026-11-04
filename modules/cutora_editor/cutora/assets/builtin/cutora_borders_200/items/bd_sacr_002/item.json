@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_002",
+  "type": "frame",
+  "name": "巴黎圣母院彩绘玫瑰花窗框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "stained_glass",
+    "four_sides",
+    "巴黎圣母院彩绘玫瑰花窗框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_002",
+    "style": "sacred_halo",
+    "recipe": "stained_glass",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "four_sides",
+    "thickness": 14,
+    "length_ratio": 1.0,
+    "corner_radius": 20,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFB300",
+    "secondary_color": "#7B1FA2",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

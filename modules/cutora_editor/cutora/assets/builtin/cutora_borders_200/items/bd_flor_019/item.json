@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_019",
+  "type": "frame",
+  "name": "岁寒三友松竹梅雅集框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "sakura_branch",
+    "four_sides",
+    "岁寒三友松竹梅雅集框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_019",
+    "style": "floral_vine",
+    "recipe": "sakura_branch",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "four_sides",
+    "thickness": 11,
+    "length_ratio": 1.0,
+    "corner_radius": 12,
+    "color_mode": "dual_gradient",
+    "primary_color": "#8D6E63",
+    "secondary_color": "#D84315",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

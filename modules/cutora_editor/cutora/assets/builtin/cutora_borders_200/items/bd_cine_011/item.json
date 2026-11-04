@@ -1,0 +1,38 @@
+{
+  "id": "bd_cine_011",
+  "type": "frame",
+  "name": "莱卡 Leica 旁轴取景亮线框",
+  "license": "CUTORA-original",
+  "subcat": "电影取景",
+  "tags": [
+    "电影取景",
+    "cinematic_film",
+    "viewfinder_hud",
+    "leica_brightline",
+    "four_sides",
+    "莱卡 Leica 旁轴取景亮线框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cine_011",
+    "style": "viewfinder_hud",
+    "recipe": "leica_brightline",
+    "family": "cinematic_film",
+    "category": "电影取景",
+    "edge_mode": "four_sides",
+    "thickness": 4,
+    "length_ratio": 1.0,
+    "corner_radius": 10,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFFFFF",
+    "secondary_color": "#FF5252",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

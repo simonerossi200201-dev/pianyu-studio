@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_019",
+  "type": "frame",
+  "name": "金色摩西十诫石板铭文框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "scripture_scroll",
+    "four_sides",
+    "金色摩西十诫石板铭文框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_019",
+    "style": "sacred_halo",
+    "recipe": "scripture_scroll",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "four_sides",
+    "thickness": 14,
+    "length_ratio": 1.0,
+    "corner_radius": 8,
+    "color_mode": "gold_gradient",
+    "primary_color": "#D4AF37",
+    "secondary_color": "#3E2723",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

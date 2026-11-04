@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_007",
+  "type": "frame",
+  "name": "洛阳国色天香牡丹金框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "peony_bloom",
+    "four_sides",
+    "洛阳国色天香牡丹金框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_007",
+    "style": "floral_vine",
+    "recipe": "peony_bloom",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "four_sides",
+    "thickness": 14,
+    "length_ratio": 1.0,
+    "corner_radius": 18,
+    "color_mode": "dual_gradient",
+    "primary_color": "#F06292",
+    "secondary_color": "#FFD54F",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_west_013",
+  "type": "frame",
+  "name": "歌剧院天鹅绒金边框",
+  "license": "CUTORA-original",
+  "subcat": "西方古典",
+  "tags": [
+    "西方古典",
+    "western_classic",
+    "vintage_filigree",
+    "double_royal",
+    "four_sides",
+    "歌剧院天鹅绒金边框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_west_013",
+    "style": "vintage_filigree",
+    "recipe": "double_royal",
+    "family": "western_classic",
+    "category": "西方古典",
+    "edge_mode": "four_sides",
+    "thickness": 14,
+    "length_ratio": 1.0,
+    "corner_radius": 14,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFCC33",
+    "secondary_color": "#4A0E17",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

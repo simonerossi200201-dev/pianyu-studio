@@ -1,0 +1,38 @@
+{
+  "id": "bd_cine_003",
+  "type": "frame",
+  "name": "ARRI 电影机 REC 录制取景器",
+  "license": "CUTORA-original",
+  "subcat": "电影取景",
+  "tags": [
+    "电影取景",
+    "cinematic_film",
+    "viewfinder_hud",
+    "rec_viewfinder",
+    "four_sides",
+    "ARRI 电影机 REC 录制取景器"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cine_003",
+    "style": "viewfinder_hud",
+    "recipe": "rec_viewfinder",
+    "family": "cinematic_film",
+    "category": "电影取景",
+    "edge_mode": "four_sides",
+    "thickness": 5,
+    "length_ratio": 1.0,
+    "corner_radius": 6,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FF1744",
+    "secondary_color": "#FFFFFF",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

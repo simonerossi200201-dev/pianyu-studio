@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_009",
+  "type": "frame",
+  "name": "霓虹灯牌夜店紫金闪耀框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "neon_tube_dual",
+    "four_sides",
+    "霓虹灯牌夜店紫金闪耀框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_009",
+    "style": "cyber_neon",
+    "recipe": "neon_tube_dual",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "four_sides",
+    "thickness": 10,
+    "length_ratio": 1.0,
+    "corner_radius": 18,
+    "color_mode": "rainbow_neon",
+    "primary_color": "#E040FB",
+    "secondary_color": "#FFD740",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

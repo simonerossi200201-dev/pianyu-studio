@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_013",
+  "type": "frame",
+  "name": "福音金号角四角圣光折角",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "sacred_cross_rays",
+    "corners",
+    "福音金号角四角圣光折角"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_013",
+    "style": "sacred_halo",
+    "recipe": "sacred_cross_rays",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "corners",
+    "thickness": 13,
+    "length_ratio": 0.38,
+    "corner_radius": 12,
+    "color_mode": "gold_gradient",
+    "primary_color": "#FFD700",
+    "secondary_color": "#FFF9C4",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

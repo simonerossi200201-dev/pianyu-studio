@@ -1,0 +1,44 @@
+{
+  "id": "lt_split_048",
+  "type": "lower_third",
+  "name": "纪录片森林暗绿黄铜分区 · Ⅴ",
+  "license": "CUTORA-original",
+  "subcat": "色彩分区/通栏",
+  "tags": [
+    "色彩分区",
+    "通栏",
+    "split",
+    "banner",
+    "split_h_2zone",
+    "纪录片森林暗绿黄铜分区 · Ⅴ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_split_048",
+    "family": "color_split",
+    "category": "色彩分区/通栏",
+    "layout_type": "split_h_2zone",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": false,
+    "primary_color": "#14281D",
+    "secondary_color": "#D4AF37",
+    "text_color": "#F1F8E9",
+    "bg_opacity": 236,
+    "anim_in": "split_reveal_slide",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "纪录片森林暗绿黄铜分区\n多行分区自适应延展标题模板",
+    "lines": [
+      "纪录片森林暗绿黄铜分区",
+      "多行分区自适应延展标题模板"
+    ]
+  }
+}

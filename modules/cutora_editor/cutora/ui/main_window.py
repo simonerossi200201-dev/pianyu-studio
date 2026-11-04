@@ -5056,7 +5056,15 @@ class MainWindow(CommandBodies, QMainWindow):
             return
         try:
             self.push_undo()
-            place_on_timeline(tl, item, start_t=start, task=task)
+            target_track = None
+            sel_tid = getattr(self.timeline, "selected_track_id", None) if hasattr(self, "timeline") else None
+            if sel_tid and hasattr(tl, "get_track_by_id"):
+                cand = tl.get_track_by_id(sel_tid)
+                if cand is not None and not getattr(cand, "locked", False):
+                    target_track = cand
+            placed = place_on_timeline(tl, item, start_t=start, task=task, target_track=target_track)
+            if callable(getattr(self, "capture_undo_after", None)):
+                self.capture_undo_after()
         except Exception as exc:
             from cutora.core.log import get_logger
             get_logger("cutora.ui.main_window").exception("place asset failed")
@@ -5067,6 +5075,12 @@ class MainWindow(CommandBodies, QMainWindow):
             return
         self.timeline.set_data(self.timeline.duration, task)
         self.timeline.update()
+        if isinstance(placed, dict):
+            if hasattr(self, "video_canvas") and self.video_canvas is not None:
+                self.video_canvas.selected_overlay = placed
+                self.video_canvas.selected_element = None
+            if hasattr(self, "prop_panel") and self.prop_panel is not None:
+                self.prop_panel.load_data("overlay", placed)
         self.video_canvas.update()
 
     def _handle_timeline_drop(self, path, time_sec, domain,

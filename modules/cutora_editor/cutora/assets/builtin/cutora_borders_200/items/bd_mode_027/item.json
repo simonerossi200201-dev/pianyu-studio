@@ -1,0 +1,38 @@
+{
+  "id": "bd_mode_027",
+  "type": "frame",
+  "name": "现代主义不对称对角折框",
+  "license": "CUTORA-original",
+  "subcat": "现代极简",
+  "tags": [
+    "现代极简",
+    "modern_minimal",
+    "double_line",
+    "corner_l_clean",
+    "corners",
+    "现代主义不对称对角折框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_mode_027",
+    "style": "double_line",
+    "recipe": "corner_l_clean",
+    "family": "modern_minimal",
+    "category": "现代极简",
+    "edge_mode": "corners",
+    "thickness": 7,
+    "length_ratio": 0.38,
+    "corner_radius": 2,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFFFFF",
+    "secondary_color": "#FF6D00",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

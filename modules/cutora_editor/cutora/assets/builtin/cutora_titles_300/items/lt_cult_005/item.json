@@ -1,0 +1,47 @@
+{
+  "id": "lt_cult_005",
+  "type": "lower_third",
+  "name": "长安盛唐宝相花金辉字幕 · Ⅰ",
+  "license": "CUTORA-original",
+  "subcat": "东方/西方/多语种",
+  "tags": [
+    "东方",
+    "西方",
+    "多语种",
+    "国风",
+    "古典",
+    "cultural",
+    "东方国风",
+    "guofeng_scroll",
+    "长安盛唐宝相花金辉字幕 · Ⅰ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_cult_005",
+    "family": "cultural_global",
+    "category": "东方/西方/多语种",
+    "layout_type": "guofeng_scroll",
+    "badge_shape": "seal",
+    "icon_glyph": "seal",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#3E1212",
+    "secondary_color": "#FFCA28",
+    "text_color": "#FFF8E1",
+    "bg_opacity": 234,
+    "anim_in": "ink_unroll_fade",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.48,
+    "default_text": "长安盛唐宝相花金辉字幕\n支持中文 · English · العربية 多语种自适应排版",
+    "lines": [
+      "长安盛唐宝相花金辉字幕",
+      "支持中文 · English · العربية 多语种自适应排版"
+    ]
+  }
+}

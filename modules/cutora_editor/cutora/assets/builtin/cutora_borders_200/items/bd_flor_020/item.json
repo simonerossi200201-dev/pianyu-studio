@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_020",
+  "type": "frame",
+  "name": "热带龟背竹棕榈度假框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "olive_wreath",
+    "corners",
+    "热带龟背竹棕榈度假框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_020",
+    "style": "floral_vine",
+    "recipe": "olive_wreath",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "corners",
+    "thickness": 14,
+    "length_ratio": 0.38,
+    "corner_radius": 16,
+    "color_mode": "dual_gradient",
+    "primary_color": "#26A69A",
+    "secondary_color": "#00695C",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_west_005",
+  "type": "frame",
+  "name": "哥特彩绘玫瑰花窗框",
+  "license": "CUTORA-original",
+  "subcat": "西方古典",
+  "tags": [
+    "西方古典",
+    "western_classic",
+    "vintage_filigree",
+    "gothic_arch",
+    "four_sides",
+    "哥特彩绘玫瑰花窗框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_west_005",
+    "style": "vintage_filigree",
+    "recipe": "gothic_arch",
+    "family": "western_classic",
+    "category": "西方古典",
+    "edge_mode": "four_sides",
+    "thickness": 14,
+    "length_ratio": 1.0,
+    "corner_radius": 20,
+    "color_mode": "dual_gradient",
+    "primary_color": "#E6B800",
+    "secondary_color": "#5C3A21",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

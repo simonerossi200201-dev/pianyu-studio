@@ -1,0 +1,38 @@
+{
+  "id": "bd_east_020",
+  "type": "frame",
+  "name": "兰亭集序洒金宣纸框",
+  "license": "CUTORA-original",
+  "subcat": "东方国风",
+  "tags": [
+    "东方国风",
+    "eastern_guofeng",
+    "guofeng_pattern",
+    "ink_brush",
+    "two_sides_v",
+    "兰亭集序洒金宣纸框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_east_020",
+    "style": "guofeng_pattern",
+    "recipe": "ink_brush",
+    "family": "eastern_guofeng",
+    "category": "东方国风",
+    "edge_mode": "two_sides_v",
+    "thickness": 10,
+    "length_ratio": 1.0,
+    "corner_radius": 6,
+    "color_mode": "gold_gradient",
+    "primary_color": "#D4AC0D",
+    "secondary_color": "#FDEBD0",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

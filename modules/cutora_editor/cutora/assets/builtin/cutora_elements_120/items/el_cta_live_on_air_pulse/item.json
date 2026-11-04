@@ -1,0 +1,14 @@
+{
+  "id": "el_cta_live_on_air_pulse",
+  "name": "LIVE直播中呼吸脉冲动图",
+  "type": "element",
+  "subcat": "社交互动",
+  "file": "el_cta_live_on_air_pulse.gif",
+  "license": "CUTORA-original",
+  "is_animated_gif": true,
+  "tags": [
+    "社交互动",
+    "动图",
+    "LIVE直播中呼吸脉冲动图"
+  ]
+}

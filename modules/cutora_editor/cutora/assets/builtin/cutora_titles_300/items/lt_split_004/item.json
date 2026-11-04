@@ -1,0 +1,44 @@
+{
+  "id": "lt_split_004",
+  "type": "lower_third",
+  "name": "小红书奶油蜜桃双色卡 · Ⅰ",
+  "license": "CUTORA-original",
+  "subcat": "色彩分区/通栏",
+  "tags": [
+    "色彩分区",
+    "通栏",
+    "split",
+    "banner",
+    "split_v_2zone",
+    "小红书奶油蜜桃双色卡 · Ⅰ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_split_004",
+    "family": "color_split",
+    "category": "色彩分区/通栏",
+    "layout_type": "split_v_2zone",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": false,
+    "primary_color": "#FFF5F7",
+    "secondary_color": "#FF80AB",
+    "text_color": "#3E2723",
+    "bg_opacity": 236,
+    "anim_in": "split_reveal_slide",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "小红书奶油蜜桃双色卡\n多行分区自适应延展标题模板",
+    "lines": [
+      "小红书奶油蜜桃双色卡",
+      "多行分区自适应延展标题模板"
+    ]
+  }
+}

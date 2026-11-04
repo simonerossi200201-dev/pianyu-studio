@@ -1,0 +1,38 @@
+{
+  "id": "bd_east_023",
+  "type": "frame",
+  "name": "敦煌飞天飘带流云上下框",
+  "license": "CUTORA-original",
+  "subcat": "东方国风",
+  "tags": [
+    "东方国风",
+    "eastern_guofeng",
+    "guofeng_pattern",
+    "auspicious_cloud",
+    "two_sides_h",
+    "敦煌飞天飘带流云上下框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_east_023",
+    "style": "guofeng_pattern",
+    "recipe": "auspicious_cloud",
+    "family": "eastern_guofeng",
+    "category": "东方国风",
+    "edge_mode": "two_sides_h",
+    "thickness": 11,
+    "length_ratio": 1.0,
+    "corner_radius": 16,
+    "color_mode": "dual_gradient",
+    "primary_color": "#F5B041",
+    "secondary_color": "#48C9B0",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

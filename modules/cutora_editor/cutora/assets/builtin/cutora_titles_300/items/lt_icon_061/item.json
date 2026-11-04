@@ -1,0 +1,44 @@
+{
+  "id": "lt_icon_061",
+  "type": "lower_third",
+  "name": "皇室火漆冠冕铭牌 · Ⅳ",
+  "license": "CUTORA-original",
+  "subcat": "带图标/缩略图",
+  "tags": [
+    "带图标",
+    "缩略图",
+    "icon",
+    "crown",
+    "diamond_badge",
+    "皇室火漆冠冕铭牌 · Ⅳ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_icon_061",
+    "family": "icon_badge",
+    "category": "带图标/缩略图",
+    "layout_type": "icon_card",
+    "badge_shape": "diamond_badge",
+    "icon_glyph": "crown",
+    "icon_path": "D:\\0_LTX\\modules\\cutora_editor\\resources\\title_art_plates\\sticker_royal_wax_seal_crown.png",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#1A1412",
+    "secondary_color": "#FFD700",
+    "text_color": "#FFFFFF",
+    "bg_opacity": 232,
+    "anim_in": "wipe_bar_pop_icon",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "皇室火漆冠冕铭牌\n支持多行与长段落自动排版换行",
+    "lines": [
+      "皇室火漆冠冕铭牌",
+      "支持多行与长段落自动排版换行"
+    ]
+  }
+}

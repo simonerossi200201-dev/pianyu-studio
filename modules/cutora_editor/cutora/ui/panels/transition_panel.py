@@ -25,6 +25,7 @@ import json
 import math
 import os
 import time
+import weakref
 from collections import OrderedDict, deque
 
 from PySide6.QtCore import (
@@ -35,7 +36,7 @@ from PySide6.QtGui import (
     QPainterPath, QPen, QPixmap, QPolygonF,
 )
 from PySide6.QtWidgets import (
-    QCheckBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLayout, QLineEdit,
+    QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLayout, QLineEdit,
     QMenu, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -349,6 +350,9 @@ def _save_settings_patch(patch: dict) -> None:
         logger.debug("transition panel: settings save failed", exc_info=True)
 
 
+_LIVE_PANELS: list[weakref.ReferenceType] = []
+
+
 def sfx_enabled() -> bool:
     mod = _sfx_module()
     fn = getattr(mod, "is_enabled", None) if mod is not None else None
@@ -357,19 +361,46 @@ def sfx_enabled() -> bool:
             return bool(fn())
         except Exception:
             pass
-    return bool(_load_settings().get(SETTING_SFX, False))
+    s = _load_settings()
+    if SETTING_SFX not in s:
+        return True
+    return bool(s.get(SETTING_SFX, True))
 
 
 def set_sfx_enabled(on: bool) -> None:
+    val = bool(on)
     mod = _sfx_module()
     fn = getattr(mod, "set_enabled", None) if mod is not None else None
     if callable(fn):
         try:
-            fn(bool(on))
-            return
+            fn(val)
         except Exception:
             logger.debug("sfx_social.set_enabled failed", exc_info=True)
-    _save_settings_patch({SETTING_SFX: bool(on)})
+    _save_settings_patch({SETTING_SFX: val})
+    alive = []
+    for ref in list(_LIVE_PANELS):
+        p = ref()
+        if p is None:
+            continue
+        alive.append(ref)
+        chk = getattr(p, "chk_auto_sfx", None)
+        if chk is not None:
+            try:
+                if chk.isChecked() != val:
+                    chk.blockSignals(True)
+                    chk.setChecked(val)
+                    chk.blockSignals(False)
+            except RuntimeError:
+                continue
+    _LIVE_PANELS[:] = alive
+
+
+def is_auto_transition_sfx_enabled() -> bool:
+    return sfx_enabled()
+
+
+def set_auto_transition_sfx_enabled(on: bool) -> None:
+    set_sfx_enabled(bool(on))
 
 
 # ── search helpers ──
@@ -984,6 +1015,7 @@ class TransitionCard(QFrame):
     apply_to_video_split_requested = Signal(str, float)
     apply_to_subtitles_text_requested = Signal(str, float)
     card_selected = Signal(str, str, float)
+    card_hovered = Signal(str, str)
     favorite_toggled = Signal(str, bool)
     used = Signal(str, str)
 
@@ -1078,6 +1110,7 @@ class TransitionCard(QFrame):
         self._hovered = True
         self.thumb.set_playing(True)
         self._update_card_style()
+        self.card_hovered.emit(self.preset, self.domain)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -1095,12 +1128,31 @@ class TransitionCard(QFrame):
 
     # ── interaction ──
 
+    def _effective_pre_sfx_id(self) -> str:
+        w = self.parentWidget()
+        while w is not None:
+            if hasattr(w, "selected_pre_sfx_id") and callable(getattr(w, "selected_pre_sfx_id")):
+                try:
+                    return str(w.selected_pre_sfx_id() or "auto")
+                except Exception:
+                    break
+            w = w.parentWidget()
+        mod = _sfx_module()
+        if mod is not None and callable(getattr(mod, "get_pre_transition_sfx_id", None)):
+            try:
+                return str(mod.get_pre_transition_sfx_id() or "auto")
+            except Exception:
+                pass
+        return "auto"
+
     def mime_payload(self) -> dict:
-        return {
+        payload = {
             "preset": self.preset,
             "domain": self.domain,
             "duration": float(self.duration),
+            "sfx_id": self._effective_pre_sfx_id(),
         }
+        return payload
 
     def build_mime(self) -> QMimeData:
         mime = QMimeData()
@@ -1176,8 +1228,10 @@ class TransitionCard(QFrame):
         if self.domain != "audio":
             act_apply_vid = menu.addAction(tr("批量应用到视频/分屏"))
             act_apply_sub = menu.addAction(tr("批量应用到字幕/文本"))
-            if self.sfx:
-                act_preview_sfx = menu.addAction(tr("🔊 试听配套音效") + f" ({sfx_label(self.sfx)})")
+            pre_sfx = self._effective_pre_sfx_id()
+            eff_sfx = pre_sfx if (pre_sfx and pre_sfx not in ("auto", "none", "off")) else self.sfx
+            if eff_sfx:
+                act_preview_sfx = menu.addAction(tr("🔊 试听配套音效") + f" ({sfx_label(eff_sfx)})")
         menu.addSeparator()
         act_fav = menu.addAction(tr("取消收藏") if self.is_favorite() else tr("收藏"))
         chosen = menu.exec(event.globalPos())
@@ -1198,7 +1252,9 @@ class TransitionCard(QFrame):
             fn = getattr(mod, "preview_sfx", None) if mod is not None else None
             if callable(fn):
                 try:
-                    fn(self.sfx)
+                    pre_sfx = self._effective_pre_sfx_id()
+                    eff_sfx = pre_sfx if (pre_sfx and pre_sfx not in ("auto", "none", "off")) else self.sfx
+                    fn(eff_sfx)
                 except Exception:
                     pass
         elif chosen is act_fav:
@@ -1279,6 +1335,7 @@ class TransitionPanel(QWidget):
     def __init__(self, parent=None):
         t_build = time.perf_counter()
         super().__init__(parent)
+        _LIVE_PANELS.append(weakref.ref(self))
         self.setObjectName("transitionPanel")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
@@ -1287,6 +1344,7 @@ class TransitionPanel(QWidget):
         self._favorites = [str(x) for x in favs] if isinstance(favs, list) else []
         rec = settings.get(SETTING_RECENT)
         self._recent = [str(x) for x in rec][:RECENT_MAX] if isinstance(rec, list) else []
+        self._hovered_preset = ""
         self._style_sig = None
         self._apply_panel_style()
 
@@ -1294,7 +1352,7 @@ class TransitionPanel(QWidget):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(6)
 
-        # 顶部：搜索 + 附带音效
+        # 顶部：搜索 + 加转场自动带音效
         top_bar = QHBoxLayout()
         top_bar.setContentsMargins(0, 0, 0, 0)
         top_bar.setSpacing(8)
@@ -1303,12 +1361,39 @@ class TransitionPanel(QWidget):
         self._search_edit.setClearButtonEnabled(True)
         self._search_edit.textChanged.connect(self._on_filter_changed)
         top_bar.addWidget(self._search_edit, 1)
-        self._sfx_check = QCheckBox(tr("附带音效"))
-        self._sfx_check.setToolTip(tr("拖入转场时同时放入推荐的转场音效"))
-        self._sfx_check.setChecked(self._initial_sfx(settings))
-        self._sfx_check.toggled.connect(self._on_sfx_toggled)
-        top_bar.addWidget(self._sfx_check, 0)
+
+        self.chk_auto_sfx = QCheckBox(tr("♪ 加转场自动带音效"))
+        self.chk_auto_sfx.setObjectName("transitionSfxCheck")
+        self.chk_auto_sfx.setStyleSheet("QCheckBox { color: #F2E3C6; font-weight: 600; font-size: 11px; }")
+        self.chk_auto_sfx.setToolTip(tr("添加或拖入转场时自动附带柔顺淡入淡出的转场音效"))
+        self.chk_auto_sfx.setChecked(self._initial_sfx(settings))
+        self.chk_auto_sfx.toggled.connect(self._on_sfx_toggled)
+        self._sfx_check = self.chk_auto_sfx
+        top_bar.addWidget(self.chk_auto_sfx, 0)
         lay.addLayout(top_bar)
+
+        # 转场前预设音效选择栏：下拉选择转场音效 + 🔊 试听
+        pre_sfx_bar = QHBoxLayout()
+        pre_sfx_bar.setContentsMargins(0, 0, 0, 0)
+        pre_sfx_bar.setSpacing(6)
+        pre_sfx_lbl = QLabel(tr("配套音效:"))
+        pre_sfx_lbl.setObjectName("transitionHint")
+        pre_sfx_bar.addWidget(pre_sfx_lbl, 0)
+
+        self.pre_sfx_combo = QComboBox()
+        self.pre_sfx_combo.setObjectName("transitionPreSfxCombo")
+        self.pre_sfx_combo.setToolTip(tr("在添加转场前预选配套转场音效（默认跟随转场推荐）"))
+        self._populate_pre_sfx_combo()
+        self.pre_sfx_combo.currentIndexChanged.connect(self._on_pre_sfx_combo_changed)
+        pre_sfx_bar.addWidget(self.pre_sfx_combo, 1)
+
+        self.btn_pre_sfx_audition = QPushButton(tr("▶ 试听"))
+        self.btn_pre_sfx_audition.setObjectName("transitionChip")
+        self.btn_pre_sfx_audition.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_pre_sfx_audition.setToolTip(tr("立即试听当前预选或选中转场的配套音效"))
+        self.btn_pre_sfx_audition.clicked.connect(self.audition_pre_sfx)
+        pre_sfx_bar.addWidget(self.btn_pre_sfx_audition, 0)
+        lay.addLayout(pre_sfx_bar)
 
         # 构建卡片（先建卡，才知道哪些分类非空）
         self._video_cards = []
@@ -1470,6 +1555,9 @@ class TransitionPanel(QWidget):
             f"QPushButton#transitionChip:pressed {{ background-color: {tok.bg3}; }}"
             f"QPushButton#transitionChip:checked {{ background-color: {acc_bg};"
             f" color: {tok.accent_hi}; border: 1px solid {tok.accent}; font-weight: 600; }}"
+            f"QComboBox#transitionPreSfxCombo {{ background-color: {tok.bg2}; color: {tok.fg0};"
+            f" border: 1px solid {tok.border}; border-radius: 6px; padding: 2px 6px;"
+            f" font-size: 12px; min-height: 20px; }}"
         )
 
     def changeEvent(self, event):
@@ -1484,13 +1572,105 @@ class TransitionPanel(QWidget):
             btn.setChecked(cid == self._active_category)
             btn.blockSignals(False)
 
-    # ── settings-backed state ──
+    # ── settings-backed state & pre-transition SFX controls ──
+
+    def _populate_pre_sfx_combo(self) -> None:
+        self.pre_sfx_combo.blockSignals(True)
+        self.pre_sfx_combo.clear()
+        self.pre_sfx_combo.addItem(tr("跟随转场推荐 (默认)"), "auto")
+        mod = _sfx_module()
+        if mod is not None:
+            catalog = getattr(mod, "CATALOG", []) or []
+            items_iter = list(catalog.values()) if isinstance(catalog, dict) else list(catalog)
+            groups = list(getattr(mod, "GROUPS", []) or [])
+            # First list all 60 transition SFX, then scene SFX groups
+            for grp in groups:
+                for meta in items_iter:
+                    if not isinstance(meta, dict):
+                        continue
+                    if str(meta.get("group") or "") != grp:
+                        continue
+                    sid = str(meta.get("id") or "")
+                    if not sid:
+                        continue
+                    lbl = str(meta.get("label") or sid)
+                    dur = float(meta.get("duration") or 0.0)
+                    display = f"[{grp}] {lbl} ({dur:.1f}s)" if grp != "转场音效" else f"♪ {lbl} ({dur:.1f}s)"
+                    self.pre_sfx_combo.addItem(display, sid)
+        self.pre_sfx_combo.addItem(tr("无音效 (静音)"), "none")
+        self.pre_sfx_combo.setCurrentIndex(0)
+        self.pre_sfx_combo.blockSignals(False)
+        if mod is not None and callable(getattr(mod, "set_pre_transition_sfx_id", None)):
+            try:
+                mod.set_pre_transition_sfx_id("auto")
+            except Exception:
+                pass
+
+    def selected_pre_sfx_id(self) -> str:
+        """Return currently selected pre-transition SFX ID ('auto', 'none', or a catalog sfx_id)."""
+        if not hasattr(self, "pre_sfx_combo") or self.pre_sfx_combo is None:
+            return "auto"
+        data = self.pre_sfx_combo.currentData()
+        return str(data or "auto")
+
+    def set_pre_sfx_id(self, sfx_id: str) -> None:
+        """Programmatically select a pre-transition SFX ID in pre_sfx_combo."""
+        target = str(sfx_id or "auto").strip() or "auto"
+        idx = self.pre_sfx_combo.findData(target)
+        if idx >= 0:
+            self.pre_sfx_combo.setCurrentIndex(idx)
+        else:
+            self.pre_sfx_combo.setCurrentIndex(0)
+        self._sync_pre_sfx_to_engine()
+
+    def _sync_pre_sfx_to_engine(self) -> str:
+        sid = self.selected_pre_sfx_id()
+        mod = _sfx_module()
+        if mod is not None and callable(getattr(mod, "set_pre_transition_sfx_id", None)):
+            try:
+                mod.set_pre_transition_sfx_id(sid)
+            except Exception:
+                pass
+        return sid
+
+    def _on_pre_sfx_combo_changed(self, _index: int) -> None:
+        self._sync_pre_sfx_to_engine()
+
+    def effective_audition_sfx_id(self) -> str:
+        """Resolve which SFX ID should be auditioned when clicking 🔊 试听."""
+        chosen = self.selected_pre_sfx_id()
+        if chosen and chosen not in ("auto", "none", "off"):
+            return chosen
+        # Otherwise check hovered card first, then selected card
+        hovered = str(getattr(self, "_hovered_preset", "") or "")
+        if hovered:
+            rec = _recommended_sfx(hovered)
+            if rec:
+                return rec
+        preset, _domain, _dur = self.selected_transition_info()
+        rec = _recommended_sfx(preset)
+        if rec:
+            return rec
+        return "whoosh_light"
+
+    def audition_pre_sfx(self) -> str:
+        """Preview the pre-selected transition SFX or the hovered/selected transition's recommended SFX."""
+        sid = self.effective_audition_sfx_id()
+        mod = _sfx_module()
+        if mod is not None and callable(getattr(mod, "preview_sfx", None)):
+            try:
+                mod.preview_sfx(sid)
+            except Exception:
+                pass
+        return sid
 
     def _initial_sfx(self, settings: dict) -> bool:
         mod = _sfx_module()
         if mod is not None and callable(getattr(mod, "is_enabled", None)):
             return sfx_enabled()
-        return bool(settings.get(SETTING_SFX, False))
+        if SETTING_SFX in settings:
+            return bool(settings.get(SETTING_SFX))
+        return True
 
     def _on_sfx_toggled(self, on: bool):
         set_sfx_enabled(bool(on))
@@ -1541,13 +1721,64 @@ class TransitionPanel(QWidget):
         self._reflow_grids(force=True)
 
     def _wire_card(self, card: TransitionCard) -> None:
-        card.apply_requested.connect(self.apply_requested)
-        card.apply_to_all_requested.connect(self.apply_to_all_requested)
-        card.apply_to_video_split_requested.connect(self.apply_to_video_split_requested)
-        card.apply_to_subtitles_text_requested.connect(self.apply_to_subtitles_text_requested)
+        card.apply_requested.connect(self._on_card_apply_requested)
+        card.apply_to_all_requested.connect(self._on_card_apply_to_all_requested)
+        card.apply_to_video_split_requested.connect(self._on_card_apply_to_video_split_requested)
+        card.apply_to_subtitles_text_requested.connect(self._on_card_apply_to_subtitles_text_requested)
         card.card_selected.connect(self._on_card_selected)
+        card.card_hovered.connect(self._on_card_hovered)
         card.favorite_toggled.connect(self._on_card_favorite)
         card.used.connect(self.note_used)
+
+    def _on_card_hovered(self, preset: str, _domain: str) -> None:
+        self._hovered_preset = str(preset or "")
+
+    def _apply_pre_sfx_to_active_timeline(self, preset: str, domain: str) -> None:
+        """Ensure that when a user selects a specific pre_sfx_combo item (even on a preset
+        without a default recommended_sfx), the selected SFX is attached to the timeline."""
+        if domain == "audio" or not self.sfx_enabled():
+            return
+        pre_sid = self._sync_pre_sfx_to_engine()
+        if not pre_sid or pre_sid in ("auto", "none", "off"):
+            return
+        # If the preset already has a recommended SFX, command_add_transition / _on_apply_transition_to_all_seams
+        # will already invoke sfx_social.attach_transition_sfx which picks up get_pre_transition_sfx_id().
+        # If the preset had no recommended SFX (e.g. cross_dissolve), attach it explicitly on the host timeline.
+        if _recommended_sfx(preset):
+            return
+        mod = _sfx_module()
+        if mod is None or not callable(getattr(mod, "attach_transition_sfx", None)):
+            return
+        win = self.window()
+        tl = getattr(win, "timeline", None) if win is not None else None
+        if tl is None:
+            return
+        for trk in getattr(tl, "video_tracks", []) or []:
+            for tr_obj in getattr(trk, "transitions", []) or []:
+                if getattr(tr_obj, "preset", "") == preset:
+                    try:
+                        mod.attach_transition_sfx(tl, trk, tr_obj, pre_sid, force=True)
+                    except Exception:
+                        pass
+
+    def _on_card_apply_requested(self, preset: str, domain: str, duration: float) -> None:
+        self._sync_pre_sfx_to_engine()
+        self.apply_requested.emit(preset, domain, float(duration))
+        self._apply_pre_sfx_to_active_timeline(preset, domain)
+
+    def _on_card_apply_to_all_requested(self, preset: str, domain: str, duration: float) -> None:
+        self._sync_pre_sfx_to_engine()
+        self.apply_to_all_requested.emit(preset, domain, float(duration))
+        self._apply_pre_sfx_to_active_timeline(preset, domain)
+
+    def _on_card_apply_to_video_split_requested(self, preset: str, duration: float) -> None:
+        self._sync_pre_sfx_to_engine()
+        self.apply_to_video_split_requested.emit(preset, float(duration))
+        self._apply_pre_sfx_to_active_timeline(preset, "visual")
+
+    def _on_card_apply_to_subtitles_text_requested(self, preset: str, duration: float) -> None:
+        self._sync_pre_sfx_to_engine()
+        self.apply_to_subtitles_text_requested.emit(preset, float(duration))
 
     def _on_card_selected(self, preset: str, domain: str, duration: float) -> None:
         self._selected_preset = str(preset or "cross_dissolve")
@@ -1575,16 +1806,21 @@ class TransitionPanel(QWidget):
         return preset, dur
 
     def _on_batch_apply_seams(self) -> None:
+        self._sync_pre_sfx_to_engine()
         preset, domain, dur = self.selected_transition_info()
         self.apply_to_all_requested.emit(preset, domain, dur)
+        self._apply_pre_sfx_to_active_timeline(preset, domain)
         self.note_used(preset, domain)
 
     def _on_batch_apply_video_split(self) -> None:
+        self._sync_pre_sfx_to_engine()
         preset, dur = self._ensure_visual_selection()
         self.apply_to_video_split_requested.emit(preset, dur)
+        self._apply_pre_sfx_to_active_timeline(preset, "visual")
         self.note_used(preset, "visual")
 
     def _on_batch_apply_subs_text(self) -> None:
+        self._sync_pre_sfx_to_engine()
         preset, dur = self._ensure_visual_selection()
         self.apply_to_subtitles_text_requested.emit(preset, dur)
         self.note_used(preset, "visual")

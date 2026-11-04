@@ -1,0 +1,18 @@
+{
+  "id": "cutora_titles_300",
+  "name": "CUTORA 全球高定字幕条与标题动效库 (300)",
+  "version": "1.0.0",
+  "author": "CUTORA",
+  "license": "CUTORA-original",
+  "categories": [
+    "lower_third"
+  ],
+  "tags": [
+    "带图标/缩略图",
+    "色彩分区/通栏",
+    "线条几何出场",
+    "图形画报肌理",
+    "东方/西方/多语种"
+  ],
+  "language": "zh-CN"
+}

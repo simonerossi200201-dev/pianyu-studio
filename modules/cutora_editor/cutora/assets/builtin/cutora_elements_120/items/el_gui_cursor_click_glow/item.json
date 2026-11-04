@@ -1,0 +1,14 @@
+{
+  "id": "el_gui_cursor_click_glow",
+  "name": "发光鼠标箭头点击动图",
+  "type": "element",
+  "subcat": "指引标注",
+  "file": "el_gui_cursor_click_glow.gif",
+  "license": "CUTORA-original",
+  "is_animated_gif": true,
+  "tags": [
+    "指引标注",
+    "动图",
+    "发光鼠标箭头点击动图"
+  ]
+}

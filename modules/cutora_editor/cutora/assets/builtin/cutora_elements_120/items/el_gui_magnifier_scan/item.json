@@ -1,0 +1,14 @@
+{
+  "id": "el_gui_magnifier_scan",
+  "name": "放大镜聚焦扫光动图",
+  "type": "element",
+  "subcat": "指引标注",
+  "file": "el_gui_magnifier_scan.gif",
+  "license": "CUTORA-original",
+  "is_animated_gif": true,
+  "tags": [
+    "指引标注",
+    "动图",
+    "放大镜聚焦扫光动图"
+  ]
+}

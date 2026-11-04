@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_017",
+  "type": "frame",
+  "name": "甘露净瓶莲花底座下栏框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "golden_lotus",
+    "one_side_bottom",
+    "甘露净瓶莲花底座下栏框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_017",
+    "style": "sacred_halo",
+    "recipe": "golden_lotus",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "one_side_bottom",
+    "thickness": 15,
+    "length_ratio": 1.0,
+    "corner_radius": 16,
+    "color_mode": "gold_gradient",
+    "primary_color": "#FFD54F",
+    "secondary_color": "#8D6E63",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

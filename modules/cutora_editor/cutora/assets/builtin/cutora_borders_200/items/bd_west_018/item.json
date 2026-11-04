@@ -1,0 +1,38 @@
+{
+  "id": "bd_west_018",
+  "type": "frame",
+  "name": "帝国时代雄鹰金章框",
+  "license": "CUTORA-original",
+  "subcat": "西方古典",
+  "tags": [
+    "西方古典",
+    "western_classic",
+    "vintage_filigree",
+    "art_deco_step",
+    "four_sides",
+    "帝国时代雄鹰金章框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_west_018",
+    "style": "vintage_filigree",
+    "recipe": "art_deco_step",
+    "family": "western_classic",
+    "category": "西方古典",
+    "edge_mode": "four_sides",
+    "thickness": 13,
+    "length_ratio": 1.0,
+    "corner_radius": 4,
+    "color_mode": "dual_gradient",
+    "primary_color": "#F7C844",
+    "secondary_color": "#785109",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

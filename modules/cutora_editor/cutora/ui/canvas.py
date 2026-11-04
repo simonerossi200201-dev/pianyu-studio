@@ -3823,6 +3823,9 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
                     list_name = self._dragging_item.get('list')
                     if list_name:
                         ov = self._task_data[list_name][self._dragging_item['idx']]
+                        if isinstance(ov.get("border_spec"), dict):
+                            if str(ov["border_spec"].get("target_link") or "none") not in ("none", ""):
+                                ov["border_spec"]["target_link"] = "none"
                         self._nudge_host_param(
                             ov, "x", dx, ov.get("x", 0.0),
                             lambda v, _ov=ov: _ov.__setitem__("x", v))
@@ -4395,8 +4398,11 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(rect)
             
-            for hrect in self._handle_rects_for(rect, self._selected_item).values():
-                if item_type == 'sub_span':
+            for hkey, hrect in self._handle_rects_for(rect, self._selected_item).items():
+                if str(hkey).startswith("len"):
+                    painter.setPen(QPen(QColor(220, 140, 20, 255), 1.8))
+                    painter.setBrush(QColor(255, 205, 65, 240))
+                elif item_type == 'sub_span':
                     painter.setPen(QPen(QColor(200, 120, 30, 255), 1.4))
                     painter.setBrush(QColor(255, 220, 180, 230))
                 else:
@@ -4416,6 +4422,12 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
         ov = self._record_data(item)
         return isinstance(ov, dict) and str(ov.get("fit_mode") or "") == "auto_height"
 
+    def _is_border_overlay_item(self, item) -> bool:
+        if not isinstance(item, dict) or item.get("type") != "overlay":
+            return False
+        ov = self._record_data(item)
+        return isinstance(ov, dict) and isinstance(ov.get("border_spec"), dict)
+
     def _handle_rects_for(self, rect, item):
         """这个对象该画哪些手柄。Q129：auto_height 的文本不画上下边柄 ——
         以前八个都画，用户去拖上下边，什么都不发生，还弹一个「高度自动」。"""
@@ -4425,6 +4437,16 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
         if self._is_auto_height_text(item):
             rects.pop("n", None)
             rects.pop("s", None)
+        if self._is_border_overlay_item(item):
+            ov = self._record_data(item) or {}
+            bspec = ov.get("border_spec") or {}
+            lr = max(0.05, min(1.0, float(bspec.get("length_ratio", 1.0) or 1.0)))
+            size = max(16.0, min(28.0, rect.width() * 0.06))
+            hs = size / 2.0
+            cx = rect.center().x()
+            span_x = (rect.width() * 0.42) * lr
+            rects["len_l"] = QRectF(cx - span_x - hs, rect.top() + size * 0.55, size, size)
+            rects["len_r"] = QRectF(cx + span_x - hs, rect.top() + size * 0.55, size, size)
         return rects
 
     def _resize_handle_rects(self, rect, with_rotate=False):
@@ -4721,10 +4743,25 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
             new_rect.setHeight(min_size)
 
         host, parent = self._aspect_hosts(item)
+        is_border_ov = isinstance(host, dict) and isinstance(host.get("border_spec"), dict)
+        if is_border_ov and (str(handle).startswith("len") or (
+                handle in ("e", "w", "n", "s") and bool(modifiers & Qt.KeyboardModifier.ShiftModifier))):
+            bspec = host["border_spec"]
+            cur_lr = float(bspec.get("length_ratio", 1.0) or 1.0)
+            ref_span = max(80.0, float(rect.width()) * 0.5)
+            delta_lr = (dx if handle in ("len_r", "e") else (-dx if handle in ("len_l", "w") else dy)) / ref_span
+            new_lr = max(0.05, min(1.0, cur_lr + delta_lr))
+            bspec["length_ratio"] = round(new_lr, 3)
+            self._drag_hud = ("边框长度 %d%%" % int(round(new_lr * 100.0)), "两端长度调节")
+            return
+
         locked = False
         if host is not None and item.get("type") in ("overlay", "sticker", "video_clip"):
-            from cutora.model.project_schema import lock_aspect_of
-            locked = lock_aspect_of(host, parent)
+            if is_border_ov:
+                locked = bool(host.get("lock_aspect", False))
+            else:
+                from cutora.model.project_schema import lock_aspect_of
+                locked = lock_aspect_of(host, parent)
             if modifiers & Qt.KeyboardModifier.ShiftModifier:
                 locked = not locked
         if locked and item.get("type") in ("overlay", "sticker", "video_clip"):
@@ -4740,6 +4777,14 @@ class VideoCanvas(CanvasOpsMixin, QWidget):
                     # Q125：文本框按排版软件的约定 —— 角柄缩字号，边柄改折行宽
                     self._apply_text_resize(ov, rect, dx, dy, handle, modifiers)
                     return
+                if isinstance(ov.get("border_spec"), dict):
+                    if str(ov["border_spec"].get("target_link") or "none") not in ("none", ""):
+                        ov["border_spec"]["target_link"] = "none"
+                    thk = int(ov["border_spec"].get("thickness", 6) or 6)
+                    self._drag_hud = (
+                        "边框尺寸 %d×%d" % (int(round(new_rect.width())), int(round(new_rect.height()))),
+                        "粗细 %d px 保持不变" % thk,
+                    )
                 self._commit_host_param(
                     ov, "x", float(new_rect.x()),
                     lambda v, _ov=ov: _ov.__setitem__("x", v))

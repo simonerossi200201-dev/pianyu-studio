@@ -1,0 +1,44 @@
+{
+  "id": "lt_line_021",
+  "type": "lower_third",
+  "name": "上下平行金丝呼吸感标题 · Ⅲ",
+  "license": "CUTORA-original",
+  "subcat": "线条几何出场",
+  "tags": [
+    "线条几何",
+    "几何",
+    "line",
+    "geom",
+    "top_bottom_rules",
+    "上下平行金丝呼吸感标题 · Ⅲ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_line_021",
+    "family": "line_geometric",
+    "category": "线条几何出场",
+    "layout_type": "top_bottom_rules",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": false,
+    "primary_color": "#16161A",
+    "secondary_color": "#E6C786",
+    "text_color": "#FFFFFF",
+    "bg_opacity": 195,
+    "anim_in": "center_line_expand",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.48,
+    "default_text": "上下平行金丝呼吸感标题\n几何线条随文字行数智能伸缩",
+    "lines": [
+      "上下平行金丝呼吸感标题",
+      "几何线条随文字行数智能伸缩"
+    ]
+  }
+}

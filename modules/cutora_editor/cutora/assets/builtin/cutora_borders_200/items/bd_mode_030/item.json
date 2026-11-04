@@ -1,0 +1,38 @@
+{
+  "id": "bd_mode_030",
+  "type": "frame",
+  "name": "极简主义三线韵律上下框",
+  "license": "CUTORA-original",
+  "subcat": "现代极简",
+  "tags": [
+    "现代极简",
+    "modern_minimal",
+    "double_line",
+    "editorial_double",
+    "two_sides_h",
+    "极简主义三线韵律上下框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_mode_030",
+    "style": "double_line",
+    "recipe": "editorial_double",
+    "family": "modern_minimal",
+    "category": "现代极简",
+    "edge_mode": "two_sides_h",
+    "thickness": 6,
+    "length_ratio": 1.0,
+    "corner_radius": 2,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFFFFF",
+    "secondary_color": "#B0BEC5",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

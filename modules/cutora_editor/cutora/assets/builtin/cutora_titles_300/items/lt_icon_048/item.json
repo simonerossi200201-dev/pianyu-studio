@@ -1,0 +1,44 @@
+{
+  "id": "lt_icon_048",
+  "type": "lower_third",
+  "name": "电影变形宽银幕光斑条 · Ⅲ",
+  "license": "CUTORA-original",
+  "subcat": "带图标/缩略图",
+  "tags": [
+    "带图标",
+    "缩略图",
+    "icon",
+    "flare",
+    "hexagon",
+    "电影变形宽银幕光斑条 · Ⅲ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_icon_048",
+    "family": "icon_badge",
+    "category": "带图标/缩略图",
+    "layout_type": "icon_pill",
+    "badge_shape": "hexagon",
+    "icon_glyph": "flare",
+    "icon_path": "D:\\0_LTX\\modules\\cutora_editor\\resources\\title_art_plates\\sticker_anamorphic_cinema_flare.png",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#0B1320",
+    "secondary_color": "#00E5FF",
+    "text_color": "#FFFFFF",
+    "bg_opacity": 232,
+    "anim_in": "cinema_blur_zoom",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.45,
+    "default_text": "电影变形宽银幕光斑条\n支持多行与长段落自动排版换行",
+    "lines": [
+      "电影变形宽银幕光斑条",
+      "支持多行与长段落自动排版换行"
+    ]
+  }
+}

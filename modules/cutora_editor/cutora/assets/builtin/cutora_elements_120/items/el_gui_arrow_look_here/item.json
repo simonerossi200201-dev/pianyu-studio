@@ -1,0 +1,14 @@
+{
+  "id": "el_gui_arrow_look_here",
+  "name": "看这里弹性弯钩箭头动图",
+  "type": "element",
+  "subcat": "指引标注",
+  "file": "el_gui_arrow_look_here.gif",
+  "license": "CUTORA-original",
+  "is_animated_gif": true,
+  "tags": [
+    "指引标注",
+    "动图",
+    "看这里弹性弯钩箭头动图"
+  ]
+}

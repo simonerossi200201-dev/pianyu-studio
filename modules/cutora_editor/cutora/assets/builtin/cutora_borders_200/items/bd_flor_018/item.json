@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_018",
+  "type": "frame",
+  "name": "紫藤花瀑垂落顶部花框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "lavender_vine",
+    "one_side_top",
+    "紫藤花瀑垂落顶部花框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_018",
+    "style": "floral_vine",
+    "recipe": "lavender_vine",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "one_side_top",
+    "thickness": 16,
+    "length_ratio": 1.0,
+    "corner_radius": 18,
+    "color_mode": "dual_gradient",
+    "primary_color": "#BA68C8",
+    "secondary_color": "#E1BEE7",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

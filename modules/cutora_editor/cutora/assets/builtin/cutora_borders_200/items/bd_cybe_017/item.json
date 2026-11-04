@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_017",
+  "type": "frame",
+  "name": "合成波 Synthwave 落日霓虹框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "neon_tube_dual",
+    "two_sides_h",
+    "合成波 Synthwave 落日霓虹框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_017",
+    "style": "cyber_neon",
+    "recipe": "neon_tube_dual",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "two_sides_h",
+    "thickness": 10,
+    "length_ratio": 1.0,
+    "corner_radius": 12,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FF4081",
+    "secondary_color": "#FFAB00",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

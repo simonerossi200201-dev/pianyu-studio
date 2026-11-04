@@ -1,0 +1,38 @@
+{
+  "id": "bd_luxu_007",
+  "type": "frame",
+  "name": "Apple 磨砂毛玻璃高光框",
+  "license": "CUTORA-original",
+  "subcat": "材质质感",
+  "tags": [
+    "材质质感",
+    "luxury_texture",
+    "glow_frame",
+    "frosted_glass",
+    "four_sides",
+    "Apple 磨砂毛玻璃高光框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_luxu_007",
+    "style": "glow_frame",
+    "recipe": "frosted_glass",
+    "family": "luxury_texture",
+    "category": "材质质感",
+    "edge_mode": "four_sides",
+    "thickness": 10,
+    "length_ratio": 1.0,
+    "corner_radius": 24,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FFFFFF",
+    "secondary_color": "#90CAF9",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

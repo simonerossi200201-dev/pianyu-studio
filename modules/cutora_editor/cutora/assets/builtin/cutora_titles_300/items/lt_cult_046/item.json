@@ -1,0 +1,47 @@
+{
+  "id": "lt_cult_046",
+  "type": "lower_third",
+  "name": "宋式极简汝窑天青雅集条 · Ⅳ",
+  "license": "CUTORA-original",
+  "subcat": "东方/西方/多语种",
+  "tags": [
+    "东方",
+    "西方",
+    "多语种",
+    "国风",
+    "古典",
+    "cultural",
+    "东方国风",
+    "guofeng_scroll",
+    "宋式极简汝窑天青雅集条 · Ⅳ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_cult_046",
+    "family": "cultural_global",
+    "category": "东方/西方/多语种",
+    "layout_type": "guofeng_scroll",
+    "badge_shape": "seal",
+    "icon_glyph": "seal",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": true,
+    "primary_color": "#263836",
+    "secondary_color": "#A8C6C0",
+    "text_color": "#F4F9F8",
+    "bg_opacity": 234,
+    "anim_in": "ink_unroll_fade",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.48,
+    "default_text": "宋式极简汝窑天青雅集条\n支持中文 · English · العربية 多语种自适应排版",
+    "lines": [
+      "宋式极简汝窑天青雅集条",
+      "支持中文 · English · العربية 多语种自适应排版"
+    ]
+  }
+}

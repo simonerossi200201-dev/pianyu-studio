@@ -1,0 +1,38 @@
+{
+  "id": "bd_luxu_009",
+  "type": "frame",
+  "name": "大马士革折叠钢纹硬核框",
+  "license": "CUTORA-original",
+  "subcat": "材质质感",
+  "tags": [
+    "材质质感",
+    "luxury_texture",
+    "glow_frame",
+    "brushed_metal",
+    "four_sides",
+    "大马士革折叠钢纹硬核框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_luxu_009",
+    "style": "glow_frame",
+    "recipe": "brushed_metal",
+    "family": "luxury_texture",
+    "category": "材质质感",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 4,
+    "color_mode": "dual_gradient",
+    "primary_color": "#B0BEC5",
+    "secondary_color": "#37474F",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_014",
+  "type": "frame",
+  "name": "莫奈花园睡莲水彩框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "iris_nouveau",
+    "four_sides",
+    "莫奈花园睡莲水彩框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_014",
+    "style": "floral_vine",
+    "recipe": "iris_nouveau",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 20,
+    "color_mode": "dual_gradient",
+    "primary_color": "#81D4FA",
+    "secondary_color": "#CE93D8",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

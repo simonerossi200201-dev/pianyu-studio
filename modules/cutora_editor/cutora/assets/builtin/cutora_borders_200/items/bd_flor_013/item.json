@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_013",
+  "type": "frame",
+  "name": "金秋枫叶流丹折角框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "ginkgo_leaf",
+    "corners",
+    "金秋枫叶流丹折角框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_013",
+    "style": "floral_vine",
+    "recipe": "ginkgo_leaf",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "corners",
+    "thickness": 13,
+    "length_ratio": 0.38,
+    "corner_radius": 12,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FF5722",
+    "secondary_color": "#FFC107",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

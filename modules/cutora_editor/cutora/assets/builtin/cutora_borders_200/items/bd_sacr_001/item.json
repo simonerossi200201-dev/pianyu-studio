@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_001",
+  "type": "frame",
+  "name": "圣光十字流金荣耀圣框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "sacred_cross_rays",
+    "four_sides",
+    "圣光十字流金荣耀圣框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_001",
+    "style": "sacred_halo",
+    "recipe": "sacred_cross_rays",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 14,
+    "color_mode": "gold_gradient",
+    "primary_color": "#FFD700",
+    "secondary_color": "#FFF8E1",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

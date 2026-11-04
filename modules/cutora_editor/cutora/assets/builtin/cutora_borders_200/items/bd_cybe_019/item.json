@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_019",
+  "type": "frame",
+  "name": "高能粒子对撞流光双侧框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "rgb_esports",
+    "two_sides_v",
+    "高能粒子对撞流光双侧框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_019",
+    "style": "cyber_neon",
+    "recipe": "rgb_esports",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "two_sides_v",
+    "thickness": 9,
+    "length_ratio": 1.0,
+    "corner_radius": 8,
+    "color_mode": "gold_gradient",
+    "primary_color": "#FFD600",
+    "secondary_color": "#FF3D00",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

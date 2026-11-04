@@ -46,8 +46,10 @@ def test_user_asset_import_gif_and_alpha_mov(tmp_path, monkeypatch):
     )
 
     # Panel tabs list the imported items (offscreen; no Qt in parent).
-    import subprocess
+    import subprocess, sys
     py = os.path.join(REPO, "runtime", "venv", "Scripts", "python.exe")
+    if not os.path.isfile(py):
+        py = sys.executable
     env = dict(os.environ)
     env["PYTHONPATH"] = REPO + os.pathsep + env.get("PYTHONPATH", "")
     env["QT_QPA_PLATFORM"] = "offscreen"

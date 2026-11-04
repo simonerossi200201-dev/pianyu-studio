@@ -1,0 +1,38 @@
+{
+  "id": "bd_luxu_005",
+  "type": "frame",
+  "name": "手作毛边棉浆艺术纸框",
+  "license": "CUTORA-original",
+  "subcat": "材质质感",
+  "tags": [
+    "材质质感",
+    "luxury_texture",
+    "glow_frame",
+    "deckle_paper",
+    "four_sides",
+    "手作毛边棉浆艺术纸框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_luxu_005",
+    "style": "glow_frame",
+    "recipe": "deckle_paper",
+    "family": "luxury_texture",
+    "category": "材质质感",
+    "edge_mode": "four_sides",
+    "thickness": 16,
+    "length_ratio": 1.0,
+    "corner_radius": 6,
+    "color_mode": "dual_gradient",
+    "primary_color": "#FAF0E6",
+    "secondary_color": "#D7CCC8",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

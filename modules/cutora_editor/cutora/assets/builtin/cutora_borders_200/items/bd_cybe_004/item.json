@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_004",
+  "type": "frame",
+  "name": "量子脉冲高能电弧边框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "quantum_pulse",
+    "four_sides",
+    "量子脉冲高能电弧边框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_004",
+    "style": "cyber_neon",
+    "recipe": "quantum_pulse",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "four_sides",
+    "thickness": 9,
+    "length_ratio": 1.0,
+    "corner_radius": 8,
+    "color_mode": "dual_gradient",
+    "primary_color": "#76FF03",
+    "secondary_color": "#00E5FF",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_flor_022",
+  "type": "frame",
+  "name": "红丝绒暗夜玫瑰哥特框",
+  "license": "CUTORA-original",
+  "subcat": "花卉藤蔓",
+  "tags": [
+    "花卉藤蔓",
+    "floral_botanical",
+    "floral_vine",
+    "rose_garland",
+    "four_sides",
+    "红丝绒暗夜玫瑰哥特框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_flor_022",
+    "style": "floral_vine",
+    "recipe": "rose_garland",
+    "family": "floral_botanical",
+    "category": "花卉藤蔓",
+    "edge_mode": "four_sides",
+    "thickness": 13,
+    "length_ratio": 1.0,
+    "corner_radius": 14,
+    "color_mode": "dual_gradient",
+    "primary_color": "#B71C1C",
+    "secondary_color": "#212121",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

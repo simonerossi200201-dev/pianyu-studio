@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_003",
+  "type": "frame",
+  "name": "全息投影激光扫描线框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "holo_scan",
+    "four_sides",
+    "全息投影激光扫描线框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_003",
+    "style": "cyber_neon",
+    "recipe": "holo_scan",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "four_sides",
+    "thickness": 7,
+    "length_ratio": 1.0,
+    "corner_radius": 10,
+    "color_mode": "rainbow_neon",
+    "primary_color": "#18FFFF",
+    "secondary_color": "#7C4DFF",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

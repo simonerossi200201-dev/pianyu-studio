@@ -1,0 +1,47 @@
+{
+  "id": "lt_cult_041",
+  "type": "lower_third",
+  "name": "卢浮宫古典画廊典藏说明牌 · Ⅲ",
+  "license": "CUTORA-original",
+  "subcat": "东方/西方/多语种",
+  "tags": [
+    "东方",
+    "西方",
+    "多语种",
+    "国风",
+    "古典",
+    "cultural",
+    "西方古典",
+    "western_opera",
+    "卢浮宫古典画廊典藏说明牌 · Ⅲ"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "lower_third_spec": {
+    "style_id": "lt_cult_041",
+    "family": "cultural_global",
+    "category": "东方/西方/多语种",
+    "layout_type": "western_opera",
+    "badge_shape": "none",
+    "icon_glyph": "none",
+    "icon_path": "",
+    "plate_name": "",
+    "show_icon": false,
+    "primary_color": "#1A1817",
+    "secondary_color": "#E5C158",
+    "text_color": "#F5F5F5",
+    "bg_opacity": 234,
+    "anim_in": "gold_shimmer_sweep",
+    "anim_out": "fade_slide_out",
+    "anim_dur": 0.48,
+    "default_text": "卢浮宫古典画廊典藏说明牌\n支持中文 · English · العربية 多语种自适应排版",
+    "lines": [
+      "卢浮宫古典画廊典藏说明牌",
+      "支持中文 · English · العربية 多语种自适应排版"
+    ]
+  }
+}

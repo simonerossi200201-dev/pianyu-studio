@@ -322,6 +322,233 @@ def _resolve_blend_mode(task_data, layer_type):
 # --- Cached image loader for dynamic box image attachment ---
 # Per-thread: QImage is not safe to paint from two compose workers at once.
 _IMAGE_CACHE = ThreadLocalMapping("image_cache", dict)
+_GIF_FRAMES_CACHE = ThreadLocalMapping("gif_frames_cache", dict)
+
+
+def _get_cached_gif_frame(path: str, elapsed_sec: float = 0.0):
+    """Decode and cache multi-frame GIF animations per thread, returning the frame at elapsed_sec."""
+    if not path or not os.path.isfile(path):
+        return None
+    entry = _GIF_FRAMES_CACHE.get(path)
+    if entry is None:
+        frames: list[QImage] = []
+        cum_durs: list[float] = []
+        total_dur = 0.0
+        try:
+            from PIL import Image, ImageSequence
+            with Image.open(path) as im:
+                for frame in ImageSequence.Iterator(im):
+                    rgba = frame.convert("RGBA")
+                    w, h = rgba.size
+                    raw = rgba.tobytes("raw", "RGBA")
+                    qimg = QImage(raw, w, h, w * 4, QImage.Format.Format_RGBA8888). convertToFormat(
+                        QImage.Format.Format_ARGB32_Premultiplied
+                    ).copy()
+                    dur_ms = float(frame.info.get("duration") or 80.0)
+                    dur_s = max(0.02, dur_ms / 1000.0)
+                    total_dur += dur_s
+                    frames.append(qimg)
+                    cum_durs.append(total_dur)
+        except Exception:
+            frames = []
+        if not frames:
+            single = get_cached_image(path)
+            if single is not None:
+                frames = [single]
+                cum_durs = [1.0]
+                total_dur = 1.0
+        entry = (frames, cum_durs, max(0.02, total_dur))
+        if len(_GIF_FRAMES_CACHE) > 96:
+            _GIF_FRAMES_CACHE.clear()
+        _GIF_FRAMES_CACHE[path] = entry
+
+    frames, cum_durs, total_dur = entry
+    if not frames:
+        return None
+    if len(frames) == 1:
+        return frames[0]
+    t_mod = max(0.0, float(elapsed_sec or 0.0)) % total_dur
+    for idx, cd in enumerate(cum_durs):
+        if t_mod <= cd:
+            return frames[idx]
+    return frames[-1]
+
+
+def _sync_border_target_link(ov: dict, task_data) -> None:
+    if ov.get("_no_mask") or not isinstance(task_data, dict):
+        return
+    spec = ov.get("border_spec")
+    if not isinstance(spec, dict):
+        return
+    link = str(spec.get("target_link") or "").strip()
+    if not link or link in ("none", "canvas", "selected_layer"):
+        return
+    for bag_name in ("image_overlays", "text_overlays"):
+        for cand in task_data.get(bag_name) or []:
+            if not isinstance(cand, dict) or cand is ov:
+                continue
+            if str(cand.get("id") or "") == link:
+                if cand.get("type") == "image" and cand.get("elements") and not cand.get("border_spec"):
+                    el0 = cand["elements"][0]
+                    ov["x"] = int(float(cand.get("x", 0)) + float(el0.get("x", 0)))
+                    ov["y"] = int(float(cand.get("y", 0)) + float(el0.get("y", 0)))
+                    ov["w"] = int(float(el0.get("w", cand.get("w", 200))))
+                    ov["h"] = int(float(el0.get("h", cand.get("h", 200))))
+                else:
+                    ov["x"] = int(float(cand.get("x", 0)))
+                    ov["y"] = int(float(cand.get("y", 0)))
+                    ov["w"] = int(float(cand.get("w", 200)))
+                    ov["h"] = int(float(cand.get("h", 200)))
+                return
+
+
+def _render_border_overlay(painter: QPainter, ov: dict, current_time, video_w: int, video_h: int, task_data=None) -> QRectF:
+    _sync_border_target_link(ov, task_data)
+    x = float(ov.get("x", 0))
+    y = float(ov.get("y", 0))
+    w = max(4.0, float(ov.get("w", video_w)))
+    h = max(4.0, float(ov.get("h", video_h)))
+    rect = QRectF(x, y, w, h)
+    try:
+        from cutora.render.border_engine import render_border
+        try:
+            res = render_border(painter, ov, current_time or 0.0, int(video_w), int(video_h), task_data=task_data)
+        except TypeError:
+            res = render_border(painter, ov, current_time or 0.0, int(video_w), int(video_h))
+        if isinstance(res, QRectF):
+            return res
+        return rect
+    except Exception:
+        pass
+
+    # Builtin procedural fallback for border_spec
+    spec = ov.get("border_spec") or {}
+    thickness = max(1.0, float(spec.get("thickness", 8.0) or 8.0))
+    length_ratio = max(0.05, min(1.0, float(spec.get("length_ratio", 1.0) or 1.0)))
+    c1 = QColor(str(spec.get("primary_color") or "#FFD700"))
+    c2 = QColor(str(spec.get("secondary_color") or "#B8860B"))
+    color_mode = str(spec.get("color_mode") or "gold_gradient")
+    style = str(spec.get("style") or "solid")
+
+    painter.save()
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        op = float(ov.get("opacity", 255) or 255) / 255.0
+        painter.setOpacity(op)
+        inset = thickness * 0.5 + 2.0
+        bx, by, bw, bh = x + inset, y + inset, max(2.0, w - inset * 2), max(2.0, h - inset * 2)
+
+        if color_mode == "solid":
+            brush = QBrush(c1)
+        else:
+            grad = QLinearGradient(bx, by, bx + bw, by + bh)
+            grad.setColorAt(0.0, c1)
+            grad.setColorAt(0.5, c2)
+            grad.setColorAt(1.0, c1)
+            brush = QBrush(grad)
+
+        pen = QPen(brush, thickness, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        if "dashed" in style:
+            pen.setStyle(Qt.PenStyle.DashLine)
+        elif "dotted" in style:
+            pen.setStyle(Qt.PenStyle.DotLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        if length_ratio >= 0.995:
+            rad = float(spec.get("corner_radius", 8.0) or 8.0)
+            painter.drawRoundedRect(QRectF(bx, by, bw, bh), rad, rad)
+            if "double" in style or "vintage" in style or "guofeng" in style:
+                thin_pen = QPen(brush, max(1.0, thickness * 0.35))
+                painter.setPen(thin_pen)
+                gap = thickness * 1.15
+                painter.drawRoundedRect(QRectF(bx + gap, by + gap, max(2.0, bw - gap * 2), max(2.0, bh - gap * 2)), max(0.0, rad - 2), max(0.0, rad - 2))
+        else:
+            # Draw partial-length corner brackets along each edge proportional to length_ratio
+            lx = bw * 0.5 * length_ratio
+            ly = bh * 0.5 * length_ratio
+            path = QPainterPath()
+            for cx_p, cy_p, sx, sy in (
+                (bx, by, 1.0, 1.0),
+                (bx + bw, by, -1.0, 1.0),
+                (bx, by + bh, 1.0, -1.0),
+                (bx + bw, by + bh, -1.0, -1.0),
+            ):
+                path.moveTo(cx_p + sx * lx, cy_p)
+                path.lineTo(cx_p, cy_p)
+                path.lineTo(cx_p, cy_p + sy * ly)
+            painter.drawPath(path)
+    finally:
+        painter.restore()
+    return rect
+
+
+def _render_lower_third_overlay(painter: QPainter, ov: dict, current_time, video_w: int, video_h: int, task_data=None) -> QRectF:
+    x = float(ov.get("x", 0))
+    y = float(ov.get("y", 0))
+    w = max(16.0, float(ov.get("w", 500)))
+    h = max(16.0, float(ov.get("h", 140)))
+    rect = QRectF(x, y, w, h)
+    try:
+        from cutora.render.lower_third_engine import render_lower_third
+        res = render_lower_third(painter, ov, current_time or 0.0, int(video_w), int(video_h))
+        if isinstance(res, QRectF):
+            return res
+        return rect
+    except Exception:
+        pass
+
+    # Builtin procedural fallback for lower_third_spec
+    spec = ov.get("lower_third_spec") or {}
+    c_bg = QColor(str(spec.get("primary_color") or "#141824"))
+    c_bg.setAlpha(int(float(spec.get("bg_opacity", 230) or 230)))
+    c_acc = QColor(str(spec.get("secondary_color") or "#FFD700"))
+    c_txt = QColor(str(spec.get("text_color") or "#FFFFFF"))
+    show_icon = bool(spec.get("show_icon", True))
+    raw_text = str(ov.get("content") or spec.get("default_text") or "主标题内容\n副标题描述文字")
+    lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()] or ["主标题内容"]
+
+    painter.save()
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        op = float(ov.get("opacity", 255) or 255) / 255.0
+        painter.setOpacity(op)
+        painter.setPen(QPen(c_acc, 3.0))
+        painter.setBrush(c_bg)
+        painter.drawRoundedRect(rect, 14.0, 14.0)
+
+        text_left = x + 22.0
+        if show_icon:
+            ic_r = min(h * 0.34, 38.0)
+            ic_cx = x + 20.0 + ic_r
+            ic_cy = y + h * 0.5
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(c_acc)
+            painter.drawEllipse(QPointF(ic_cx, ic_cy), ic_r, ic_r)
+            text_left = ic_cx + ic_r + 16.0
+        else:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(c_acc)
+            painter.drawRoundedRect(QRectF(x + 10.0, y + 14.0, 6.0, max(12.0, h - 28.0)), 3.0, 3.0)
+
+        avail_w = max(40.0, (x + w - 18.0) - text_left)
+        n_lines = len(lines)
+        line_h = (h - 20.0) / max(1, n_lines)
+        from PySide6.QtGui import QFont
+        for idx_l, ln in enumerate(lines):
+            fs = max(11, int(min(line_h * (0.62 if idx_l == 0 else 0.48), 36 if idx_l == 0 else 24)))
+            f = QFont(str(ov.get("font_family") or "Microsoft YaHei"), fs, QFont.Weight.Bold if idx_l == 0 else QFont.Weight.Normal)
+            painter.setFont(f)
+            painter.setPen(c_txt if idx_l == 0 else c_acc)
+            ly = y + 10.0 + idx_l * line_h
+            painter.drawText(
+                QRectF(text_left, ly, avail_w, line_h),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                ln,
+            )
+    finally:
+        painter.restore()
+    return rect
 
 def _raster_svg(path):
     from PySide6.QtSvg import QSvgRenderer
@@ -721,10 +948,22 @@ class FrameRenderer:
         if only_track is not None:
             # 单条轨：只看这一条自己显不显示（同类型别的轨隐藏了不影响它）
             _ot = getattr(only_track, "type", "")
+            _ot_id = getattr(only_track, "id", None)
             _layer_visible = {"text": True, "image": True, "subs": True}
             if not getattr(only_track, "visible", True):
                 return
             render_order = [x for x in render_order if x == _ot]
+            if _ot_id is not None:
+                if "text" not in render_order and any(
+                    isinstance(ov, dict) and ov.get("_track_id") == _ot_id
+                    for ov in (task_data.get("text_overlays") or [])
+                ):
+                    render_order.append("text")
+                if "image" not in render_order and any(
+                    isinstance(ov, dict) and ov.get("type") != "adjust" and ov.get("_track_id") == _ot_id
+                    for ov in (task_data.get("image_overlays") or [])
+                ):
+                    render_order.append("image")
 
         def _only(tracks_of_type):
             if only_track is None:
@@ -738,8 +977,15 @@ class FrameRenderer:
             if layer_type == "text":
                 text_ovs = task_data.get('text_overlays', [])
                 if tl_obj is not None:
-                    text_tracks = [t for t in tl_obj.tracks if getattr(t, "type", "") == "text" and getattr(t, "visible", True)]
-                    first_text_tid = getattr(text_tracks[0], "id", None) if text_tracks else None
+                    all_vis_tracks = [t for t in tl_obj.tracks if getattr(t, "visible", True)]
+                    pure_text_tracks = [t for t in all_vis_tracks if getattr(t, "type", "") == "text"]
+                    first_text_tid = getattr(pure_text_tracks[0], "id", None) if pure_text_tracks else None
+                    vis_video_tids = {getattr(t, "id", None) for t in all_vis_tracks if getattr(t, "type", "") == "video"}
+                    text_ov_tids = {ov.get("_track_id") for ov in text_ovs if isinstance(ov, dict) and ov.get("_track_id")}
+                    text_tracks = [
+                        t for t in all_vis_tracks
+                        if getattr(t, "type", "") == "text" or getattr(t, "id", None) in text_ov_tids
+                    ]
                     text_tracks = _only(text_tracks)
                     from cutora.render.track_transform import (
                         compose_track_transform, paint_track_layer, track_needs_layer,
@@ -755,10 +1001,16 @@ class FrameRenderer:
                                 if ov.get("hidden") or _folder_hides(task_data, ov):      # Q152-G 图层面板关掉的
                                     continue
                                 ov_tid = ov.get('_track_id')
-                                if ov_tid != _tid and not (ov_tid is None and _tid == first_text_tid):
+                                match_tid = (
+                                    ov_tid == _tid
+                                    or (ov_tid is None and _tid == first_text_tid)
+                                    or (only_track is not None and getattr(only_track, "type", "") != "video" and _tid == first_text_tid and ov_tid in vis_video_tids)
+                                )
+                                if not match_tid:
                                     continue
                                 if ov['start'] <= current_time <= ov['end']:
                                     ov['_canvas_w'] = video_w; ov['_canvas_h'] = video_h
+                                    ov['_task_data'] = task_data
                                     ov_blend_name = ov.get("blend_mode")
                                     if not _layering:
                                         ov_blend_name = ov_blend_name or _tbn
@@ -785,6 +1037,7 @@ class FrameRenderer:
                             continue
                         if ov['start'] <= current_time <= ov['end']:
                             ov['_canvas_w'] = video_w; ov['_canvas_h'] = video_h
+                            ov['_task_data'] = task_data
                             ov_blend_name = ov.get("blend_mode") or "normal"
                             painter.save()
                             try:
@@ -800,8 +1053,18 @@ class FrameRenderer:
             elif layer_type == "image":
                 image_ovs = task_data.get('image_overlays', [])
                 if tl_obj is not None:
-                    img_tracks = [t for t in tl_obj.tracks if getattr(t, "type", "") == "image" and getattr(t, "visible", True)]
-                    first_img_tid = getattr(img_tracks[0], "id", None) if img_tracks else None
+                    all_vis_tracks = [t for t in tl_obj.tracks if getattr(t, "visible", True)]
+                    pure_img_tracks = [t for t in all_vis_tracks if getattr(t, "type", "") == "image"]
+                    first_img_tid = getattr(pure_img_tracks[0], "id", None) if pure_img_tracks else None
+                    vis_video_tids = {getattr(t, "id", None) for t in all_vis_tracks if getattr(t, "type", "") == "video"}
+                    img_ov_tids = {
+                        ov.get("_track_id") for ov in image_ovs
+                        if isinstance(ov, dict) and ov.get("type") != "adjust" and ov.get("_track_id")
+                    }
+                    img_tracks = [
+                        t for t in all_vis_tracks
+                        if getattr(t, "type", "") == "image" or getattr(t, "id", None) in img_ov_tids
+                    ]
                     img_tracks = _only(img_tracks)
                     from cutora.render.track_transform import (
                         compose_track_transform, paint_track_layer, track_needs_layer,
@@ -814,12 +1077,21 @@ class FrameRenderer:
 
                         def _paint_img(dest, _t=t, _tid=t_id, _tbn=track_blend_name, _layering=layering):
                             for i, ov in enumerate(image_ovs):
+                                if ov.get("type") == "adjust":
+                                    continue
                                 if ov.get("hidden") or _folder_hides(task_data, ov):
                                     continue
                                 ov_tid = ov.get('_track_id')
-                                if ov_tid != _tid and not (ov_tid is None and _tid == first_img_tid):
+                                match_tid = (
+                                    ov_tid == _tid
+                                    or (ov_tid is None and _tid == first_img_tid)
+                                    or (only_track is not None and getattr(only_track, "type", "") != "video" and _tid == first_img_tid and ov_tid in vis_video_tids)
+                                )
+                                if not match_tid:
                                     continue
                                 if ov['start'] <= current_time <= ov['end']:
+                                    ov['_canvas_w'] = video_w; ov['_canvas_h'] = video_h
+                                    ov['_task_data'] = task_data
                                     ov_blend_name = ov.get("blend_mode")
                                     if not _layering:
                                         ov_blend_name = ov_blend_name or _tbn
@@ -851,9 +1123,13 @@ class FrameRenderer:
                         paint_track_layer(painter, t, video_w, video_h, _paint_img)
                 else:
                     for i, ov in enumerate(image_ovs):
+                        if ov.get("type") == "adjust":
+                            continue
                         if ov.get("hidden") or _folder_hides(task_data, ov):
                             continue
                         if ov['start'] <= current_time <= ov['end']:
+                            ov['_canvas_w'] = video_w; ov['_canvas_h'] = video_h
+                            ov['_task_data'] = task_data
                             ov_blend_name = ov.get("blend_mode") or "normal"
                             if isinstance(task_data, dict) and task_data.get("layer_folders"):
                                 from cutora.batch.layer_folders import blend_of_folder
@@ -1383,6 +1659,16 @@ class FrameRenderer:
         w = float(ov.get("w", 100))
         h = float(ov.get("h", 100))
         logical_rect = QRectF(x, y, w, h)
+        if isinstance(ov.get("border_spec"), dict):
+            dev = painter.device()
+            vw = int(ov.get("_canvas_w") or (dev.width() if dev is not None else 1080) or 1080)
+            vh = int(ov.get("_canvas_h") or (dev.height() if dev is not None else 1920) or 1920)
+            return _render_border_overlay(painter, ov, current_time, vw, vh, task_data=ov.get("_task_data"))
+        if isinstance(ov.get("lower_third_spec"), dict):
+            dev = painter.device()
+            vw = int(ov.get("_canvas_w") or (dev.width() if dev is not None else 1080) or 1080)
+            vh = int(ov.get("_canvas_h") or (dev.height() if dev is not None else 1920) or 1920)
+            return _render_lower_third_overlay(painter, ov, current_time, vw, vh, task_data=ov.get("_task_data"))
         # 新式 image overlay 使用 elements 结构，没有 content/x/y/w/h 顶层字段
         # 这类 overlay 由 draw_stickers 处理，此处跳过
         if ov.get('type') == 'image' and 'content' not in ov and ov.get('elements'):
@@ -1423,7 +1709,11 @@ class FrameRenderer:
             if ov['type'] == 'image':
                 from cutora.batch.layer_folders import opacity_mul_current
                 painter.setOpacity(base_opacity * t_op * opacity_mul_current(ov))
-                img = get_cached_image(content)
+                img = None
+                if (ov.get("animated_gif") or str(content).lower().endswith(".gif")) and current_time is not None:
+                    img = _get_cached_gif_frame(content, max(0.0, float(current_time) - ov_start))
+                if img is None:
+                    img = get_cached_image(content)
                 if img and ov.get("fx_graph"):
                     # Q152-F：图片层有节点图 → 整张图按图求值（遮罩坐标就是图片自己的框，和整幅层路径一致）
                     from cutora.fx.layer_fx import apply_layer_fx
@@ -1838,6 +2128,7 @@ class FrameRenderer:
                     default_blend_name=default_blend_name,
                     transition_opacity=el_op,
                     extra_scale=el_scale,
+                    current_time=current_time,
                 )
                 if hit_recorder is not None and rect is not None:
                     # [FIX-IMG] 命中框直接使用元素自身矩形，不再被容器矩形裁剪，
@@ -1858,7 +2149,11 @@ class FrameRenderer:
                                 float(el.get("w") or 1), float(el.get("h") or 1)))))
                             img = raster_sticker(sid, px)
                         elif el.get("path"):
-                            img = get_cached_image(el.get("path"))
+                            img_p = el.get("path")
+                            if (el.get("animated_gif") or ov.get("animated_gif") or str(img_p).lower().endswith(".gif")) and current_time is not None:
+                                img = _get_cached_gif_frame(img_p, max(0.0, float(current_time) - ov_start))
+                            if img is None:
+                                img = get_cached_image(img_p)
                         if img is not None and not img.isNull():
                             from cutora.render.hitmask import attach_mask
                             op = (float(el.get("opacity", 255) or 255) / 255.0) * (
@@ -1878,7 +2173,7 @@ class FrameRenderer:
             painter.restore()
 
     @staticmethod
-    def draw_sticker(painter, ov, el, default_blend_name=None, transition_opacity=1.0, extra_scale=1.0):
+    def draw_sticker(painter, ov, el, default_blend_name=None, transition_opacity=1.0, extra_scale=1.0, current_time=None):
         result = QRectF()
         ov_x = float(ov.get("x", 0))
         ov_y = float(ov.get("y", 0))
@@ -1937,7 +2232,11 @@ class FrameRenderer:
                     px = max(1, int(round(max(float(el_w), float(el_h)))))
                     cached = raster_sticker(sticker_id, px)
                 elif img_path:
-                    cached = get_cached_image(img_path)
+                    if (el.get("animated_gif") or ov.get("animated_gif") or str(img_path).lower().endswith(".gif")) and current_time is not None:
+                        ov_s = float(ov.get("start", 0.0) or 0.0)
+                        cached = _get_cached_gif_frame(img_path, max(0.0, float(current_time) - ov_s))
+                    if cached is None:
+                        cached = get_cached_image(img_path)
                 if abs(float(extra_scale) - 1.0) > 0.0001:
                     painter.translate(cx, cy)
                     painter.scale(float(extra_scale), float(extra_scale))

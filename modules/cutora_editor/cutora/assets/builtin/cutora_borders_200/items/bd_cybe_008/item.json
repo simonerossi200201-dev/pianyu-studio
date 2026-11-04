@@ -1,0 +1,38 @@
+{
+  "id": "bd_cybe_008",
+  "type": "frame",
+  "name": "星际飞船舰桥全息控制台框",
+  "license": "CUTORA-original",
+  "subcat": "赛博霓虹",
+  "tags": [
+    "赛博霓虹",
+    "cyber_neon",
+    "cyber_neon",
+    "mecha_chamfer",
+    "four_sides",
+    "星际飞船舰桥全息控制台框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_cybe_008",
+    "style": "cyber_neon",
+    "recipe": "mecha_chamfer",
+    "family": "cyber_neon",
+    "category": "赛博霓虹",
+    "edge_mode": "four_sides",
+    "thickness": 8,
+    "length_ratio": 1.0,
+    "corner_radius": 6,
+    "color_mode": "dual_gradient",
+    "primary_color": "#40C4FF",
+    "secondary_color": "#FFAB00",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

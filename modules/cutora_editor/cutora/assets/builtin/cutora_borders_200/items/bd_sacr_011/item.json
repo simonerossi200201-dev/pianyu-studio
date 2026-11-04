@@ -1,0 +1,38 @@
+{
+  "id": "bd_sacr_011",
+  "type": "frame",
+  "name": "圣殿拱顶哥特金辉顶部框",
+  "license": "CUTORA-original",
+  "subcat": "宗教庆典",
+  "tags": [
+    "宗教庆典",
+    "sacred_ceremonial",
+    "sacred_halo",
+    "crescent_arch",
+    "one_side_top",
+    "圣殿拱顶哥特金辉顶部框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_sacr_011",
+    "style": "sacred_halo",
+    "recipe": "crescent_arch",
+    "family": "sacred_ceremonial",
+    "category": "宗教庆典",
+    "edge_mode": "one_side_top",
+    "thickness": 16,
+    "length_ratio": 1.0,
+    "corner_radius": 18,
+    "color_mode": "gold_gradient",
+    "primary_color": "#FFD700",
+    "secondary_color": "#8D6E63",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

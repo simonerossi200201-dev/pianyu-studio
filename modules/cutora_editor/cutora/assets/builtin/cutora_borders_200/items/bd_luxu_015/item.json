@@ -1,0 +1,38 @@
+{
+  "id": "bd_luxu_015",
+  "type": "frame",
+  "name": "铂金拉丝腕表刻度框",
+  "license": "CUTORA-original",
+  "subcat": "材质质感",
+  "tags": [
+    "材质质感",
+    "luxury_texture",
+    "glow_frame",
+    "brushed_metal",
+    "four_sides",
+    "铂金拉丝腕表刻度框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_luxu_015",
+    "style": "glow_frame",
+    "recipe": "brushed_metal",
+    "family": "luxury_texture",
+    "category": "材质质感",
+    "edge_mode": "four_sides",
+    "thickness": 9,
+    "length_ratio": 1.0,
+    "corner_radius": 12,
+    "color_mode": "dual_gradient",
+    "primary_color": "#E0E0E0",
+    "secondary_color": "#757575",
+    "corner_ornament": true,
+    "glow": true,
+    "target_link": "none"
+  }
+}

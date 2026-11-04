@@ -1,0 +1,38 @@
+{
+  "id": "bd_west_006",
+  "type": "frame",
+  "name": "古希腊回纹神殿框",
+  "license": "CUTORA-original",
+  "subcat": "西方古典",
+  "tags": [
+    "西方古典",
+    "western_classic",
+    "vintage_filigree",
+    "greek_meander",
+    "four_sides",
+    "古希腊回纹神殿框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_west_006",
+    "style": "vintage_filigree",
+    "recipe": "greek_meander",
+    "family": "western_classic",
+    "category": "西方古典",
+    "edge_mode": "four_sides",
+    "thickness": 12,
+    "length_ratio": 1.0,
+    "corner_radius": 2,
+    "color_mode": "dual_gradient",
+    "primary_color": "#E5C158",
+    "secondary_color": "#8B6914",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

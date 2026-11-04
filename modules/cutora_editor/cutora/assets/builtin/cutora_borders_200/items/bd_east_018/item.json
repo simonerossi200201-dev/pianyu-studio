@@ -1,0 +1,38 @@
+{
+  "id": "bd_east_018",
+  "type": "frame",
+  "name": "汉代未央宫瓦当朱砂框",
+  "license": "CUTORA-original",
+  "subcat": "东方国风",
+  "tags": [
+    "东方国风",
+    "eastern_guofeng",
+    "guofeng_pattern",
+    "auspicious_cloud",
+    "corners",
+    "汉代未央宫瓦当朱砂框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_east_018",
+    "style": "guofeng_pattern",
+    "recipe": "auspicious_cloud",
+    "family": "eastern_guofeng",
+    "category": "东方国风",
+    "edge_mode": "corners",
+    "thickness": 13,
+    "length_ratio": 0.38,
+    "corner_radius": 12,
+    "color_mode": "dual_gradient",
+    "primary_color": "#C0392B",
+    "secondary_color": "#F5CBA7",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "bd_east_009",
+  "type": "frame",
+  "name": "景泰蓝掐丝珐琅宝相框",
+  "license": "CUTORA-original",
+  "subcat": "东方国风",
+  "tags": [
+    "东方国风",
+    "eastern_guofeng",
+    "guofeng_pattern",
+    "cloisonne",
+    "four_sides",
+    "景泰蓝掐丝珐琅宝相框"
+  ],
+  "aspect": [
+    "9:16",
+    "16:9",
+    "1:1"
+  ],
+  "file": "preview.png",
+  "border_spec": {
+    "style_id": "bd_east_009",
+    "style": "guofeng_pattern",
+    "recipe": "cloisonne",
+    "family": "eastern_guofeng",
+    "category": "东方国风",
+    "edge_mode": "four_sides",
+    "thickness": 13,
+    "length_ratio": 1.0,
+    "corner_radius": 10,
+    "color_mode": "dual_gradient",
+    "primary_color": "#1A5276",
+    "secondary_color": "#FFD700",
+    "corner_ornament": true,
+    "glow": false,
+    "target_link": "none"
+  }
+}

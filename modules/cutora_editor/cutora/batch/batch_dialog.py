@@ -262,10 +262,11 @@ def build_batch_dialog(parent):
     media_lay.addWidget(tabs, 1)
 
     thumb_grid = ImageThumbGrid()
+    thumb_grid.setFixedHeight(SPACE_6 * 4 + SPACE_2)  # 136px 紧凑单行高度，避免把底部参数挤出视野
     img_lay = QVBoxLayout(tab_img)
     img_lay.setContentsMargins(0, SPACE_2, 0, 0)
     img_lay.setSpacing(INSPECTOR_ROW_GAP)
-    img_lay.addWidget(thumb_grid, 1)
+    img_lay.addWidget(thumb_grid, 0)
     ed_img = QLineEdit()
     ed_img.setPlaceholderText("单击缩略图，或查找其他位置")
     if os.path.isfile(DEFAULT_IMAGE):
@@ -287,10 +288,11 @@ def build_batch_dialog(parent):
 
     vid_grid = ImageThumbGrid(exts=VIDEO_EXTS)
     vid_grid.setObjectName("batchVideoGrid")
+    vid_grid.setFixedHeight(SPACE_6 * 4 + SPACE_2)  # 136px 紧凑单行高度，避免把底部参数挤出视野
     vid_lay = QVBoxLayout(tab_vid)
     vid_lay.setContentsMargins(0, SPACE_2, 0, 0)
     vid_lay.setSpacing(INSPECTOR_ROW_GAP)
-    vid_lay.addWidget(vid_grid, 1)
+    vid_lay.addWidget(vid_grid, 0)
     ed_vid = QLineEdit()
     ed_vid.setPlaceholderText("选择要叠上的视频")
     btn_vid = QPushButton("浏览…")
@@ -888,6 +890,9 @@ def build_batch_dialog(parent):
     export_form.addRow("导出渲染", _fixed(cb_render, COMBO_W))
     export_lay.addLayout(export_form)
     param_lay.addWidget(export_host)
+    param_tail_stretch = QWidget()
+    param_tail_stretch.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+    param_lay.addWidget(param_tail_stretch, 1)
 
     forms = (media_form, time_form, look_form, export_form)
 
@@ -2026,6 +2031,32 @@ def build_batch_dialog(parent):
         dir_row.setVisible(not recipe)
         if media_title is not None:
             media_title.setVisible(not recipe)
+        # 避免非当前页（如片段散落 / 语音转文本）的高 sizeHint 撑大图片 / 视频页的 QTabWidget
+        for ti in range(tabs.count()):
+            w_page = tabs.widget(ti)
+            if w_page is None:
+                continue
+            if ti == tabs.currentIndex():
+                w_page.setSizePolicy(
+                    QSizePolicy.Policy.Preferred,
+                    QSizePolicy.Policy.Expanding if recipe else QSizePolicy.Policy.Maximum,
+                )
+            else:
+                w_page.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        if recipe:
+            tabs.setMaximumHeight(16777215)
+            media_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+            param_lay.setStretchFactor(media_host, 1)
+            param_lay.setStretchFactor(param_tail_stretch, 0)
+            param_tail_stretch.setVisible(False)
+        else:
+            tabs.setMaximumHeight(248)
+            media_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+            param_lay.setStretchFactor(media_host, 0)
+            param_lay.setStretchFactor(param_tail_stretch, 1)
+            param_tail_stretch.setVisible(True)
+        tabs.updateGeometry()
+        media_host.updateGeometry()
         if on_text or on_asr or on_scatter:
             # 文本分页是张表，比图片那几个控件宽得多：中间这栏拿到窗口的六成左右（预览留够看清的宽度）。
             # 只在切过来时调一次，之后用户拖成什么样算什么样
@@ -2060,6 +2091,7 @@ def build_batch_dialog(parent):
             _paint_background()
 
     tabs.currentChanged.connect(_on_tab_changed)
+    _on_tab_changed(tabs.currentIndex())
     dlg.text_tab.refresh()
     btn_vid.clicked.connect(_browse_vid)
     btn_dir.clicked.connect(_browse_dir)
