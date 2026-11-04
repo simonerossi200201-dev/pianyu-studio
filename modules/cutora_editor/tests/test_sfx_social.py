@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Unit tests for Stable Audio Open 1.0 generated short-video SFX (30) and BGM beds (6)."""
+"""Unit tests for Stable Audio Open 1.0 generated short-video SFX (100) and BGM beds (6)."""
 from __future__ import annotations
 
 import os
@@ -12,7 +12,7 @@ from cutora.model.timeline_model import Track, TransitionItem
 
 
 def test_sfx_social_catalog_and_provenance():
-    assert len(sfx_social.CATALOG) == 30
+    assert len(sfx_social.CATALOG) == 100
     assert sfx_social.missing_files() == []
     ok, errs = sfx_social.verify_provenance()
     assert ok, errs
@@ -65,11 +65,26 @@ def test_attach_and_detach_transition_sfx_idempotent():
     assert clip3 is not None
     assert len(sfx_tracks[0].clips) == 1
     assert clip3.transition_sfx_id == "impact_punch"
+    assert sfx_social.active_transition_sfx_id(tl, vtr, trans) == "impact_punch"
 
-    # Detach removes the clip
+    # Detach removes the clip and clears stale sfx_id unless 'none'
     removed = sfx_social.detach_transition_sfx(tl, vtr, trans)
     assert removed == 1
     assert len(sfx_tracks[0].clips) == 0
+    assert sfx_social.active_transition_sfx_id(tl, vtr, trans) == ""
+
+    # Explicit 'none' is preserved across detach
+    trans.sfx_id = "none"
+    assert sfx_social.active_transition_sfx_id(tl, vtr, trans) == "none"
+    sfx_social.detach_transition_sfx(tl, vtr, trans)
+    assert sfx_social.active_transition_sfx_id(tl, vtr, trans) == "none"
+
+
+def test_preview_and_stop_preview_sfx():
+    assert sfx_social.preview_sfx("nonexistent_sfx_id") is False
+    assert sfx_social.preview_sfx("none") is False
+    assert sfx_social.preview_sfx("whoosh_light") is True
+    sfx_social.stop_preview_sfx()
 
 
 def test_bgm_beds_catalog_and_provenance():

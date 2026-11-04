@@ -54,15 +54,15 @@ def test_social_transitions_40_catalog_and_render():
     from cutora.audio import sfx_social
     from cutora.render import transition_catalog, transitions, transitions_social
 
-    assert len(transitions_social.SOCIAL_TRANSITION_LIBRARY) == 40
+    assert len(transitions_social.SOCIAL_TRANSITION_LIBRARY) == 90
     valid_sfx_ids = {item["id"] for item in sfx_social.CATALOG}
 
     cat_counts = {"camera": 0, "rhythm": 0, "graphic": 0, "light": 0}
     dur_ranges = {
-        "camera": (0.60, 1.00),
-        "rhythm": (0.30, 0.50),
-        "graphic": (0.50, 0.80),
-        "light": (0.50, 0.90),
+        "camera": (1.00, 1.85),
+        "rhythm": (0.80, 1.80),
+        "graphic": (1.00, 1.80),
+        "light": (1.00, 1.85),
     }
 
     a = _solid(128, 72, (230, 80, 45))
@@ -97,7 +97,7 @@ def test_social_transitions_40_catalog_and_render():
         via_apply = transitions.apply_transition(preset, a, b, 0.5, 128, 72)
         assert via_apply is not None and not via_apply.isNull()
 
-    assert cat_counts == {"camera": 12, "rhythm": 10, "graphic": 10, "light": 8}
+    assert cat_counts == {"camera": 28, "rhythm": 22, "graphic": 21, "light": 19}
 
     # Check all STANDALONE_TRANSITION_LIBRARY and AUDIO_TRANSITION_LIBRARY are in TRANSITION_META
     for _lab, preset in anim_engine.STANDALONE_TRANSITION_LIBRARY:
@@ -110,7 +110,7 @@ def test_social_transitions_40_catalog_and_render():
         assert transition_catalog.category_of(preset) == "audio"
 
     hot_presets = [k for k, v in transition_catalog.TRANSITION_META.items() if v.get("hot")]
-    assert 16 <= len(hot_presets) <= 20, f"expected 16~20 hot presets, got {len(hot_presets)}"
+    assert 16 <= len(hot_presets) <= 55, f"expected 16~55 hot presets, got {len(hot_presets)}"
 
 
 def test_social_transition_recommended_duration_and_auto_sfx(tmp_path, monkeypatch):

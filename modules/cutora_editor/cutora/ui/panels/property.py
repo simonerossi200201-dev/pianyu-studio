@@ -1378,6 +1378,25 @@ class PropertyPanel(QWidget):
         self.trans_dur_sp.valueChanged.connect(self.on_change_transition)
         form.addRow("类型", self.trans_preset_cb)
         form.addRow("时长", self.trans_dur_sp, reset_key="trans.dur")
+        # 转场音效选择 + 即时试听
+        self.trans_sfx_cb = QComboBox()
+        self.trans_sfx_cb.setObjectName("transSfxCombo")
+        self.trans_sfx_cb.setToolTip("选择转场音效（内置 100 种净室合成音效、环境音与同期声），支持任意切换与即时试听")
+        self._populate_trans_sfx_combo()
+        self.trans_sfx_cb.currentIndexChanged.connect(self._on_change_transition_sfx)
+        self.trans_sfx_preview_btn = QPushButton("🔊 试听")
+        self.trans_sfx_preview_btn.setObjectName("transSfxPreviewBtn")
+        self.trans_sfx_preview_btn.setToolTip("立即试听当前选中的转场音效")
+        self.trans_sfx_preview_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.trans_sfx_preview_btn.setFixedWidth(68)
+        self.trans_sfx_preview_btn.clicked.connect(self._on_preview_transition_sfx)
+        _sfx_row_w = QWidget()
+        _sfx_row_l = QHBoxLayout(_sfx_row_w)
+        _sfx_row_l.setContentsMargins(0, 0, 0, 0)
+        _sfx_row_l.setSpacing(6)
+        _sfx_row_l.addWidget(self.trans_sfx_cb, 1)
+        _sfx_row_l.addWidget(self.trans_sfx_preview_btn, 0)
+        form.addRow("转场音效", _sfx_row_w)
         # 缩放 + 模糊 同一行
         self.trans_zoom_start_sp = QDoubleSpinBox(); self.trans_zoom_start_sp.setRange(0.3, 1.0); self.trans_zoom_start_sp.setSingleStep(0.05); self.trans_zoom_start_sp.setDecimals(2)
         self.trans_zoom_start_sp.setValue(0.7); self.trans_zoom_start_sp.setToolTip("进场视频的起始缩放比例（默认 0.7）")
@@ -2006,19 +2025,127 @@ class PropertyPanel(QWidget):
             self.trans_dir_cb.setCurrentIndex(first)
             self.trans_dir_cb.blockSignals(False)
 
+    def _populate_trans_sfx_combo(self) -> None:
+        if not hasattr(self, "trans_sfx_cb"):
+            return
+        self.trans_sfx_cb.blockSignals(True)
+        try:
+            self.trans_sfx_cb.clear()
+            self.trans_sfx_cb.addItem("跟随预设推荐", "auto")
+            self.trans_sfx_cb.addItem("无音效 (静音)", "none")
+            try:
+                from cutora.audio import sfx_social
+                cat = list(getattr(sfx_social, "CATALOG", []) or [])
+            except Exception:
+                cat = []
+            for row in cat:
+                if not isinstance(row, dict):
+                    continue
+                sid = str(row.get("id") or "")
+                if not sid:
+                    continue
+                grp = str(row.get("group") or "音效")
+                lbl = str(row.get("label") or sid)
+                self.trans_sfx_cb.addItem(f"[{grp}] {lbl}", sid)
+        finally:
+            self.trans_sfx_cb.blockSignals(False)
+
+    def _current_timeline_for_inspector(self):
+        main_win = self.window()
+        if main_win is not None:
+            tl_w = getattr(main_win, "timeline", None)
+            tl = getattr(tl_w, "timeline", None) if tl_w is not None else None
+            if tl is not None:
+                return tl
+            tasks = getattr(main_win, "tasks", None) or []
+            cidx = int(getattr(main_win, "curr_idx", -1))
+            if 0 <= cidx < len(tasks) and isinstance(tasks[cidx], dict):
+                return tasks[cidx].get("timeline")
+        return None
+
+    def _effective_transition_sfx_id(self, trans_obj=None) -> str:
+        t_obj = trans_obj if trans_obj is not None else self._video_clip
+        sfx_val = str(self.trans_sfx_cb.currentData() or "auto") if hasattr(self, "trans_sfx_cb") else "auto"
+        if sfx_val in ("none", "off"):
+            return ""
+        if sfx_val != "auto":
+            return sfx_val
+        preset = str(getattr(t_obj, "preset", "") or "")
+        try:
+            from cutora.render.transition_catalog import recommended_sfx
+            rec = str(recommended_sfx(preset) or "")
+            if rec:
+                return rec
+        except Exception:
+            pass
+        return "whoosh_fast"
+
+    def _on_change_transition_sfx(self, *_args):
+        if self.block_signals or self._video_clip is None:
+            return
+        trans_obj = self._video_clip
+        sfx_val = str(self.trans_sfx_cb.currentData() or "auto")
+        try:
+            trans_obj.sfx_id = sfx_val
+        except Exception:
+            pass
+        tl = self._current_timeline_for_inspector()
+        try:
+            from cutora.audio import sfx_social
+            if tl is not None and self._video_track is not None:
+                if sfx_val in ("none", "off"):
+                    sfx_social.remove_transition_sfx(tl, getattr(trans_obj, "id", ""))
+                else:
+                    sfx_social.attach_transition_sfx(
+                        tl, self._video_track, trans_obj,
+                        force=True, sfx_id=sfx_val,
+                    )
+            if sfx_val not in ("none", "off"):
+                eff_id = self._effective_transition_sfx_id(trans_obj)
+                if eff_id:
+                    sfx_social.preview_sfx(eff_id)
+        except Exception:
+            pass
+        main_win = self.window()
+        if hasattr(main_win, "timeline") and main_win.timeline is not None:
+            main_win.timeline.update()
+        sched = getattr(main_win, "_schedule_stem_rebuild", None)
+        if callable(sched):
+            try:
+                sched(immediate=False)
+            except Exception:
+                pass
+        self.param_changed.emit(None)
+
+    def _on_preview_transition_sfx(self):
+        trans_obj = self._video_clip
+        eff_id = self._effective_transition_sfx_id(trans_obj)
+        if not eff_id:
+            eff_id = "whoosh_fast"
+        try:
+            from cutora.audio import sfx_social
+            sfx_social.preview_sfx(eff_id)
+        except Exception:
+            pass
+
     def on_change_transition(self, *_args):
         """转场 Tape 属性变化 → 写回 TransitionItem 对象。"""
         if self.block_signals or self._video_clip is None:
             return
         trans_obj = self._video_clip  # load_data 中将 trans_obj 赋给了 _video_clip
+        preset_changed = False
         if hasattr(self, "trans_preset_cb"):
             preset = self.trans_preset_cb.currentData()
-            trans_obj.preset = preset if preset else "none"
+            new_preset = preset if preset else "none"
+            preset_changed = (new_preset != getattr(trans_obj, "preset", "none"))
+            trans_obj.preset = new_preset
             self._sync_transition_rows(trans_obj.preset)
         if hasattr(self, "trans_dur_sp"):
             new_dur = float(self.trans_dur_sp.value())
-            dur_diff = new_dur - getattr(trans_obj, "duration", new_dur)
-            trans_obj.start_t -= dur_diff
+            old_dur = float(getattr(trans_obj, "duration", new_dur) or new_dur)
+            dur_diff = new_dur - old_dur
+            # 左右两边对称拉长/缩短，保持转场中心始终锚定在接缝处
+            trans_obj.start_t = max(0.0, float(getattr(trans_obj, "start_t", 0.0) or 0.0) - 0.5 * dur_diff)
             trans_obj.duration = new_dur
         if hasattr(self, "trans_zoom_start_sp"):
             trans_obj.zoom_scale_start = float(self.trans_zoom_start_sp.value())
@@ -2039,6 +2166,21 @@ class PropertyPanel(QWidget):
             trans_obj.angle = float(self.trans_angle_sp.value())
         if info.get("feather") and hasattr(self, "trans_feather"):
             trans_obj.feather = float(self.trans_feather.value())
+
+        # 同步转场绑定的音效位置/类型
+        try:
+            from cutora.audio import sfx_social
+            tl = self._current_timeline_for_inspector()
+            if tl is not None and self._video_track is not None:
+                sfx_val = str(self.trans_sfx_cb.currentData() or "auto") if hasattr(self, "trans_sfx_cb") else "auto"
+                active_sid = sfx_social.active_transition_sfx_id(tl, self._video_track, trans_obj)
+                if sfx_val not in ("none", "off") and (active_sid or (preset_changed and sfx_social.is_enabled())):
+                    sfx_social.attach_transition_sfx(
+                        tl, self._video_track, trans_obj,
+                        force=True, sfx_id=sfx_val,
+                    )
+        except Exception:
+            pass
 
         # 触发重新渲染预览
         main_win = self.window()
@@ -4085,7 +4227,7 @@ class PropertyPanel(QWidget):
             self.vid_transition, self.vid_transition_dur, self.vid_blend,
             self.vid_matte, self.vid_matte_inv,
             # Transition panel widgets
-            self.trans_preset_cb, self.trans_dur_sp,
+            self.trans_preset_cb, self.trans_dur_sp, self.trans_sfx_cb,
             self.trans_zoom_start_sp, self.trans_motion_blur_sp,
             self.trans_dir_cb, self.trans_angle_sp, self.trans_feather,
             self.trans_intensity_sp, self.trans_easing_cb,
@@ -4533,8 +4675,25 @@ class PropertyPanel(QWidget):
             self._video_clip = trans_obj
             self._video_track = track
             if hasattr(self, "trans_preset_cb"):
+                lib = getattr(anim_engine, "STANDALONE_TRANSITION_LIBRARY", None) or anim_engine.TRANSITION_PRESETS
+                if self.trans_preset_cb.count() != len(lib):
+                    self.trans_preset_cb.clear()
+                    for label, val in lib:
+                        self.trans_preset_cb.addItem(label, val)
                 preset = getattr(trans_obj, "preset", "none")
                 self._set_combo_by_data(self.trans_preset_cb, preset, "none")
+            if hasattr(self, "trans_sfx_cb"):
+                if self.trans_sfx_cb.count() <= 2:
+                    self._populate_trans_sfx_combo()
+                sfx_cur = str(getattr(trans_obj, "sfx_id", "") or "")
+                if not sfx_cur:
+                    try:
+                        from cutora.audio import sfx_social
+                        tl = self._current_timeline_for_inspector()
+                        sfx_cur = sfx_social.active_transition_sfx_id(tl, track, trans_obj)
+                    except Exception:
+                        sfx_cur = ""
+                self._set_combo_by_data(self.trans_sfx_cb, sfx_cur or "auto", "auto")
             if hasattr(self, "trans_dur_sp"):
                 self.trans_dur_sp.setValue(float(getattr(trans_obj, "duration", anim_engine.DEFAULT_TRANSITION_DURATION)))
             if hasattr(self, "trans_zoom_start_sp"):

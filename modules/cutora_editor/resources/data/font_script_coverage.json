@@ -106,9 +106,6 @@
     "Big Shoulders Stencil Thin": [
       "Big_Shoulders_Stencil/BigShouldersStencil-VariableFont_opsz,wght.ttf"
     ],
-    "Bitcount Prop Single Ink": [
-      "Bitcount_Prop_Single_Ink/BitcountPropSingleInk-VariableFont_CRSV,ELSH,ELXP,SZP1,SZP2,XPN1,XPN2,YPN1,YPN2,slnt,wght.ttf"
-    ],
     "Black Ops One": [
       "Black_Ops_One/BlackOpsOne-Regular.ttf"
     ],
@@ -324,9 +321,6 @@
     "Homemade Apple": [
       "Homemade_Apple/HomemadeApple-Regular.ttf"
     ],
-    "Honk": [
-      "Honk/Honk-Regular-VariableFont_MORF,SHLN.ttf"
-    ],
     "Huninn": [
       "Huninn/Huninn-Regular.ttf"
     ],
@@ -384,12 +378,6 @@
     ],
     "Kalam Light": [
       "Kalam/Kalam-Light.ttf"
-    ],
-    "Kalnia Glaze": [
-      "Kalnia_Glaze/KalniaGlaze-VariableFont_wdth,wght.ttf"
-    ],
-    "Kalnia Glaze Thin": [
-      "Kalnia_Glaze/KalniaGlaze-VariableFont_wdth,wght.ttf"
     ],
     "Karantina": [
       "Karantina/Karantina-Bold.ttf",
@@ -537,9 +525,6 @@
     ],
     "Monofett": [
       "Monofett/Monofett-Regular.ttf"
-    ],
-    "Nabla": [
-      "Nabla/Nabla-Regular-VariableFont_EDPT,EHLT.ttf"
     ],
     "Neonderthaw": [
       "Neonderthaw/Neonderthaw-Regular.ttf"
@@ -848,9 +833,6 @@
     ],
     "SirinStencil": [
       "Sirin_Stencil/SirinStencil-Regular.ttf"
-    ],
-    "Sixtyfour Convergence": [
-      "Sixtyfour_Convergence/SixtyfourConvergence-Regular-VariableFont_BLED,SCAN,XELA,YELA.ttf"
     ],
     "Sonsie One": [
       "Sonsie_One/SonsieOne-Regular.ttf"

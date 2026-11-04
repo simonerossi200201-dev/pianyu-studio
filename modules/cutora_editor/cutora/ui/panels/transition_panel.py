@@ -60,7 +60,7 @@ CARD_PAD = 6
 CARD_W = THUMB_W + 2 * CARD_PAD
 CARD_H = THUMB_H + 2 * CARD_PAD + 22
 GRID_SPACING = 8
-DEFAULT_VIDEO_DUR = 0.35
+DEFAULT_VIDEO_DUR = 1.2
 
 # Hover animation: ANIM_FRAMES transition frames played at ~30 fps, framed by a
 # short hold on A and a longer hold on B.
@@ -980,6 +980,10 @@ class TransitionThumb(QWidget):
 
 class TransitionCard(QFrame):
     apply_requested = Signal(str, str, float)
+    apply_to_all_requested = Signal(str, str, float)
+    apply_to_video_split_requested = Signal(str, float)
+    apply_to_subtitles_text_requested = Signal(str, float)
+    card_selected = Signal(str, str, float)
     favorite_toggled = Signal(str, bool)
     used = Signal(str, str)
 
@@ -1133,6 +1137,19 @@ class TransitionCard(QFrame):
             self.toggle_favorite()
             event.accept()
             return
+        self._drag_start_pos = event.position().toPoint()
+        self.card_selected.emit(self.preset, self.domain, float(self.duration))
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
+            return super().mouseMoveEvent(event)
+        start_pos = getattr(self, "_drag_start_pos", None)
+        if start_pos is None:
+            return super().mouseMoveEvent(event)
+        if (event.position().toPoint() - start_pos).manhattanLength() < 4:
+            return super().mouseMoveEvent(event)
+        self._drag_start_pos = None
         drag = QDrag(self)
         drag.setMimeData(self.build_mime())
         pix = QPixmap(self.thumb.size() * self.thumb._dpr if self.thumb._dpr > 1 else self.thumb.size())
@@ -1144,14 +1161,46 @@ class TransitionCard(QFrame):
         if drag.exec(Qt.DropAction.CopyAction) == Qt.DropAction.CopyAction:
             self.used.emit(self.preset, self.domain)
 
+    def mouseReleaseEvent(self, event):
+        self._drag_start_pos = None
+        return super().mouseReleaseEvent(event)
+
     def contextMenuEvent(self, event):
+        self.card_selected.emit(self.preset, self.domain, float(self.duration))
         menu = QMenu(self)
         act_apply = menu.addAction(tr("应用"))
+        act_apply_all = menu.addAction(tr("应用到全部接缝"))
+        act_apply_vid = None
+        act_apply_sub = None
+        act_preview_sfx = None
+        if self.domain != "audio":
+            act_apply_vid = menu.addAction(tr("批量应用到视频/分屏"))
+            act_apply_sub = menu.addAction(tr("批量应用到字幕/文本"))
+            if self.sfx:
+                act_preview_sfx = menu.addAction(tr("🔊 试听配套音效") + f" ({sfx_label(self.sfx)})")
+        menu.addSeparator()
         act_fav = menu.addAction(tr("取消收藏") if self.is_favorite() else tr("收藏"))
         chosen = menu.exec(event.globalPos())
         if chosen is act_apply:
             self.apply_requested.emit(self.preset, self.domain, float(self.duration))
             self.used.emit(self.preset, self.domain)
+        elif chosen is act_apply_all:
+            self.apply_to_all_requested.emit(self.preset, self.domain, float(self.duration))
+            self.used.emit(self.preset, self.domain)
+        elif act_apply_vid is not None and chosen is act_apply_vid:
+            self.apply_to_video_split_requested.emit(self.preset, float(self.duration))
+            self.used.emit(self.preset, self.domain)
+        elif act_apply_sub is not None and chosen is act_apply_sub:
+            self.apply_to_subtitles_text_requested.emit(self.preset, float(self.duration))
+            self.used.emit(self.preset, self.domain)
+        elif act_preview_sfx is not None and chosen is act_preview_sfx:
+            mod = _sfx_module()
+            fn = getattr(mod, "preview_sfx", None) if mod is not None else None
+            if callable(fn):
+                try:
+                    fn(self.sfx)
+                except Exception:
+                    pass
         elif chosen is act_fav:
             self.toggle_favorite()
 
@@ -1223,6 +1272,9 @@ class _FlowLayout(QLayout):
 
 class TransitionPanel(QWidget):
     apply_requested = Signal(str, str, float)
+    apply_to_all_requested = Signal(str, str, float)
+    apply_to_video_split_requested = Signal(str, float)
+    apply_to_subtitles_text_requested = Signal(str, float)
 
     def __init__(self, parent=None):
         t_build = time.perf_counter()
@@ -1314,10 +1366,43 @@ class TransitionPanel(QWidget):
         self._style_cat_buttons()
         lay.addWidget(chips_host)
 
-        hint_lbl = QLabel(tr("双击或拖到「视频接缝 / 片段 / 图片 / 文字图层」应用 · 悬停预览 · 点 ☆ 收藏"))
+        hint_lbl = QLabel(tr("单击选中 · 双击或拖拽应用 · 可一键批量应用到接缝 / 分屏视频 / 字幕文本"))
         hint_lbl.setObjectName("transitionHint")
         hint_lbl.setWordWrap(True)
         lay.addWidget(hint_lbl)
+
+        # 批量应用操作栏：针对当前选中的转场一键批量应用
+        first_card = self._video_cards[0] if self._video_cards else None
+        self._selected_preset = first_card.preset if first_card is not None else "cross_dissolve"
+        self._selected_domain = first_card.domain if first_card is not None else "visual"
+        self._selected_duration = float(first_card.duration) if first_card is not None else DEFAULT_VIDEO_DUR
+        self._selected_label = first_card.label_text if first_card is not None else "交叉溶解"
+
+        batch_bar = QHBoxLayout()
+        batch_bar.setContentsMargins(0, 0, 0, 0)
+        batch_bar.setSpacing(4)
+        self.btn_batch_seams = QPushButton(tr("应用到全部接缝"))
+        self.btn_batch_seams.setObjectName("transitionChip")
+        self.btn_batch_seams.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_batch_seams.setToolTip(tr("将当前选中的转场批量应用到时间线所有视频/音频接缝"))
+        self.btn_batch_seams.clicked.connect(self._on_batch_apply_seams)
+
+        self.btn_batch_video_split = QPushButton(tr("批量应用到视频/分屏"))
+        self.btn_batch_video_split.setObjectName("transitionChip")
+        self.btn_batch_video_split.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_batch_video_split.setToolTip(tr("将当前选中的转场批量应用到所有分屏画面、视频片段与图片图层"))
+        self.btn_batch_video_split.clicked.connect(self._on_batch_apply_video_split)
+
+        self.btn_batch_subs_text = QPushButton(tr("批量应用到字幕/文本"))
+        self.btn_batch_subs_text.setObjectName("transitionChip")
+        self.btn_batch_subs_text.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_batch_subs_text.setToolTip(tr("将当前选中的转场批量应用到所有字幕片段与文字图层"))
+        self.btn_batch_subs_text.clicked.connect(self._on_batch_apply_subs_text)
+
+        batch_bar.addWidget(self.btn_batch_seams, 1)
+        batch_bar.addWidget(self.btn_batch_video_split, 1)
+        batch_bar.addWidget(self.btn_batch_subs_text, 1)
+        lay.addLayout(batch_bar)
 
         self._video_grid = None
         self._audio_grid = None
@@ -1457,8 +1542,52 @@ class TransitionPanel(QWidget):
 
     def _wire_card(self, card: TransitionCard) -> None:
         card.apply_requested.connect(self.apply_requested)
+        card.apply_to_all_requested.connect(self.apply_to_all_requested)
+        card.apply_to_video_split_requested.connect(self.apply_to_video_split_requested)
+        card.apply_to_subtitles_text_requested.connect(self.apply_to_subtitles_text_requested)
+        card.card_selected.connect(self._on_card_selected)
         card.favorite_toggled.connect(self._on_card_favorite)
         card.used.connect(self.note_used)
+
+    def _on_card_selected(self, preset: str, domain: str, duration: float) -> None:
+        self._selected_preset = str(preset or "cross_dissolve")
+        self._selected_domain = str(domain or "visual")
+        self._selected_duration = float(duration or DEFAULT_VIDEO_DUR)
+        for card in self._all_cards():
+            if card.preset == self._selected_preset:
+                self._selected_label = card.label_text
+                break
+        self.set_active_preset(self._selected_preset)
+
+    def selected_transition_info(self) -> tuple[str, str, float]:
+        """Return (preset, domain, duration) of the currently selected card in the library."""
+        return (
+            str(getattr(self, "_selected_preset", "cross_dissolve") or "cross_dissolve"),
+            str(getattr(self, "_selected_domain", "visual") or "visual"),
+            float(getattr(self, "_selected_duration", DEFAULT_VIDEO_DUR) or DEFAULT_VIDEO_DUR),
+        )
+
+    def _ensure_visual_selection(self) -> tuple[str, float]:
+        preset, domain, dur = self.selected_transition_info()
+        if domain == "audio" and self._video_cards:
+            c0 = self._video_cards[0]
+            preset, dur = c0.preset, float(c0.duration)
+        return preset, dur
+
+    def _on_batch_apply_seams(self) -> None:
+        preset, domain, dur = self.selected_transition_info()
+        self.apply_to_all_requested.emit(preset, domain, dur)
+        self.note_used(preset, domain)
+
+    def _on_batch_apply_video_split(self) -> None:
+        preset, dur = self._ensure_visual_selection()
+        self.apply_to_video_split_requested.emit(preset, dur)
+        self.note_used(preset, "visual")
+
+    def _on_batch_apply_subs_text(self) -> None:
+        preset, dur = self._ensure_visual_selection()
+        self.apply_to_subtitles_text_requested.emit(preset, dur)
+        self.note_used(preset, "visual")
 
     def _all_cards(self):
         return self._video_cards + self._audio_cards + self._recent_cards
@@ -1514,7 +1643,13 @@ class TransitionPanel(QWidget):
     def set_active_preset(self, preset):
         want = str(preset or "")
         for card in self._all_cards():
-            card.set_selected(card.preset == want)
+            is_match = (card.preset == want)
+            card.set_selected(is_match)
+            if is_match:
+                self._selected_preset = card.preset
+                self._selected_domain = card.domain
+                self._selected_duration = float(card.duration)
+                self._selected_label = card.label_text
 
     def _section(self, title):
         box = QWidget()

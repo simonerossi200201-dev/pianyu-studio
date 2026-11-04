@@ -27,7 +27,7 @@ CATEGORIES: list[tuple[str, str]] = [
 
 DEFAULT_META: dict = {
     "category": "fx",
-    "dur": 0.35,          # 推荐时长（秒）
+    "dur": 1.2,           # 推荐时长（秒）
     "sfx": "",            # 推荐音效 id（见 cutora.audio.sfx_social），空 = 无
     "keywords": "",       # 额外搜索词（中文 / 拼音首字母 / 英文，空格分隔）
     "hot": False,         # 是否同时出现在「热门」分组
@@ -36,10 +36,10 @@ DEFAULT_META: dict = {
 
 # preset → 元数据（只写与 DEFAULT_META 不同的字段）
 TRANSITION_META: dict[str, dict] = {
-    # ─── A. 运镜类 (camera，12 款新转场 + 既有运镜转场) ─────────────────────
+    # ─── A. 运镜类 (camera，12 款基础社媒运镜 + 16 款多段灵动运镜 + 10 款经典运镜) ───
     "cam_crash_push": {
         "category": "camera",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "zoom_in_swell",
         "keywords": "急推 冲镜 推进 变焦 拉近 crash push zoom in yj jtcj",
         "hot": True,
@@ -47,7 +47,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_pull_back": {
         "category": "camera",
-        "dur": 0.70,
+        "dur": 1.30,
         "sfx": "zoom_out_swell",
         "keywords": "急拉 退镜 拉远 广角 pull back zoom out jltj",
         "hot": True,
@@ -55,7 +55,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_whip_right": {
         "category": "camera",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "swish_fast",
         "keywords": "极速 横甩 甩镜 右甩 摇镜 whip pan right jshs",
         "hot": True,
@@ -63,7 +63,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_whip_down": {
         "category": "camera",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "whoosh_drop",
         "keywords": "极速 纵甩 下甩 俯仰 甩镜 whip down vertical jszs",
         "hot": False,
@@ -71,7 +71,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_whip_diag": {
         "category": "camera",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "whoosh_heavy",
         "keywords": "对角 甩镜 斜甩 倾斜 diagonal whip pan djss",
         "hot": False,
@@ -79,7 +79,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_roll_cw": {
         "category": "camera",
-        "dur": 0.75,
+        "dur": 1.35,
         "sfx": "whoosh_rise",
         "keywords": "顺时针 滚筒 旋转 翻滚 barrel roll cw sszgt",
         "hot": True,
@@ -87,7 +87,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_roll_ccw": {
         "category": "camera",
-        "dur": 0.75,
+        "dur": 1.35,
         "sfx": "whoosh_drop",
         "keywords": "逆时针 滚筒 旋转 翻滚 barrel roll ccw nszgt",
         "hot": False,
@@ -95,7 +95,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_zoom_spin": {
         "category": "camera",
-        "dur": 0.80,
+        "dur": 1.40,
         "sfx": "whoosh_heavy",
         "keywords": "推进 旋涡 旋转 螺旋 变焦 zoom spin vortex tjxw",
         "hot": True,
@@ -103,7 +103,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_dolly_vertigo": {
         "category": "camera",
-        "dur": 0.90,
+        "dur": 1.50,
         "sfx": "riser_short",
         "keywords": "希区柯克 变焦 眩晕 推轨 dolly zoom vertigo hitchcock xqkk",
         "hot": True,
@@ -111,7 +111,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_pendulum": {
         "category": "camera",
-        "dur": 0.85,
+        "dur": 1.40,
         "sfx": "air_whoosh",
         "keywords": "钟摆 摇镜 摆动 弧线 pendulum swing zb",
         "hot": False,
@@ -119,7 +119,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_perspective_tilt": {
         "category": "camera",
-        "dur": 0.75,
+        "dur": 1.35,
         "sfx": "whoosh_light",
         "keywords": "透视 俯仰 折转 3D 倾斜 perspective tilt 3d tsfy",
         "hot": False,
@@ -127,16 +127,145 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cam_flip_jib": {
         "category": "camera",
-        "dur": 0.75,
+        "dur": 1.35,
         "sfx": "whoosh_rise",
         "keywords": "摇臂 翻转 升降 垂直 jib flip crane ybfz",
         "hot": False,
         "sample": "camera",
     },
+    # 新增 16 款多段灵动运镜（推进-缓动-退回-缓动等自媒体高级运镜）
+    "cam_push_drift_pull_drift": {
+        "category": "camera",
+        "dur": 1.80,
+        "sfx": "zoom_in_swell",
+        "keywords": "推进 缓动 退回 缓移 四段 灵动 运镜 呼吸 push drift pull settle tjhdthhy",
+        "hot": True,
+        "sample": "camera",
+    },
+    "cam_pull_float_push_settle": {
+        "category": "camera",
+        "dur": 1.75,
+        "sfx": "zoom_out_swell",
+        "keywords": "拉远 悬浮 推进 落定 多段 灵动 运镜 pull float push lyxftjld",
+        "hot": True,
+        "sample": "camera",
+    },
+    "cam_push_pan_right_pull": {
+        "category": "camera",
+        "dur": 1.65,
+        "sfx": "whoosh_heavy",
+        "keywords": "推进 慢摇 退回 横移 运镜 push pan pull tjmyth",
+        "hot": True,
+        "sample": "camera",
+    },
+    "cam_push_pan_left_pull": {
+        "category": "camera",
+        "dur": 1.65,
+        "sfx": "whoosh_heavy",
+        "keywords": "推进 左移 回落 慢摇 运镜 push left pull tjzyhl",
+        "hot": False,
+        "sample": "camera",
+    },
+    "cam_push_tilt_up_settle": {
+        "category": "camera",
+        "dur": 1.65,
+        "sfx": "whoosh_rise",
+        "keywords": "推近 仰漂 回落 俯仰 运镜 tilt up settle tjyphl",
+        "hot": False,
+        "sample": "camera",
+    },
+    "cam_spiral_glide_rebound": {
+        "category": "camera",
+        "dur": 1.75,
+        "sfx": "whoosh_heavy",
+        "keywords": "旋推 缓漂 回旋 旋转 推进 退回 spiral glide rebound xthphx",
+        "hot": True,
+        "sample": "camera",
+    },
+    "cam_s_curve_glide": {
+        "category": "camera",
+        "dur": 1.60,
+        "sfx": "air_whoosh",
+        "keywords": "S型 丝滑 曲线 运镜 漂移 s curve glide sxshyj",
+        "hot": True,
+        "sample": "camera",
+    },
+    "cam_orbit_float_3d": {
+        "category": "camera",
+        "dur": 1.70,
+        "sfx": "air_whoosh",
+        "keywords": "环绕 悬浮 3D 弧线 运镜 orbit float hrxfyj",
+        "hot": True,
+        "sample": "camera",
+    },
+    "cam_handheld_breathe_push": {
+        "category": "camera",
+        "dur": 1.60,
+        "sfx": "cam_focus",
+        "keywords": "手持 呼吸 推拉 纪实 灵动 handheld breathe schxtl",
+        "hot": False,
+        "sample": "camera",
+    },
+    "cam_whip_brake_drift": {
+        "category": "camera",
+        "dur": 1.50,
+        "sfx": "swish_fast",
+        "keywords": "急甩 急刹 慢漂 变速 甩镜 whip brake drift jsjsmp",
+        "hot": True,
+        "sample": "camera",
+    },
+    "cam_drop_bounce_float": {
+        "category": "camera",
+        "dur": 1.55,
+        "sfx": "whoosh_drop",
+        "keywords": "俯冲 回弹 慢升 纵摇 drop bounce float fchtms",
+        "hot": False,
+        "sample": "camera",
+    },
+    "cam_zoom_step_triple": {
+        "category": "camera",
+        "dur": 1.60,
+        "sfx": "zoom_in_swell",
+        "keywords": "三段 阶梯 推拉 顿挫 节奏 step zoom triple sdjttl",
+        "hot": True,
+        "sample": "camera",
+    },
+    "cam_dolly_pan_parallax": {
+        "category": "camera",
+        "dur": 1.70,
+        "sfx": "air_whoosh",
+        "keywords": "视差 推摇 慢移 景深 运镜 parallax dolly pan sctymy",
+        "hot": False,
+        "sample": "camera",
+    },
+    "cam_crane_swoop_settle": {
+        "category": "camera",
+        "dur": 1.75,
+        "sfx": "whoosh_rise",
+        "keywords": "摇臂 俯掠 缓停 大范围 运镜 crane swoop ybflht",
+        "hot": False,
+        "sample": "camera",
+    },
+    "cam_pendulum_double_sway": {
+        "category": "camera",
+        "dur": 1.65,
+        "sfx": "whoosh_light",
+        "keywords": "双摆 微醺 摇镜 晃动 pendulum sway sbwxyj",
+        "hot": False,
+        "sample": "camera",
+    },
+    "cam_elastic_slingshot": {
+        "category": "camera",
+        "dur": 1.50,
+        "sfx": "zoom_in_swell",
+        "keywords": "弹弓 蓄力 冲镜 后拉 急推 slingshot zoom dgxlcj",
+        "hot": True,
+        "sample": "camera",
+    },
     # 既有运镜类
     "smash_zoom": {
         "category": "camera",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "zoom_in_swell",
         "keywords": "突进 冲镜 推进 放大 smash zoom tj",
         "hot": False,
@@ -144,7 +273,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "zoom_out_trans": {
         "category": "camera",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "zoom_out_swell",
         "keywords": "拉远 缩小 退镜 zoom out ly",
         "hot": False,
@@ -152,7 +281,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "zoom_dissolve": {
         "category": "camera",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "zoom_in_swell",
         "keywords": "缩放 溶解 变焦 zoom dissolve sfrj",
         "hot": False,
@@ -160,7 +289,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "rotate_dissolve": {
         "category": "camera",
-        "dur": 0.70,
+        "dur": 1.30,
         "sfx": "whoosh_rise",
         "keywords": "旋转 溶解 转盘 rotate dissolve xzrj",
         "hot": False,
@@ -168,7 +297,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "whip_pan_left": {
         "category": "camera",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "swish_fast",
         "keywords": "横向 甩镜 左 摇镜 快速 平移 whip pan left hxsj",
         "hot": False,
@@ -176,7 +305,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "whip_pan_up": {
         "category": "camera",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "whoosh_rise",
         "keywords": "纵向 甩镜 上 仰拍 快速 whip pan up zxsj",
         "hot": False,
@@ -184,7 +313,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "spin_in": {
         "category": "camera",
-        "dur": 0.70,
+        "dur": 1.30,
         "sfx": "whoosh_heavy",
         "keywords": "旋转 推进 螺旋 spin in xztj",
         "hot": False,
@@ -192,7 +321,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cross_zoom_blur": {
         "category": "camera",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "zoom_in_swell",
         "keywords": "穿梭 拉焦 变焦 模糊 cross zoom blur cslj",
         "hot": False,
@@ -200,7 +329,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "blur_directional": {
         "category": "camera",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "swish_fast",
         "keywords": "方向 模糊 运动 拖影 directional motion blur fxmh",
         "hot": False,
@@ -208,17 +337,17 @@ TRANSITION_META: dict[str, dict] = {
     },
     "blur_radial": {
         "category": "camera",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "zoom_in_swell",
         "keywords": "径向 模糊 中心 放射 radial zoom blur jxmh",
         "hot": False,
         "sample": "camera",
     },
 
-    # ─── B. 节奏卡点类 (rhythm，10 款新转场 + 既有震动/冲击卡点) ────────────
+    # ─── B. 节奏卡点类 (rhythm，10 款基础 + 12 款变速弹性卡点 + 1 款经典) ────
     "beat_bass_pump": {
         "category": "rhythm",
-        "dur": 0.40,
+        "dur": 1.05,
         "sfx": "bass_drop",
         "keywords": "重低音 震屏 缩放 鼓点 卡点 bass pump shake zdyzp",
         "hot": True,
@@ -226,7 +355,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "beat_RGB_split_shake": {
         "category": "rhythm",
-        "dur": 0.35,
+        "dur": 1.00,
         "sfx": "impact_punch",
         "keywords": "色差 抖动 卡点 RGB 故障 震屏 chromatic shake scdd",
         "hot": True,
@@ -234,7 +363,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "beat_flash_zoom": {
         "category": "rhythm",
-        "dur": 0.35,
+        "dur": 1.00,
         "sfx": "shutter_click",
         "keywords": "爆闪 冲镜 闪白 卡点 快门 flash zoom bs",
         "hot": True,
@@ -242,7 +371,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "beat_strobe_cut": {
         "category": "rhythm",
-        "dur": 0.40,
+        "dur": 1.05,
         "sfx": "glitch_burst",
         "keywords": "频闪 跳切 闪切 蹦迪 卡点 strobe cut pstq",
         "hot": False,
@@ -250,7 +379,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "beat_glitch_slice": {
         "category": "rhythm",
-        "dur": 0.40,
+        "dur": 1.05,
         "sfx": "glitch_burst",
         "keywords": "故障 错位 切片 撕裂 赛博 glitch slice gzcw",
         "hot": True,
@@ -258,7 +387,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "beat_elastic_bounce": {
         "category": "rhythm",
-        "dur": 0.45,
+        "dur": 1.15,
         "sfx": "pop_bubble",
         "keywords": "弹性 弹跳 回弹 Q弹 卡点 elastic bounce txtt",
         "hot": False,
@@ -266,7 +395,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "beat_zoom_bounce": {
         "category": "rhythm",
-        "dur": 0.45,
+        "dur": 1.15,
         "sfx": "impact_punch",
         "keywords": "二段 缩放 弹跳 连续 卡点 double zoom bounce edsf",
         "hot": True,
@@ -274,7 +403,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "beat_shutter_frame": {
         "category": "rhythm",
-        "dur": 0.40,
+        "dur": 1.10,
         "sfx": "shutter_click",
         "keywords": "快门 定格 抽帧 拍照 取景框 shutter freeze frame kmdg",
         "hot": False,
@@ -282,7 +411,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "beat_split_3x": {
         "category": "rhythm",
-        "dur": 0.45,
+        "dur": 1.15,
         "sfx": "snap_finger",
         "keywords": "三联屏 卡点 三分屏 分屏 抖音 triple split slpkd",
         "hot": True,
@@ -290,26 +419,123 @@ TRANSITION_META: dict[str, dict] = {
     },
     "beat_grid_pop": {
         "category": "rhythm",
-        "dur": 0.50,
+        "dur": 1.20,
         "sfx": "pop_bubble",
         "keywords": "九宫格 弹出 网格 卡点 分屏 grid pop 3x3 jggtc",
         "hot": False,
         "sample": "rhythm",
     },
+    # 新增 12 款变速与弹性律动卡点
+    "beat_speed_ramp_flow": {
+        "category": "rhythm",
+        "dur": 1.35,
+        "sfx": "whoosh_heavy",
+        "keywords": "曲线 变速 卡点 快慢快 speed ramp flow qxbskd",
+        "hot": True,
+        "sample": "rhythm",
+    },
+    "beat_heartbeat_double_zoom": {
+        "category": "rhythm",
+        "dur": 1.30,
+        "sfx": "heartbeat",
+        "keywords": "心跳 双跳 推拉 律动 heartbeat zoom xtsttl",
+        "hot": True,
+        "sample": "rhythm",
+    },
+    "beat_shake_flash_combo": {
+        "category": "rhythm",
+        "dur": 1.15,
+        "sfx": "impact_punch",
+        "keywords": "震屏 闪白 连击 卡点 shake flash zpsblj",
+        "hot": True,
+        "sample": "rhythm",
+    },
+    "beat_rgb_wave_pulse": {
+        "category": "rhythm",
+        "dur": 1.20,
+        "sfx": "bass_drop",
+        "keywords": "幻彩 波浪 脉冲 RGB 律动 wave pulse hcblmc",
+        "hot": False,
+        "sample": "rhythm",
+    },
+    "beat_freeze_pop_card": {
+        "category": "rhythm",
+        "dur": 1.35,
+        "sfx": "shutter_click",
+        "keywords": "定格 弹卡 快门 卡点 freeze pop card dgtkkm",
+        "hot": True,
+        "sample": "rhythm",
+    },
+    "beat_jelly_squash_stretch": {
+        "category": "rhythm",
+        "dur": 1.20,
+        "sfx": "pop_bubble",
+        "keywords": "果冻 挤压 拉伸 Q弹 jelly squash gdjyls",
+        "hot": False,
+        "sample": "rhythm",
+    },
+    "beat_vinyl_scratch_rewind": {
+        "category": "rhythm",
+        "dur": 1.30,
+        "sfx": "tape_rewind",
+        "keywords": "搓盘 倒带 唱片 卡点 vinyl scratch cpddkd",
+        "hot": False,
+        "sample": "rhythm",
+    },
+    "beat_neon_border_bounce": {
+        "category": "rhythm",
+        "dur": 1.25,
+        "sfx": "snap_finger",
+        "keywords": "霓虹 边框 律动 弹跳 neon border nhbkld",
+        "hot": False,
+        "sample": "rhythm",
+    },
+    "beat_comic_speed_impact": {
+        "category": "rhythm",
+        "dur": 1.20,
+        "sfx": "impact_low",
+        "keywords": "漫画 速度线 冲击 二次元 comic speed lines mhsdxcj",
+        "hot": True,
+        "sample": "rhythm",
+    },
+    "beat_glitch_datamosh_slide": {
+        "category": "rhythm",
+        "dur": 1.15,
+        "sfx": "glitch_burst",
+        "keywords": "像素 错位 滑切 故障 datamosh xscwhq",
+        "hot": False,
+        "sample": "rhythm",
+    },
+    "beat_zoom_blur_whip": {
+        "category": "rhythm",
+        "dur": 1.25,
+        "sfx": "swish_fast",
+        "keywords": "径向 残影 甩切 模糊 zoom blur whip jxcysq",
+        "hot": False,
+        "sample": "rhythm",
+    },
+    "beat_drum_roll_slice": {
+        "category": "rhythm",
+        "dur": 1.30,
+        "sfx": "impact_punch",
+        "keywords": "鼓点 四连切 切片 节奏 drum slice gdslq",
+        "hot": True,
+        "sample": "rhythm",
+    },
     # 既有节奏卡点类
     "shake_impact": {
         "category": "rhythm",
-        "dur": 0.40,
+        "dur": 1.05,
         "sfx": "impact_punch",
         "keywords": "震动 冲击 抖动 震屏 卡点 shake impact zdcj",
         "hot": False,
         "sample": "rhythm",
     },
 
-    # ─── C. 图形遮罩类 (graphic，10 款新转场 + 既有几何图形) ─────────────────
+    # ─── C. 图形遮罩类 (graphic，10 款基础 + 11 款创意分屏画廊 + 5 款经典) ────
     "shape_heart_iris": {
         "category": "graphic",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "sparkle_shimmer",
         "keywords": "爱心 扩瞳 心形 情侣 浪漫 heart iris love axkt",
         "hot": True,
@@ -317,7 +543,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "shape_star_burst": {
         "category": "graphic",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "ding_bright",
         "keywords": "星芒 绽放 五角星 星星 闪耀 star burst xmzf",
         "hot": False,
@@ -325,7 +551,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "shape_diagonal_slash": {
         "category": "graphic",
-        "dur": 0.55,
+        "dur": 1.15,
         "sfx": "swish_fast",
         "keywords": "斜切 刀光 斩击 对角 分割 diagonal slash cut xqdg",
         "hot": True,
@@ -333,7 +559,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "shape_shutter_bands": {
         "category": "graphic",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "click_soft",
         "keywords": "斜向 百叶 条带 交错 条纹 shutter bands blinds xxby",
         "hot": False,
@@ -341,7 +567,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "shape_circle_wave": {
         "category": "graphic",
-        "dur": 0.70,
+        "dur": 1.30,
         "sfx": "pop_bubble",
         "keywords": "同心 多环 扩散 圆环 波纹 circle wave rings txdh",
         "hot": False,
@@ -349,7 +575,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "shape_split_slide_4": {
         "category": "graphic",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "whoosh_light",
         "keywords": "四分 错位 滑屏 四象限 拼贴 quad split slide sfcw",
         "hot": False,
@@ -357,7 +583,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "shape_clock_dual": {
         "category": "graphic",
-        "dur": 0.70,
+        "dur": 1.30,
         "sfx": "tick_tock",
         "keywords": "双指针 风车 扫掠 扇形 时钟 dual clock pinwheel szzfc",
         "hot": False,
@@ -365,7 +591,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "shape_polaroid_stack": {
         "category": "graphic",
-        "dur": 0.75,
+        "dur": 1.35,
         "sfx": "shutter_click",
         "keywords": "拍立得 甩入 相框 照片 卡片 polaroid photo stack pldsr",
         "hot": True,
@@ -373,7 +599,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "shape_kaleidoscope": {
         "category": "graphic",
-        "dur": 0.75,
+        "dur": 1.35,
         "sfx": "sparkle_shimmer",
         "keywords": "万花筒 镜像 对称 几何 棱镜 kaleidoscope mirror whtjx",
         "hot": False,
@@ -381,16 +607,105 @@ TRANSITION_META: dict[str, dict] = {
     },
     "shape_origami_fold": {
         "category": "graphic",
-        "dur": 0.70,
+        "dur": 1.30,
         "sfx": "page_flip",
         "keywords": "折纸 展开 翻折 多边形 origami fold paper zzzk",
         "hot": False,
         "sample": "graphic",
     },
+    # 新增 11 款分屏画廊与创意图形
+    "shape_split_diagonal_twin": {
+        "category": "graphic",
+        "dur": 1.35,
+        "sfx": "swish_fast",
+        "keywords": "斜切 双分屏 交错 对角 分屏 diagonal split xqsfpjc",
+        "hot": True,
+        "sample": "graphic",
+    },
+    "shape_split_accordion_5": {
+        "category": "graphic",
+        "dur": 1.45,
+        "sfx": "whoosh_light",
+        "keywords": "五联 手风琴 分屏 条带 accordion split wlsfqfp",
+        "hot": True,
+        "sample": "graphic",
+    },
+    "shape_magazine_collage": {
+        "category": "graphic",
+        "dur": 1.50,
+        "sfx": "page_flip",
+        "keywords": "杂志 拼贴 画框 时尚 magazine collage zzpthk",
+        "hot": True,
+        "sample": "graphic",
+    },
+    "shape_filmstrip_scroll": {
+        "category": "graphic",
+        "dur": 1.50,
+        "sfx": "film_projector",
+        "keywords": "胶片 长廊 滚动 分屏 filmstrip scroll jpclgd",
+        "hot": True,
+        "sample": "graphic",
+    },
+    "shape_paper_tear_reveal": {
+        "category": "graphic",
+        "dur": 1.40,
+        "sfx": "page_flip",
+        "keywords": "手撕纸 撕纸 纸张 拼贴 paper tear sszpt",
+        "hot": True,
+        "sample": "graphic",
+    },
+    "shape_shatter_glass_prism": {
+        "category": "graphic",
+        "dur": 1.40,
+        "sfx": "impact_metal",
+        "keywords": "碎裂 水晶 玻璃 折射 shatter glass slsjzs",
+        "hot": False,
+        "sample": "graphic",
+    },
+    "shape_puzzle_interlock": {
+        "category": "graphic",
+        "dur": 1.40,
+        "sfx": "click_soft",
+        "keywords": "拼图 咬合 拼接 图形 puzzle interlock ptyh",
+        "hot": False,
+        "sample": "graphic",
+    },
+    "shape_liquid_morph_wave": {
+        "category": "graphic",
+        "dur": 1.45,
+        "sfx": "whoosh_rise",
+        "keywords": "流体 波浪 液态 遮罩 liquid morph ltbltm",
+        "hot": False,
+        "sample": "graphic",
+    },
+    "shape_portal_tunnel_hex": {
+        "category": "graphic",
+        "dur": 1.45,
+        "sfx": "whoosh_heavy",
+        "keywords": "六边形 时空门 隧道 几何 hex portal lbxskm",
+        "hot": False,
+        "sample": "graphic",
+    },
+    "shape_card_carousel_3d": {
+        "category": "graphic",
+        "dur": 1.50,
+        "sfx": "whoosh_light",
+        "keywords": "3D 卡片 轮播 旋转木马 分屏 card carousel 3dkpxzmm",
+        "hot": True,
+        "sample": "graphic",
+    },
+    "shape_pip_expand_drift": {
+        "category": "graphic",
+        "dur": 1.55,
+        "sfx": "zoom_in_swell",
+        "keywords": "画中画 缓移 展开 分屏 pip expand drift hzhhyzk",
+        "hot": True,
+        "sample": "graphic",
+    },
     # 既有图形类
     "wipe_circle": {
         "category": "graphic",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "whoosh_light",
         "keywords": "圆形 擦除 展开 扩瞳 圆圈 wipe circle iris yxcc",
         "hot": False,
@@ -398,7 +713,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "wipe_clock": {
         "category": "graphic",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "tick_tock",
         "keywords": "时钟 擦除 表盘 扇形 wipe clock szcc",
         "hot": False,
@@ -406,7 +721,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "iris_diamond": {
         "category": "graphic",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "ding_bright",
         "keywords": "菱形 展开 钻石 几何 iris diamond lxzk",
         "hot": False,
@@ -414,7 +729,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "iris_close": {
         "category": "graphic",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "whoosh_drop",
         "keywords": "圆形 收缩 闭合 瞳孔 iris close yxss",
         "hot": False,
@@ -422,17 +737,17 @@ TRANSITION_META: dict[str, dict] = {
     },
     "iris_rectangle": {
         "category": "graphic",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "whoosh_light",
         "keywords": "矩形 画框 方框 边框 iris rectangle jxhk",
         "hot": False,
         "sample": "graphic",
     },
 
-    # ─── D. 光效胶片类 (light，8 款新转场 + 既有闪光/曝光/光晕) ─────────────
+    # ─── D. 光效胶片类 (light，8 款基础 + 11 款电影光效水墨 + 7 款经典) ───────
     "light_warm_flare": {
         "category": "light",
-        "dur": 0.70,
+        "dur": 1.35,
         "sfx": "reverse_cymbal",
         "keywords": "暖金 漏光 胶片 阳光 温暖 warm light leak flare njlg",
         "hot": True,
@@ -440,7 +755,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "light_cyber_neon": {
         "category": "light",
-        "dur": 0.65,
+        "dur": 1.30,
         "sfx": "riser_short",
         "keywords": "赛博 霓虹 扫光 激光 蓝紫 cyber neon sweep sbnh",
         "hot": True,
@@ -448,7 +763,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "light_prism_rainbow": {
         "category": "light",
-        "dur": 0.70,
+        "dur": 1.35,
         "sfx": "sparkle_shimmer",
         "keywords": "棱镜 彩虹 色散 折射 光斑 prism rainbow dispersion ljch",
         "hot": False,
@@ -456,7 +771,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "light_film_sprocket": {
         "category": "light",
-        "dur": 0.75,
+        "dur": 1.40,
         "sfx": "film_projector",
         "keywords": "复古 齿孔 走片 胶卷 放映机 film strip sprocket roll fgck",
         "hot": True,
@@ -464,7 +779,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "light_vhs_rewind": {
         "category": "light",
-        "dur": 0.65,
+        "dur": 1.30,
         "sfx": "tape_rewind",
         "keywords": "VHS 磁带 倒带 雪花 复古 录像带 vhs tape rewind cd",
         "hot": False,
@@ -472,7 +787,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "light_dream_glow": {
         "category": "light",
-        "dur": 0.80,
+        "dur": 1.45,
         "sfx": "sparkle_shimmer",
         "keywords": "柔焦 梦幻 羽化 唯美 圣光 dream soft glow bokeh rjmh",
         "hot": False,
@@ -480,7 +795,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "light_gold_dust": {
         "category": "light",
-        "dur": 0.80,
+        "dur": 1.45,
         "sfx": "sparkle_shimmer",
         "keywords": "流金 粒子 星尘 闪烁 金粉 gold dust particles ljlz",
         "hot": False,
@@ -488,16 +803,105 @@ TRANSITION_META: dict[str, dict] = {
     },
     "light_ink_wash": {
         "category": "light",
-        "dur": 0.85,
+        "dur": 1.55,
         "sfx": "air_whoosh",
         "keywords": "水墨 晕染 国风 墨迹 宣纸 ink wash bleed chinese smyr",
         "hot": False,
         "sample": "light",
     },
+    # 新增 11 款电影光效与水墨氛围
+    "light_anamorphic_streak": {
+        "category": "light",
+        "dur": 1.45,
+        "sfx": "sparkle_shimmer",
+        "keywords": "变形 宽银幕 蓝光 拉丝 电影 anamorphic flare bxkymlg",
+        "hot": True,
+        "sample": "light",
+    },
+    "light_golden_hour_leak": {
+        "category": "light",
+        "dur": 1.50,
+        "sfx": "air_whoosh",
+        "keywords": "落日 流金 漏光 暖阳 golden hour leak lrljlg",
+        "hot": True,
+        "sample": "light",
+    },
+    "light_halation_film_burn": {
+        "category": "light",
+        "dur": 1.45,
+        "sfx": "film_projector",
+        "keywords": "胶片 灼烧 红晕 漏光 halation film burn jpzshy",
+        "hot": True,
+        "sample": "light",
+    },
+    "light_crystal_bokeh_rain": {
+        "category": "light",
+        "dur": 1.55,
+        "sfx": "sparkle_shimmer",
+        "keywords": "水晶 散景 光斑 光雨 bokeh crystal sjsjgy",
+        "hot": False,
+        "sample": "light",
+    },
+    "light_ink_landscape_bleed": {
+        "category": "light",
+        "dur": 1.70,
+        "sfx": "air_whoosh",
+        "keywords": "国风 水墨 山河 晕染 宣纸 墨迹 ink bleed gfsmshyr",
+        "hot": True,
+        "sample": "light",
+    },
+    "light_cyber_hud_scan": {
+        "category": "light",
+        "dur": 1.40,
+        "sfx": "glitch_burst",
+        "keywords": "全息 科技 扫描 赛博 HUD cyber scan qxkjsm",
+        "hot": False,
+        "sample": "light",
+    },
+    "light_aurora_silk_veil": {
+        "category": "light",
+        "dur": 1.55,
+        "sfx": "sparkle_shimmer",
+        "keywords": "极光 丝绸 流转 梦幻 aurora silk jgsclz",
+        "hot": False,
+        "sample": "light",
+    },
+    "light_starlight_twinkle": {
+        "category": "light",
+        "dur": 1.45,
+        "sfx": "ding_bright",
+        "keywords": "星芒 璀璨 闪耀 十字星 starlight twinkle xmccsy",
+        "hot": False,
+        "sample": "light",
+    },
+    "light_smoke_mist_reveal": {
+        "category": "light",
+        "dur": 1.65,
+        "sfx": "air_whoosh",
+        "keywords": "云雾 缭绕 穿云 迷雾 smoke mist reveal ywlrcy",
+        "hot": True,
+        "sample": "light",
+    },
+    "light_neon_tunnel_rush": {
+        "category": "light",
+        "dur": 1.50,
+        "sfx": "whoosh_heavy",
+        "keywords": "霓虹 光廊 穿梭 隧道 neon tunnel nhglcs",
+        "hot": False,
+        "sample": "light",
+    },
+    "light_polaroid_flash_develop": {
+        "category": "light",
+        "dur": 1.55,
+        "sfx": "shutter_click",
+        "keywords": "拍立得 闪光 显影 相纸 polaroid develop pldsgxy",
+        "hot": True,
+        "sample": "light",
+    },
     # 既有光效胶片类
     "flash_white": {
         "category": "light",
-        "dur": 0.45,
+        "dur": 1.05,
         "sfx": "shutter_click",
         "keywords": "闪白 曝光 闪光灯 白场 flash white sb",
         "hot": False,
@@ -505,7 +909,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "flash_black": {
         "category": "light",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "downlifter",
         "keywords": "黑闪 闪黑 暗场 眨眼 flash black hs",
         "hot": False,
@@ -513,7 +917,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "exposure_dissolve": {
         "category": "light",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "reverse_cymbal",
         "keywords": "曝光 溶解 过曝 强光 exposure dissolve bgrj",
         "hot": False,
@@ -521,7 +925,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "bloom_dissolve": {
         "category": "light",
-        "dur": 0.70,
+        "dur": 1.30,
         "sfx": "sparkle_shimmer",
         "keywords": "光晕 溢出 柔光 辉光 bloom glow dissolve gyyc",
         "hot": False,
@@ -529,7 +933,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "bokeh_dissolve": {
         "category": "light",
-        "dur": 0.75,
+        "dur": 1.35,
         "sfx": "sparkle_shimmer",
         "keywords": "散景 溶解 光斑 焦外 bokeh dissolve sjrj",
         "hot": False,
@@ -537,7 +941,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "light_leak": {
         "category": "light",
-        "dur": 0.70,
+        "dur": 1.35,
         "sfx": "reverse_cymbal",
         "keywords": "胶片 漏光 炫光 光斑 light leak jplg",
         "hot": False,
@@ -545,7 +949,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "film_burn": {
         "category": "light",
-        "dur": 0.70,
+        "dur": 1.35,
         "sfx": "film_projector",
         "keywords": "胶片 烧灼 灼烧 复古 film burn jpsz",
         "hot": False,
@@ -555,7 +959,7 @@ TRANSITION_META: dict[str, dict] = {
     # ─── E. 推拉滑动类 (motion) ─────────────────────────────────────────────
     "push_left": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_light",
         "keywords": "推左 推入 左 推镜 平移 push left tz",
         "hot": False,
@@ -563,7 +967,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "push_right": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_light",
         "keywords": "推右 推入 右 推镜 平移 push right ty",
         "hot": False,
@@ -571,7 +975,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "push_up": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_rise",
         "keywords": "推上 推入 上 向上 push up ts",
         "hot": False,
@@ -579,7 +983,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "push_down": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_drop",
         "keywords": "推下 推入 下 向下 push down tx",
         "hot": False,
@@ -587,7 +991,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "push_out": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_light",
         "keywords": "推出 推开 push out tc",
         "hot": False,
@@ -595,7 +999,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "push_out_left": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_light",
         "keywords": "推出左 推开 左 push out left tcz",
         "hot": False,
@@ -603,7 +1007,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "push_out_right": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_light",
         "keywords": "推出右 推开 右 push out right tcy",
         "hot": False,
@@ -611,7 +1015,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "push_out_up": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_rise",
         "keywords": "推出上 推开 上 push out up tcs",
         "hot": False,
@@ -619,7 +1023,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "push_out_down": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_drop",
         "keywords": "推出下 推开 下 push out down tcx",
         "hot": False,
@@ -627,7 +1031,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "push_split": {
         "category": "motion",
-        "dur": 0.55,
+        "dur": 1.15,
         "sfx": "swish_fast",
         "keywords": "对推 分裂 双向 推开 push split dt",
         "hot": False,
@@ -635,7 +1039,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cover_left": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_light",
         "keywords": "左向 覆叠 覆盖 滑入 cover left zxfd",
         "hot": False,
@@ -643,7 +1047,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cover_down": {
         "category": "motion",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_drop",
         "keywords": "下向 覆叠 覆盖 下落 cover down xxfd",
         "hot": False,
@@ -651,7 +1055,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "split_interleave": {
         "category": "motion",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "swish_fast",
         "keywords": "交错 滑入 条带 穿插 split interleave jchr",
         "hot": False,
@@ -659,7 +1063,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "curtain_drop": {
         "category": "motion",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "whoosh_drop",
         "keywords": "帷幕 垂落 幕布 落下 curtain drop wmcl",
         "hot": False,
@@ -669,7 +1073,7 @@ TRANSITION_META: dict[str, dict] = {
     # ─── F. 擦除遮罩类 (wipe) ───────────────────────────────────────────────
     "wipe_left": {
         "category": "wipe",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_light",
         "keywords": "擦 擦除 左 横向 划像 wipe left cc",
         "hot": False,
@@ -677,7 +1081,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "wipe_right": {
         "category": "wipe",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_light",
         "keywords": "擦除 右 横向 划像 wipe right ccy",
         "hot": False,
@@ -685,7 +1089,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "wipe_up": {
         "category": "wipe",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_rise",
         "keywords": "擦除 上 纵向 划像 wipe up ccs",
         "hot": False,
@@ -693,7 +1097,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "wipe_down": {
         "category": "wipe",
-        "dur": 0.50,
+        "dur": 1.10,
         "sfx": "whoosh_drop",
         "keywords": "擦除 下 纵向 划像 wipe down ccx",
         "hot": False,
@@ -701,7 +1105,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "wipe_angle": {
         "category": "wipe",
-        "dur": 0.55,
+        "dur": 1.15,
         "sfx": "whoosh_light",
         "keywords": "线性 擦除 斜向 角度 wipe angle xxcc",
         "hot": False,
@@ -709,7 +1113,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "wipe_blinds": {
         "category": "wipe",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "click_soft",
         "keywords": "百叶窗 条纹 格栅 wipe blinds byc",
         "hot": False,
@@ -717,7 +1121,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "checker_wipe": {
         "category": "wipe",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "click_soft",
         "keywords": "棋盘格 方格 交替 checker wipe qpg",
         "hot": False,
@@ -725,7 +1129,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "barn_door_h": {
         "category": "wipe",
-        "dur": 0.55,
+        "dur": 1.15,
         "sfx": "whoosh_light",
         "keywords": "左右 开门 双开门 水平 barn door horizontal zykm",
         "hot": False,
@@ -733,7 +1137,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "barn_door_v": {
         "category": "wipe",
-        "dur": 0.55,
+        "dur": 1.15,
         "sfx": "whoosh_light",
         "keywords": "上下 开门 双开门 垂直 barn door vertical sxkm",
         "hot": False,
@@ -741,7 +1145,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "venetian_diag": {
         "category": "wipe",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "click_soft",
         "keywords": "斜向 格栅 百叶 条纹 venetian diagonal xxgs",
         "hot": False,
@@ -749,7 +1153,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "luma_melt": {
         "category": "wipe",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "air_whoosh",
         "keywords": "流光 穿插 亮度 融化 luma melt lgcc",
         "hot": False,
@@ -759,7 +1163,7 @@ TRANSITION_META: dict[str, dict] = {
     # ─── G. 溶解渐变类 (dissolve) ───────────────────────────────────────────
     "cross_dissolve": {
         "category": "dissolve",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "",
         "keywords": "交叉 溶解 叠化 渐变 默认 cross dissolve mix jcrj",
         "hot": False,
@@ -767,7 +1171,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "fade_dark": {
         "category": "dissolve",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "",
         "keywords": "黑场 暗场 淡入 淡出 fade dark black hc",
         "hot": False,
@@ -775,7 +1179,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "fade_white": {
         "category": "dissolve",
-        "dur": 0.60,
+        "dur": 1.20,
         "sfx": "",
         "keywords": "白场 亮场 淡入 淡出 fade white bc",
         "hot": False,
@@ -783,7 +1187,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "blur_dissolve": {
         "category": "dissolve",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "air_whoosh",
         "keywords": "模糊 溶解 失焦 虚化 blur defocus dissolve mhrj",
         "hot": False,
@@ -791,7 +1195,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "wave_ripple": {
         "category": "dissolve",
-        "dur": 0.75,
+        "dur": 1.35,
         "sfx": "pop_bubble",
         "keywords": "水波 涟漪 波纹 荡漾 wave ripple sbly",
         "hot": False,
@@ -801,7 +1205,7 @@ TRANSITION_META: dict[str, dict] = {
     # ─── H. 特效类 (fx) ────────────────────────────────────────────────────
     "page_turn": {
         "category": "fx",
-        "dur": 0.70,
+        "dur": 1.30,
         "sfx": "page_flip",
         "keywords": "翻页 卷页 书页 纸张 page turn curl fy",
         "hot": False,
@@ -809,7 +1213,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "cube_spin": {
         "category": "fx",
-        "dur": 0.65,
+        "dur": 1.25,
         "sfx": "whoosh_heavy",
         "keywords": "立方体 旋转 3D 盒子 cube spin 3d lftxz",
         "hot": False,
@@ -817,7 +1221,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "rgb_split": {
         "category": "fx",
-        "dur": 0.45,
+        "dur": 1.05,
         "sfx": "glitch_burst",
         "keywords": "色散 色差 分离 红蓝 RGB chromatic aberration ss",
         "hot": False,
@@ -825,7 +1229,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "glitch": {
         "category": "fx",
-        "dur": 0.45,
+        "dur": 1.05,
         "sfx": "glitch_burst",
         "keywords": "故障 信号 错位 电子 glitch digital gz",
         "hot": False,
@@ -833,7 +1237,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "pixelate": {
         "category": "fx",
-        "dur": 0.55,
+        "dur": 1.15,
         "sfx": "click_soft",
         "keywords": "像素化 溶解 马赛克 方块 pixelate mosaic xshrj",
         "hot": False,
@@ -841,7 +1245,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "scanlines": {
         "category": "fx",
-        "dur": 0.55,
+        "dur": 1.15,
         "sfx": "glitch_burst",
         "keywords": "扫描线 电视 信号 条纹 scanlines crt smx",
         "hot": False,
@@ -851,7 +1255,7 @@ TRANSITION_META: dict[str, dict] = {
     # ─── I. 音频转场 (audio) ────────────────────────────────────────────────
     "audio_xfade_equal": {
         "category": "audio",
-        "dur": 0.50,
+        "dur": 0.80,
         "sfx": "",
         "keywords": "等功率 交叉 淡化 音频 equal power crossfade dgljcdh",
         "hot": False,
@@ -859,7 +1263,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "audio_xfade_linear": {
         "category": "audio",
-        "dur": 0.50,
+        "dur": 0.80,
         "sfx": "",
         "keywords": "线性 交叉 淡化 音频 linear crossfade xxjcdh",
         "hot": False,
@@ -867,7 +1271,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "audio_fade_in": {
         "category": "audio",
-        "dur": 0.50,
+        "dur": 0.80,
         "sfx": "",
         "keywords": "淡入 音频 渐入 audio fade in dr",
         "hot": False,
@@ -875,7 +1279,7 @@ TRANSITION_META: dict[str, dict] = {
     },
     "audio_fade_out": {
         "category": "audio",
-        "dur": 0.50,
+        "dur": 0.80,
         "sfx": "",
         "keywords": "淡出 音频 渐出 audio fade out dc",
         "hot": False,

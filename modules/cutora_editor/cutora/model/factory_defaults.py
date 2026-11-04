@@ -167,6 +167,7 @@ def _image_overlay_defaults(cw, ch, image_wh, path, start, end, ov_id) -> dict:
             "blend_mode": "normal",
             "lock_aspect": True,
         }
+    from cutora.render.anim_engine import DEFAULT_TRANSITION_DURATION
     return {
         "type": "image",
         "start": float(start),
@@ -187,7 +188,7 @@ def _image_overlay_defaults(cw, ch, image_wh, path, start, end, ov_id) -> dict:
         "blend_mode": "normal",
         "feather": 0,
         "transition_preset": "none",
-        "transition_duration": 0.35,
+        "transition_duration": float(DEFAULT_TRANSITION_DURATION),
         "id": ov_id or ("ov_%s" % uuid.uuid4().hex[:12]),
     }
 

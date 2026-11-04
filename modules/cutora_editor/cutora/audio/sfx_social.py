@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""短视频音效包（30 条）：由本地 Stable Audio Open 1.0 模型生成并完成后期峰值对齐与响度标准化。
+"""短视频与场景音效包（100 条）：由本地 Stable Audio Open 1.0 模型生成并完成后期峰值对齐与响度标准化。
 
 * 许可证：Stability AI Community License（年营收低于 100 万美元免费商用，详见 resources/audio/sfx_social/LICENSE.txt）。
 * 规格：48 kHz / 立体声 / 16 bit WAV，峰值 ≤ -1.2 dBFS，无直流，首尾平滑淡入淡出。
 * 响度：按 ITU-R BS.1770-4 K 计权将最响 400 ms 窗口瞬时响度对齐至 -14.0 LUFS（受峰值上限约束的短促 UI 音效如实记入 PROVENANCE.json）。
 * ``CATALOG`` 的 id 被转场元数据 ``cutora.render.transition_catalog`` 引用，保持固定。
 * ``attach_transition_sfx`` 把音效放到 audio_role='sfx' 的音效轨上，峰值点对齐转场中点。
+* ``preview_sfx`` / ``stop_preview_sfx`` 提供非阻塞即时试听，供转场检查器与音效选择器随手试听。
 """
 from __future__ import annotations
 
@@ -223,6 +224,80 @@ _SPECS = [
     ("tick_tock",       "时钟滴答",    _R, 2.00, 1.02, False),
     ("reverse_cymbal",  "反向镲",      _T, 2.00, 1.95, True),
     ("ding_bright",     "清脆叮",      _U, 1.50, 0.005, True),
+    # 1. 转场与运镜流转音效（20 条新增）
+    ("cam_push_pull_flow",    "推拉流转",      _T, 1.60, 0.75, False),
+    ("whip_pan_double",       "双连甩镜",      _T, 1.10, 0.50, False),
+    ("velvet_whoosh",         "丝绒柔风",      _T, 1.30, 0.65, True),
+    ("cyber_warp_pass",       "赛博穿梭",      _T, 1.40, 0.70, False),
+    ("spiral_vortex_spin",    "旋涡旋转",      _T, 1.50, 0.75, False),
+    ("glass_portal_shimmer",  "玻璃折射",      _T, 1.40, 0.60, False),
+    ("ink_brush_sweep",       "水墨挥毫",      _T, 1.50, 0.55, False),
+    ("flame_ignition_whoosh", "烈焰燃起",      _T, 1.30, 0.55, True),
+    ("water_splash_dive",     "跃入水花",      _T, 1.50, 0.45, False),
+    ("wind_gust_cinematic",   "电影疾风",      _T, 1.80, 0.90, False),
+    ("elastic_boing_snap",    "弹性回弹",      _T, 0.90, 0.20, False),
+    ("tape_stop_drop",        "磁带骤停",      _T, 1.10, 0.30, False),
+    ("projector_reel_change", "胶片换卷",      _T, 1.20, 0.60, False),
+    ("light_flare_sizzle",    "炫光闪耀",      _T, 1.30, 0.55, False),
+    ("sub_drop_tight",        "紧凑低频下潜",  _I, 1.40, 0.05, True),
+    ("brass_braam_short",     "短促铜管轰鸣",  _I, 1.80, 0.25, False),
+    ("anvil_spark_hit",       "流光铁砧击",    _I, 1.50, 0.04, True),
+    ("taiko_thunder_hit",     "太鼓雷鸣",      _I, 1.80, 0.05, True),
+    ("reverse_suck_punch",    "倒吸重击",      _T, 1.20, 0.95, False),
+    ("shutter_flash_combo",   "闪光快门连拍",  _U, 0.85, 0.25, False),
+    # 2. 环境氛围音效（18 条新增）
+    ("amb_coffee_shop",       "咖啡馆午后",    _A, 3.50, 1.75, False),
+    ("amb_rain_window",       "窗外细雨",      _A, 3.50, 1.75, False),
+    ("amb_thunder_rain",      "雷雨夜幕",      _A, 3.50, 1.20, False),
+    ("amb_ocean_waves",       "海浪轻拍",      _A, 3.50, 1.75, False),
+    ("amb_forest_birds",      "清晨林间鸟鸣",  _A, 3.50, 1.75, False),
+    ("amb_night_crickets",    "夏夜蝉虫蛙鸣",  _A, 3.50, 1.75, False),
+    ("amb_city_street",       "都市街角车流",  _A, 3.50, 1.75, False),
+    ("amb_subway_train",      "地铁进站运行",  _A, 3.20, 1.60, False),
+    ("amb_campfire_crackle",  "篝火噼啪温暖",  _A, 3.50, 1.75, False),
+    ("amb_mountain_wind",     "高山旷野清风",  _A, 3.50, 1.75, False),
+    ("amb_office_hum",        "现代办公空间",  _A, 3.20, 1.60, False),
+    ("amb_vinyl_crackle",     "黑胶唱片底噪",  _A, 3.20, 1.60, False),
+    ("amb_underwater_deep",   "深海潜行律动",  _A, 3.20, 1.60, False),
+    ("amb_cyber_neon_hum",    "赛博霓虹街区",  _A, 3.20, 1.60, False),
+    ("amb_library_quiet",     "静谧书房翻书",  _A, 3.20, 1.60, False),
+    ("amb_stadium_cheer",     "赛场欢呼声浪",  _A, 3.00, 1.20, False),
+    ("amb_wind_chimes",       "微风风铃清音",  _A, 3.00, 1.20, False),
+    ("amb_stream_water",      "山涧溪流潺潺",  _A, 3.50, 1.75, False),
+    # 3. 同期声与拟音动作音效（18 条新增）
+    ("foley_keyboard_mech",   "机械键盘敲击",  _U, 1.50, 0.75, False),
+    ("foley_mouse_double",    "鼠标清脆双击",  _U, 0.45, 0.12, False),
+    ("foley_footsteps_wood",  "木地板脚步声",  _R, 1.80, 0.90, False),
+    ("foley_door_knock",      "礼貌敲门三声",  _R, 1.20, 0.50, False),
+    ("foley_glass_cheers",    "水晶杯碰杯",    _U, 1.40, 0.20, False),
+    ("foley_coffee_pour",     "热咖啡倾倒",    _A, 2.20, 1.10, False),
+    ("foley_soda_can_open",   "汽水开罐气泡",  _U, 1.50, 0.35, False),
+    ("foley_paper_crumple",   "纸张揉团展开",  _U, 1.20, 0.60, False),
+    ("foley_marker_write",    "马克笔疾书",    _U, 1.50, 0.75, False),
+    ("foley_zipper_fast",     "金属拉链拉合",  _U, 0.80, 0.40, False),
+    ("foley_cloth_rustle",    "衣物利落转身",  _T, 0.75, 0.38, False),
+    ("foley_coin_drop",       "金币清脆落盘",  _U, 1.20, 0.20, False),
+    ("foley_cash_register",   "收银机叮当入账",_U, 1.30, 0.25, False),
+    ("foley_stamp_thud",      "印章盖戳定音",  _I, 0.80, 0.15, False),
+    ("foley_book_close",      "厚书合拢回响",  _I, 0.90, 0.15, False),
+    ("foley_scissors_snip",   "剪刀利落裁剪",  _U, 0.65, 0.25, False),
+    ("foley_match_strike",    "火柴划燃瞬间",  _U, 1.10, 0.30, False),
+    ("foley_apple_bite",      "鲜脆咬合声",    _U, 0.85, 0.20, False),
+    # 4. 综艺与短视频爆款音效（14 条新增）
+    ("viral_boing_spring",       "综艺弹簧Q弹",    _R, 0.85, 0.15, False),
+    ("viral_slide_whistle_up",   "滑音笛上扬",     _R, 0.95, 0.50, False),
+    ("viral_slide_whistle_down", "滑音笛滑落",     _R, 1.00, 0.45, False),
+    ("viral_sad_trombone",       "搞笑失落铜管",   _R, 1.80, 0.60, False),
+    ("viral_rimshot_joke",       "冷笑话架子鼓点", _R, 1.20, 0.35, False),
+    ("viral_level_up_chime",     "升级通关提示",   _U, 1.30, 0.40, False),
+    ("viral_correct_ding",       "答题正确双叮",   _U, 1.00, 0.15, False),
+    ("viral_wrong_buzzer",       "答题错误蜂鸣",   _U, 0.90, 0.20, False),
+    ("viral_question_pluck",     "疑问拨弦冒泡",   _U, 0.75, 0.20, False),
+    ("viral_idea_bulb",          "灵感灯泡叮咚",   _U, 1.10, 0.15, False),
+    ("viral_magic_wand",         "魔法仙女棒闪耀", _A, 1.60, 0.45, False),
+    ("viral_shock_stinger",      "震惊悬疑弦乐",   _I, 1.50, 0.15, False),
+    ("viral_hand_clap_group",    "多人欢快拍手",   _R, 1.10, 0.35, False),
+    ("viral_finger_pop_cheek",   "脸颊啵声弹出",   _U, 0.45, 0.10, False),
 ]
 
 
@@ -329,8 +404,84 @@ def verify_provenance(base_dir: str | None = None) -> tuple[bool, list[str]]:
 
 
 def ensure_generated(base_dir: str | None = None) -> bool:
-    """检查 30 条预生成音效文件是否全部就绪。"""
+    """检查 100 条预生成音效文件是否全部就绪。"""
     return not missing_files(base_dir)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 非阻塞即时试听（供转场检查器与音效选择器随手试听）
+# ═══════════════════════════════════════════════════════════════════════════
+
+_preview_proc = None
+_preview_qeffect = None
+
+
+def stop_preview_sfx() -> None:
+    """停止当前正在播放的音效试听（非阻塞，异常安全）。"""
+    global _preview_proc, _preview_qeffect
+    if sys.platform == "win32":
+        try:
+            import winsound
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        except Exception:
+            pass
+    if _preview_proc is not None:
+        try:
+            _preview_proc.terminate()
+        except Exception:
+            pass
+        _preview_proc = None
+    if _preview_qeffect is not None:
+        try:
+            _preview_qeffect.stop()
+        except Exception:
+            pass
+
+
+def preview_sfx(sfx_id: str, base_dir: str | None = None) -> bool:
+    """非阻塞播放指定 sfx_id 的 WAV 音效用于 UI 试听。成功启动返回 True，找不到或失败返回 False。"""
+    global _preview_proc, _preview_qeffect
+    sid = str(sfx_id or "").strip()
+    if not sid or sid.lower() == "none":
+        stop_preview_sfx()
+        return False
+    path = available_path(sid, base_dir=base_dir)
+    if not path:
+        return False
+    abs_path = os.path.abspath(path)
+    if sys.platform == "win32":
+        try:
+            import winsound
+            flags = winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT
+            winsound.PlaySound(abs_path, flags)
+            return True
+        except Exception:
+            _log.exception("[SfxSocial] winsound preview failed for %s", sid)
+    try:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtMultimedia import QSoundEffect
+        if _preview_qeffect is None:
+            _preview_qeffect = QSoundEffect()
+        _preview_qeffect.stop()
+        _preview_qeffect.setSource(QUrl.fromLocalFile(abs_path))
+        _preview_qeffect.setVolume(0.85)
+        _preview_qeffect.play()
+        return True
+    except Exception:
+        pass
+    if sys.platform == "darwin":
+        try:
+            import subprocess
+            stop_preview_sfx()
+            _preview_proc = subprocess.Popen(
+                ["afplay", abs_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return True
+        except Exception:
+            pass
+    return False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -386,6 +537,18 @@ def _get(obj, key, default=None):
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
+
+
+def _set(obj, key, val) -> None:
+    if obj is None:
+        return
+    if isinstance(obj, dict):
+        obj[key] = val
+    else:
+        try:
+            setattr(obj, key, val)
+        except Exception:
+            pass
 
 
 def _resolve_timeline(project_or_timeline):
@@ -487,7 +650,39 @@ def _find_existing(tl, key, mid):
     return hits
 
 
-def attach_transition_sfx(project_or_timeline, track, transition, sfx_id):
+def active_transition_sfx_id(project_or_timeline, track, transition) -> str:
+    """查询转场当前绑定的音效 ID：
+    - 若 transition.sfx_id 显式为 'none'，返回 'none'；
+    - 若 transition.sfx_id 为有效目录 ID，返回该 ID；
+    - 若时间线上已挂载转场音效 clip，返回其对应的 sfx_id；
+    - 否则返回 ''（表示跟随转场预设默认或未指定）。
+    """
+    try:
+        explicit = str(_get(transition, "sfx_id", "") or "").strip()
+        if explicit.lower() == "none":
+            return "none"
+        cat_map = catalog_by_id()
+        if explicit in cat_map:
+            return explicit
+        tl = _resolve_timeline(project_or_timeline)
+        win = transition_window(transition)
+        if tl is not None and win is not None:
+            hits = _find_existing(tl, transition_key(track, transition), (win[0] + win[1]) * 0.5)
+            for _tr, c in hits:
+                cid = str(_get(c, "transition_sfx_id", "") or "").strip()
+                if cid in cat_map:
+                    return cid
+                sp = _source_path(tl, c)
+                if sp:
+                    stem = os.path.splitext(os.path.basename(sp))[0]
+                    if stem in cat_map:
+                        return stem
+    except Exception:
+        _log.exception("[SfxSocial] active_transition_sfx_id failed")
+    return ""
+
+
+def attach_transition_sfx(project_or_timeline, track, transition, sfx_id=None, *, force: bool = False):
     """把 sfx_id 挂到转场上：音效轨（audio_role='sfx'，没有就建），冲击点对齐转场中点。
 
     幂等：同一个转场再调一次不会叠第二条——同音效只重新对齐，换音效就替换。
@@ -498,7 +693,23 @@ def attach_transition_sfx(project_or_timeline, track, transition, sfx_id):
         if tl is None:
             _log.warning("[SfxSocial] attach: no timeline object (%r)", type(project_or_timeline).__name__)
             return None
-        cat = catalog_by_id().get(str(sfx_id or ""))
+        raw_sid = str(sfx_id or "").strip()
+        is_auto = raw_sid in ("", "auto", "default")
+        if raw_sid.lower() in ("none", "off"):
+            detach_transition_sfx(tl, track, transition)
+            _set(transition, "sfx_id", "none")
+            return None
+        if is_auto:
+            if not force and not is_enabled():
+                return None
+            try:
+                from cutora.render.transition_catalog import recommended_sfx
+                raw_sid = str(recommended_sfx(str(_get(transition, "preset", "") or "")) or "")
+            except Exception:
+                raw_sid = ""
+            if not raw_sid:
+                return None
+        cat = catalog_by_id().get(raw_sid)
         if cat is None:
             _log.warning("[SfxSocial] attach: unknown sfx id %r", sfx_id)
             return None
@@ -542,6 +753,9 @@ def attach_transition_sfx(project_or_timeline, track, transition, sfx_id):
             keep.in_t = float(in_t)
             keep.out_t = dur
             keep.transition_sfx_for = key
+            keep.transition_sfx_id = cat["id"]
+            if not is_auto:
+                _set(transition, "sfx_id", cat["id"])
             return keep
 
         sfx_track = _lib.get_or_create_sfx_track(tl)
@@ -564,6 +778,8 @@ def attach_transition_sfx(project_or_timeline, track, transition, sfx_id):
         clip.transition_sfx_for = key
         clip.transition_sfx_id = cat["id"]
         sfx_track.clips.append(clip)
+        if not is_auto:
+            _set(transition, "sfx_id", cat["id"])
         _log.info("[SfxSocial] attach %s → transition %s mid=%.3fs start=%.3fs", cat["id"], key, mid, start)
         return clip
     except Exception:
@@ -571,9 +787,34 @@ def attach_transition_sfx(project_or_timeline, track, transition, sfx_id):
         return None
 
 
+def remove_transition_sfx(project_or_timeline, transition_id_or_obj) -> int:
+    """兼容按 transition_id 或 transition 对象移除转场音效。"""
+    try:
+        tl = _resolve_timeline(project_or_timeline)
+        if tl is None:
+            return 0
+        key = str(transition_id_or_obj or "") if isinstance(transition_id_or_obj, str) else str(_get(transition_id_or_obj, "id", "") or "")
+        removed = 0
+        for tr in getattr(tl, "tracks", []) or []:
+            if _get(tr, "domain", None) != "audio" and _get(tr, "type", None) not in ("audio", "bgm", "sfx"):
+                continue
+            for c in list(_get(tr, "clips", []) or []):
+                if is_transition_sfx_clip(tl, c) and (_get(c, "transition_sfx_for", None) == key):
+                    try:
+                        tr.clips.remove(c)
+                        removed += 1
+                    except (ValueError, AttributeError):
+                        pass
+        return removed
+    except Exception:
+        return 0
+
+
 def detach_transition_sfx(project_or_timeline, track, transition) -> int:
     """删掉挂在该转场上的音效，返回删了几条。"""
     try:
+        if str(_get(transition, "sfx_id", "") or "").strip().lower() != "none":
+            _set(transition, "sfx_id", "")
         tl = _resolve_timeline(project_or_timeline)
         win = transition_window(transition)
         if tl is None or win is None:

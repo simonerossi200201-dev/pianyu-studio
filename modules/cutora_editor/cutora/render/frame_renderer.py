@@ -2050,6 +2050,85 @@ class FrameRenderer:
             from cutora.render.keyframe import bake_host, local_time
             s = bake_host(s, local_time(event if isinstance(event, dict) else s, current_time))
         from cutora.render.textfx import draw as textfx_draw
+
+        t_preset = str(
+            (event or {}).get("transition_preset")
+            or (s or {}).get("transition_preset")
+            or "none"
+        )
+        if current_time is not None and t_preset and t_preset != "none":
+            seg_start = float((event or {}).get("start", 0.0) or 0.0)
+            seg_end = float((event or {}).get("end", 0.0) or 0.0)
+            t_dur = float(
+                (event or {}).get("transition_duration")
+                or (s or {}).get("transition_duration")
+                or anim_engine.DEFAULT_TRANSITION_DURATION
+            )
+            seg_len = max(0.0, seg_end - seg_start)
+            eff_dur = min(t_dur, seg_len * 0.48) if seg_len > 0 else t_dur
+            in_trans = (eff_dur > 1e-4) and (
+                (float(current_time) - seg_start < eff_dur + 1e-4)
+                or (seg_end - float(current_time) < eff_dur + 1e-4)
+            )
+            if in_trans:
+                if anim_engine.is_standalone_transition_preset(t_preset):
+                    vw = max(1, int(video_w or 1080))
+                    vh = max(1, int(video_h or 1920))
+                    sub_img = QImage(vw, vh, QImage.Format.Format_ARGB32_Premultiplied)
+                    sub_img.fill(Qt.GlobalColor.transparent)
+                    sub_p = QPainter(sub_img)
+                    try:
+                        rect = textfx_draw(
+                            sub_p, event, s, current_time, vw, vh, backdrop,
+                            hit_recorder=hit_recorder, seg_idx=seg_idx,
+                            dynamic_layout_list=dynamic_layout_list,
+                            _hit_char_offset=_hit_char_offset,
+                        )
+                    finally:
+                        sub_p.end()
+                    if rect is not None and not rect.isEmpty():
+                        pad = 64
+                        rx = max(0, int(rect.left()) - pad)
+                        ry = max(0, int(rect.top()) - pad)
+                        rw = min(vw - rx, int(rect.width()) + pad * 2)
+                        rh = min(vh - ry, int(rect.height()) + pad * 2)
+                        if rw > 4 and rh > 4:
+                            roi = sub_img.copy(rx, ry, rw, rh)
+                            roi = anim_engine.apply_overlay_standalone_transition(
+                                roi, current_time, seg_start, seg_end, t_preset, eff_dur
+                            )
+                            painter.drawImage(QPoint(rx, ry), roi)
+                            return rect
+                    sub_img = anim_engine.apply_overlay_standalone_transition(
+                        sub_img, current_time, seg_start, seg_end, t_preset, eff_dur
+                    )
+                    painter.drawImage(0, 0, sub_img)
+                    return rect
+                else:
+                    t_op, t_scale, t_dx, t_dy = anim_engine.compute_transition_params(
+                        current_time, seg_start, seg_end, t_preset, eff_dur
+                    )
+                    painter.save()
+                    try:
+                        if t_dx or t_dy:
+                            painter.translate(t_dx, t_dy)
+                        if abs(t_scale - 1.0) > 1e-4:
+                            cx = float(video_w or 1080) * 0.5
+                            cy = float((s or {}).get("pos_y", (video_h or 1920) * 0.75))
+                            painter.translate(cx, cy)
+                            painter.scale(t_scale, t_scale)
+                            painter.translate(-cx, -cy)
+                        if t_op < 0.999:
+                            painter.setOpacity(max(0.0, min(1.0, t_op)) * painter.opacity())
+                        return textfx_draw(
+                            painter, event, s, current_time, video_w, video_h, backdrop,
+                            hit_recorder=hit_recorder, seg_idx=seg_idx,
+                            dynamic_layout_list=dynamic_layout_list,
+                            _hit_char_offset=_hit_char_offset,
+                        )
+                    finally:
+                        painter.restore()
+
         return textfx_draw(
             painter, event, s, current_time, video_w, video_h, backdrop,
             hit_recorder=hit_recorder, seg_idx=seg_idx,

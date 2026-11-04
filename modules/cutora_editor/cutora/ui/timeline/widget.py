@@ -2084,8 +2084,8 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         if vc is not None and hasattr(vc, "update"):
             vc.update()
 
-    def _apply_transition_handle_live(self, real_x):
-        """Live-preview duration while dragging. Opposite edge stays put."""
+    def _apply_transition_handle_live(self, real_x, asymmetric: bool = False):
+        """Live-preview duration while dragging. Default: resize both sides symmetrically around seam."""
         trans_obj = getattr(self, "_trans_drag_obj", None)
         side = getattr(self, "_trans_drag_side", None)
         if trans_obj is None or side not in ("left", "right"):
@@ -2101,7 +2101,14 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         if cover is None:
             cover = orig_start + orig_dur * 0.5
         cover = float(cover)
-        if side == "left":
+        use_asym = bool(asymmetric or getattr(self, "_trans_drag_asymmetric", False))
+        if not use_asym:
+            max_half = max(min_dur * 0.5, min(max(0.0, cover - lo), max(0.0, hi - cover)))
+            raw_half = (cover - t) if side == "left" else (t - cover)
+            half = min(max(min_dur * 0.5, raw_half), max_half)
+            trans_obj.start_t = max(0.0, cover - half)
+            trans_obj.duration = max(min_dur, 2.0 * half)
+        elif side == "left":
             hi_start = min(orig_end - min_dur, cover)
             new_start = min(max(t, lo), hi_start)
             trans_obj.start_t = new_start
@@ -2522,13 +2529,30 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         painter.drawText(area, flag, text)
 
     def _paint_video_track(self, painter, track_obj, row_y, row_h, visible_left, visible_right):
-        """绘制视频轨道的 Clip 条（支持选中高亮 + 变速宽度）。"""
+        """绘制视频轨道的 Clip 条（支持选中高亮 + 变速宽度 + 跨轨拖拽实时预览）。"""
         tl = _tl_of(self.task_data)
         sources = tl.sources if tl else {}
-        clips = getattr(track_obj, "clips", []) or []
+        raw_clips = list(getattr(track_obj, "clips", []) or [])
         sel_vc = self.selected_video_clip  # (Track, Clip) or None
         tid = str(getattr(track_obj, "id", ""))
-        for cidx, clip_obj in enumerate(clips):
+        cross_drag_clip = None
+        if (
+            self.mode == "move_video"
+            and sel_vc is not None
+            and getattr(self, "_drag_source_track", None) is not None
+            and getattr(self, "_drag_target_track", None) is not None
+            and self._drag_source_track is not self._drag_target_track
+        ):
+            cross_drag_clip = sel_vc[1]
+        clips = []
+        for cidx, clip_obj in enumerate(raw_clips):
+            if cross_drag_clip is not None and track_obj is self._drag_source_track and clip_obj is cross_drag_clip:
+                continue
+            clips.append((cidx, clip_obj))
+        if cross_drag_clip is not None and track_obj is self._drag_target_track:
+            if all(c is not cross_drag_clip for _i, c in clips):
+                clips.append((-1, cross_drag_clip))
+        for cidx, clip_obj in clips:
             start_t = float(getattr(clip_obj, "start_t", 0.0))
             eff_dur = float(getattr(clip_obj, "effective_duration", 0.0))
             if eff_dur <= 0:
@@ -3218,12 +3242,17 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         self.selection.clear(emit=False)
 
     def _select_video_clip(self, track, clip, ctrl=False, keep_group=False, linked=True):
+        self._rebuild_av_link_index()
         tid = str(getattr(track, "id", "") or "")
         cidx = self._clip_index_of(track, clip)
         key = (tid, cidx)
         if keep_group and not ctrl and key in self._clip_sel:
             # 点在已选的一条上 → 保留当前选择（多选整组拖，或 Alt+点后的 J/L 单条）
             self._reset_selection(keep_ctrl=True)
+            if linked:
+                self._clip_sel = self._expand_av_link_keys(self._clip_sel)
+            elif len(self._clip_sel) <= 2:
+                self._clip_sel = [key]
         elif ctrl:
             self._reset_selection(keep_ctrl=True)
             if cidx >= 0:
@@ -3257,11 +3286,16 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
         self._publish_selection()
 
     def _select_audio_index(self, track, clip, idx, ctrl=False, keep_group=False, linked=True):
+        self._rebuild_av_link_index()
         tid = str(getattr(track, "id", "") or "")
         cidx = self._clip_index_of(track, clip)
         key = (tid, cidx)
         if keep_group and not ctrl and key in self._clip_sel:
             self._reset_selection(keep_ctrl=True)
+            if linked:
+                self._clip_sel = self._expand_av_link_keys(self._clip_sel)
+            elif len(self._clip_sel) <= 2:
+                self._clip_sel = [key]
         elif ctrl:
             self._reset_selection(keep_ctrl=True)
             if cidx >= 0:
@@ -3878,6 +3912,7 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
     def _begin_av_linked_trim(self, clip, side, *, audio=False):
         """Snapshot AV partners currently in the selection for same-edge live trim."""
         from cutora.model.av_link import clip_timeline_span, partners
+        self._rebuild_av_link_index()
         self._av_trim_side = side
         self._av_trim_primary_audio = bool(audio)
         self._av_trim_primary_span = clip_timeline_span(clip, audio=bool(audio))
@@ -4376,6 +4411,7 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             self._trans_drag_track = t_obj
             self._trans_drag_obj = trans_obj
             self._trans_drag_side = side
+            self._trans_drag_asymmetric = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
             self._trans_orig_start = float(getattr(trans_obj, "start_t", 0.0) or 0.0)
             self._trans_orig_dur = float(getattr(trans_obj, "duration", 0.0) or 0.0)
             cover, lo, hi = self._transition_seam_bounds(t_obj, trans_obj)
@@ -4923,9 +4959,10 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             self.setCursor(Qt.CursorShape.SizeHorCursor)
         else:
             self.unsetCursor()
-        # === Transition Tape 边缘拉拽（对边不动，松手才落命令）===
+        # === Transition Tape 边缘拉拽（默认以接缝为中心左右对称拉长，按住 Alt 单侧调，松手才落命令）===
         if self.mode == "resize_transition" and getattr(self, "_trans_drag_obj", None) is not None:
-            self._apply_transition_handle_live(real_x)
+            asym = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
+            self._apply_transition_handle_live(real_x, asymmetric=asym)
             trans_obj = self._trans_drag_obj
             self.update()
             self.item_selected.emit("transition", trans_obj)
@@ -4971,8 +5008,6 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                     clip_obj.out_t = new_out
                 else:
                     new_end = max(new_time, start_t + self.MIN_DUR)
-                    if max_time is not None:
-                        new_end = min(new_end, max_time)
                     new_end = self._apply_snap_trim(
                         new_end, start_t, False,
                         self._clip_neighbors(_tr, clip_obj), event)
@@ -4980,6 +5015,8 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                         clip_obj, "right", new_end,
                         speed_mode=(getattr(self, "tool", "select") == TOOL_SPEED),
                         min_dur=self.MIN_DUR)
+                    if int((new_end + 2.0) * 1000) > int(getattr(self, "duration", 0) or 0):
+                        self.duration = int((new_end + 2.0) * 1000)
             else:
                 if is_intro:
                     # 开场视频：左拉伸 → 直接改 in_t（裁切源素材开头），start_t 也改变
@@ -5014,6 +5051,13 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             if not self._maybe_alt_copy_live(real_x, "video"):
                 return
             _tr, clip_obj = self.selected_video_clip
+            # 开场视频拖拽时不切换 track；普通视频支持跨轨道拖放（即使带有已链接的音频伙伴）
+            is_intro = getattr(self, "_intro_drag_is_intro", False)
+            if not is_intro:
+                target_track = self._pos_to_track(event.pos().y())
+                if target_track is not None and getattr(target_track, "type", None) == "video" and self.can_edit_track(target_track):
+                    self._drag_target_track = target_track
+            dest_tr = getattr(self, "_drag_target_track", None) or _tr
             delta = (real_x - self._video_drag_start_x) / self.pixels_per_second
             new_start = max(0, self._video_drag_orig_start + delta)
             orig_dur = max(
@@ -5023,19 +5067,13 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                     - float(getattr(clip_obj, "in_t", 0.0))))
             new_start = self._apply_snap_move(
                 new_start, new_start + orig_dur,
-                self._clip_neighbors(_tr, clip_obj), event)
+                self._clip_neighbors(dest_tr, clip_obj), event)
             clip_obj.start_t = new_start
+            if int((new_start + orig_dur + 2.0) * 1000) > int(getattr(self, "duration", 0) or 0):
+                self.duration = int((new_start + orig_dur + 2.0) * 1000)
             if self._clip_group_orig and not getattr(self, "_alt_copy_did", False):
-                # Q145：多选整组一起移（同一时间差，不换轨）
+                # 关联的音频伙伴或组内片段跟随同一时间差平移，同时保留目标视频轨道切换
                 self._clip_group_apply(new_start - self._video_drag_orig_start)
-                self.update()
-                return
-            # 开场视频拖拽时不切换 track
-            is_intro = getattr(self, "_intro_drag_is_intro", False)
-            if not is_intro:
-                target_track = self._pos_to_track(event.pos().y())
-                if target_track is not None and getattr(target_track, "type", None) == "video" and self.can_edit_track(target_track):
-                    self._drag_target_track = target_track
             self.update()
         elif self.mode in ['resize_audio_right', 'resize_audio_left'] and self.selected_audio_idx is not None:
             from cutora.ui.timeline.tools import TOOL_SPEED, trim_clip_edge
@@ -5056,14 +5094,14 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
                     and getattr(self, "tool", "select") == TOOL_SPEED)
                 if self.mode == 'resize_audio_right':
                     new_end = max(new_time, start + self.MIN_DUR)
-                    if max_time is not None:
-                        new_end = min(new_end, max_time)
                     new_end = self._apply_snap_trim(
                         new_end, start, False,
                         self._clip_neighbors(tr, clip_obj), event)
                     trim_clip_edge(
                         clip_obj, "right", new_end,
                         speed_mode=speed_mode, min_dur=self.MIN_DUR)
+                    if int((new_end + 2.0) * 1000) > int(getattr(self, "duration", 0) or 0):
+                        self.duration = int((new_end + 2.0) * 1000)
                 else:
                     new_start = min(new_time, end - self.MIN_DUR)
                     new_start = max(0, new_start)
@@ -5081,27 +5119,21 @@ class TimelineWidget(TimelineOpsMixin, QWidget):
             ac_list = self._get_audio_clip_list()
             if 0 <= self.selected_audio_idx < len(ac_list):
                 clip_obj, _ = ac_list[self.selected_audio_idx]
+                target_track = self._pos_to_track(event.pos().y())
+                if target_track is not None and getattr(target_track, "type", None) == "audio" and self.can_edit_track(target_track):
+                    self._drag_target_track = target_track
                 delta = (real_x - self._audio_drag_start_x) / self.pixels_per_second
                 new_start = max(0, self._audio_drag_orig_start + delta)
                 orig_dur = max(self.MIN_DUR, self._audio_drag_orig_end - self._audio_drag_orig_start)
-                new_end = new_start + orig_dur
-                if max_time is not None:
-                    if new_end > max_time:
-                        shift = new_end - max_time
-                        new_start = max(0, new_start - shift)
-                        new_end = max_time
-                tr = self._track_of_clip(clip_obj)
+                tr = getattr(self, "_drag_target_track", None) or self._track_of_clip(clip_obj)
                 new_start = self._apply_snap_move(
                     new_start, new_start + orig_dur,
                     self._clip_neighbors(tr, clip_obj), event)
                 clip_obj.start_t = new_start
+                if int((new_start + orig_dur + 2.0) * 1000) > int(getattr(self, "duration", 0) or 0):
+                    self.duration = int((new_start + orig_dur + 2.0) * 1000)
                 if self._clip_group_orig and not getattr(self, "_alt_copy_did", False):
                     self._clip_group_apply(new_start - self._audio_drag_orig_start)
-                    self.update()
-                    return
-                target_track = self._pos_to_track(event.pos().y())
-                if target_track is not None and getattr(target_track, "type", None) == "audio" and self.can_edit_track(target_track):
-                    self._drag_target_track = target_track
                 # out_t - in_t = 时长保持不变，只移动 start_t
                 self.update()
         elif self.mode in ['resize_overlay_right', 'resize_overlay_left'] and self.selected_overlay is not None:

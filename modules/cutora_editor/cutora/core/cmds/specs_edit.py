@@ -819,6 +819,7 @@ def build() -> list:
                 "start_t": s("number", "新的转场起点（秒）"),
                 "duration": s("number", "新的转场时长（秒）"),
                 "preset": s("string", "可选，同时改预设名"),
+                "sfx_id": s("string", "可选，指定转场绑定音效 id（none 表示无音效，auto 表示跟随预设）"),
             },
             required=["track_id"],
             undoable=True,

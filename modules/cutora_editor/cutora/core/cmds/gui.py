@@ -236,6 +236,8 @@ def cmd_timeline_set_transition(ctx: Context, params: dict) -> dict:
     }
     if params.get("preset") is not None:
         kwargs["preset"] = str(params.get("preset") or "")
+    if params.get("sfx_id") is not None:
+        kwargs["sfx_id"] = str(params.get("sfx_id") or "")
     return _call(ctx, "command_set_transition", **kwargs)
 
 

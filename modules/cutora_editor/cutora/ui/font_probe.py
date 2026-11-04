@@ -28,7 +28,16 @@ HANG_S = 12.0
 SLOW_MS = 1500.0
 STARTUP_S = 90
 SAMPLE = "When God is leading 字幕 مرحبا AaBbGg 123"
-VERSION = 1
+VERSION = 2
+
+# 已知在 Windows DirectWrite 下調用 QPainterPath.addText 會觸發 C++ 死循環與數十 GB 內存暴漲的 COLRv1 彩色可變字體
+KNOWN_BAD_FAMILIES = frozenset({
+    "Bitcount Prop Single Ink",
+    "Honk",
+    "Kalnia Glaze",
+    "Nabla",
+    "Sixtyfour Convergence",
+})
 
 _STATE = {"probe": None}
 
@@ -48,7 +57,7 @@ def _child_main(progress_path: str, todo_path: str) -> int:
     app = QApplication.instance() or QApplication(["cutora-font-probe"])
     _ = app
     from cutora.ui.panels import fonts as F
-    F.load_embedded_fonts()
+    F.load_embedded_fonts(lazy=True)
     try:
         with open(todo_path, encoding="utf-8") as fh:
             fams = [str(f) for f in json.load(fh)]
@@ -65,14 +74,20 @@ def _child_main(progress_path: str, todo_path: str) -> int:
     fx["emphasis"] = {"words": ["God"], "colors": ["#FFFF00"], "color": "#FFFF00", "scale": 1.25,
                       "type": "solid", "font": "emphasis"}
     task = {"text_overlays": [ov], "image_overlays": [], "segments": [], "style": {}, "dims": (1080, 1920)}
+    mgr = F.get_font_manager()
     with open(progress_path, "a", encoding="utf-8") as out:
         for i in range(len(fams)):
             fam = fams[i]
+            if fam in KNOWN_BAD_FAMILIES:
+                out.write("E\t%d\t%s\tknown_colrv1_dwrite_oom\n" % (i, fam))
+                out.flush()
+                continue
             out.write("S\t%d\t%s\n" % (i, fam))
             out.flush()
             t0 = time.perf_counter()
             try:
-                font = F.get_font_manager().get_font(fam, 72)
+                mgr._ensure_family_loaded(fam)
+                font = mgr.get_font(fam, 72)
                 img = QImage(1400, 220, QImage.Format.Format_ARGB32_Premultiplied)
                 img.fill(0)
                 p = QPainter(img)
@@ -82,9 +97,9 @@ def _child_main(progress_path: str, todo_path: str) -> int:
                     p.drawText(QRectF(0, 0, 1400, 220), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                                SAMPLE)
                     path = QPainterPath()
-                    path.addText(10, 150, F.get_font_manager().get_font(fam, 68), SAMPLE)
+                    path.addText(10, 150, mgr.get_font(fam, 68), SAMPLE)
                     p.fillPath(path, QColor("#FFFFFF"))
-                    p.setFont(F.get_font_manager().get_font(fam, 15))   # 字体列表里那一行的大小
+                    p.setFont(mgr.get_font(fam, 15))   # 字体列表里那一行的大小
                     p.drawText(QRectF(0, 190, 600, 30), Qt.AlignmentFlag.AlignLeft, fam)
                 finally:
                     p.end()
@@ -211,7 +226,10 @@ class FontProbe:
 
     def _refresh_blocked(self) -> None:
         with self._lock:
-            self._blocked = frozenset(f for f, r in self.results.items() if r.get("status") in ("hang", "crash"))
+            self._blocked = frozenset(
+                {f for f, r in self.results.items() if r.get("status") in ("hang", "crash")}
+                | set(KNOWN_BAD_FAMILIES)
+            )
             if self.complete or self.gave_up:
                 self._gate = frozenset()
             else:
@@ -275,6 +293,9 @@ class FontProbe:
         try:
             self._order = probe_order()
             self._risky = frozenset(risky_families())
+            for bad_fam in KNOWN_BAD_FAMILIES:
+                if bad_fam in self._order:
+                    self._mark_bad(bad_fam, {"status": "hang", "ms": HANG_S * 1000.0, "reason": "known_colrv1_dwrite_oom"}, self._order)
         except Exception:
             self._order, self._risky = [], frozenset()
         self._refresh_blocked()

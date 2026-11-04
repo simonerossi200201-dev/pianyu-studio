@@ -401,16 +401,6 @@
       "has_license_file": true
     },
     {
-      "file": "fonts/Bitcount_Prop_Single_Ink/BitcountPropSingleInk-VariableFont_CRSV,ELSH,ELXP,SZP1,SZP2,XPN1,XPN2,YPN1,YPN2,slnt,wght.ttf",
-      "family": "Bitcount Prop Single Ink",
-      "version": "Version 1.002",
-      "license": "OFL-1.1",
-      "license_url": "https://openfontlicense.org",
-      "copyright": "Copyright 2024 The Bitcount Project Authors (https://github.com/petrvanblokland/TYPETR-Bitcount)",
-      "sha256": "4f7631fe7814ff4450ea18183fc5af4066a88bb2148e3b7b44800ef32e2fef68",
-      "has_license_file": true
-    },
-    {
       "file": "fonts/Black_Ops_One/BlackOpsOne-Regular.ttf",
       "family": "Black Ops One",
       "version": "Version 1.004; ttfautohint (v1.8.4.7-5d5b)",
@@ -1181,16 +1171,6 @@
       "has_license_file": true
     },
     {
-      "file": "fonts/Honk/Honk-Regular-VariableFont_MORF,SHLN.ttf",
-      "family": "Honk",
-      "version": "Version 1.000",
-      "license": "OFL-1.1",
-      "license_url": "https://scripts.sil.org/OFL",
-      "copyright": "Copyright 2023 The Honk Project Authors (https://github.com/EkType/Honk)",
-      "sha256": "15e7ad8baa67177ae4e74b25302ffec688ef5bbe8b07d4ad3568dc90261cc0fe",
-      "has_license_file": true
-    },
-    {
       "file": "fonts/Huninn/Huninn-Regular.ttf",
       "family": "粉圓",
       "version": "Version 1.003",
@@ -1416,16 +1396,6 @@
       "license_url": "http://scripts.sil.org/OFL",
       "copyright": "Copyright (c) 2014 Indian Type Foundry (info@indiantypefoundry.com)",
       "sha256": "c2a5822e35bd9826735baf8cea549534fd300c979129299d327a155ed9ef667f",
-      "has_license_file": true
-    },
-    {
-      "file": "fonts/Kalnia_Glaze/KalniaGlaze-VariableFont_wdth,wght.ttf",
-      "family": "Kalnia Glaze Thin",
-      "version": "Version 1.110",
-      "license": "OFL-1.1",
-      "license_url": "https://openfontlicense.org",
-      "copyright": "Copyright 2022 The Kalnia Glaze Project Authors (https://github.com/fridamedrano/Kalnia-Glaze)",
-      "sha256": "8e28e593e391d03205dd7880510a14ae20c55c9ee6c63efe5f5974b3009d229b",
       "has_license_file": true
     },
     {
@@ -2001,16 +1971,6 @@
       "license_url": "https://scripts.sil.org/OFL",
       "copyright": "Copyright 2010 The Monofett Project Authors (https://github.com/googlefonts/monofett), with Reserved Font Name Monofett.",
       "sha256": "6ae7115dfcaf819a618f0d98850dbf760305fd911d5dc827383d8feef9da046b",
-      "has_license_file": true
-    },
-    {
-      "file": "fonts/Nabla/Nabla-Regular-VariableFont_EDPT,EHLT.ttf",
-      "family": "Nabla",
-      "version": "Version 1.003",
-      "license": "OFL-1.1",
-      "license_url": "https://scripts.sil.org/OFL",
-      "copyright": "Copyright 2022 The Nabla Project Authors (https://github.com/justvanrossum/nabla)",
-      "sha256": "098490378578565b1b9e326a422cad54914bbaf6df68e373be3050265a399d86",
       "has_license_file": true
     },
     {
@@ -3085,16 +3045,6 @@
       "has_license_file": true
     },
     {
-      "file": "fonts/Sixtyfour_Convergence/SixtyfourConvergence-Regular-VariableFont_BLED,SCAN,XELA,YELA.ttf",
-      "family": "Sixtyfour Convergence",
-      "version": "Version 2.001",
-      "license": "OFL-1.1",
-      "license_url": "https://openfontlicense.org",
-      "copyright": "Copyright 2021 The Sixtyfour Convergence Project Authors (https://github.com/jenskutilek/homecomputer-fonts)",
-      "sha256": "2010e3e2ca962d0912fe7f23c886aecff19b1895526d3b40411cc9ce8e53dd87",
-      "has_license_file": true
-    },
-    {
       "file": "fonts/Sonsie_One/SonsieOne-Regular.ttf",
       "family": "Sonsie One",
       "version": "Version 1.003",
@@ -3532,5 +3482,6 @@
       "status": "registered (UI)",
       "download_url": "https://raw.githubusercontent.com/google/fonts/main/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf"
     }
-  ]
+  ],
+  "total_files": 322
 }

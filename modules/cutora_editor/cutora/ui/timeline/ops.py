@@ -1172,20 +1172,60 @@ class TimelineOpsMixin:
         return delta
 
     def _clip_group_commit(self, primary_track, primary_clip, primary_orig_start) -> bool:
-        """整组拖动松手：全部退回原位，一条 move_clips 命令写入（一次撤销）。"""
+        """整组拖动松手：全部退回原位，一条 move_clips（或含跨轨 move_clip_to_track）命令写入（一次撤销）。"""
         rows = self._clip_group_orig
         self._clip_group_orig = None
         if not rows:
             return False
+        dest = getattr(self, "_drag_target_track", None)
+        dest_id = str(getattr(dest, "id", "") or "") if dest is not None else ""
+        src_id = str(getattr(primary_track, "id", "") or "") if primary_track is not None else ""
+        track_changed = bool(dest is not None and dest is not primary_track and dest_id and dest_id != src_id)
+        primary_final_start = float(getattr(primary_clip, "start_t", 0.0))
         final = [(t, c, float(getattr(c, "start_t", 0.0))) for t, c, _s in rows]
-        final.append((primary_track, primary_clip, float(getattr(primary_clip, "start_t", 0.0))))
+        final.append((primary_track, primary_clip, primary_final_start))
         origs = [(t, c, s) for t, c, s in rows] + [(primary_track, primary_clip, float(primary_orig_start))]
-        if all(abs(f[2] - o[2]) < 1e-6 for f, o in zip(final, origs)):
+        if not track_changed and all(abs(f[2] - o[2]) < 1e-6 for f, o in zip(final, origs)):
             for t, c, s in origs:
                 c.start_t = s
             return True
         for t, c, s in origs:
             c.start_t = s
+        if track_changed:
+            primary_bag = list(getattr(primary_track, "clips", []) or [])
+            if primary_clip not in primary_bag:
+                return False
+            primary_idx = primary_bag.index(primary_clip)
+            partner_items = []
+            for t, c, s in final[:-1]:
+                bag = list(getattr(t, "clips", []) or [])
+                if c in bag:
+                    partner_items.append({"track_id": str(getattr(t, "id", "")), "clip_index": bag.index(c), "start": s})
+
+            def _do_cross_move():
+                ok = self._bus_execute("timeline.move_clip_to_track", {
+                    "track_id": src_id,
+                    "clip_index": primary_idx,
+                    "dest_track_id": dest_id,
+                    "start": primary_final_start,
+                })
+                if ok and partner_items:
+                    self._bus_execute("timeline.move_clips", {"clips": partner_items})
+
+            self._one_undo("移动片段", _do_cross_move)
+            if self.selected_video_clip is not None and dest is not None:
+                self.selected_video_clip = (dest, primary_clip)
+                self.selected_track = dest
+                self._select_video_clip(dest, primary_clip, linked=True)
+            elif self.selected_audio_idx is not None and dest is not None:
+                new_list = self._get_audio_clip_list()
+                for i, (c, _) in enumerate(new_list):
+                    if c is primary_clip:
+                        self.selected_audio_idx = i
+                        self._select_audio_index(dest, primary_clip, i, linked=True)
+                        break
+                self.selected_track = dest
+            return True
         items = []
         for t, c, s in final:
             bag = list(getattr(t, "clips", []) or [])

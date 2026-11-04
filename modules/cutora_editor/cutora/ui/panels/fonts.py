@@ -134,9 +134,27 @@ def save_font_metadata():
     except Exception:
         return False
 
+_LOCALIZED_FAMILY_ALIASES = {
+    "WDXL 滑油字 SC": "WDXL Lubrifont SC",
+    "WDXL Lubrifont SC": "WDXL 滑油字 SC",
+    "霞鹜文楷 TC": "LXGW WenKai TC",
+    "LXGW WenKai TC": "霞鹜文楷 TC",
+    "仙人掌明體": "Cactus Classical Serif",
+    "Cactus Classical Serif": "仙人掌明體",
+    "朱古力黑體": "Chocolate Classical Sans",
+    "Chocolate Classical Sans": "朱古力黑體",
+    "粉圓": "Huninn",
+    "Huninn": "粉圓",
+    "芫荽": "Iansui",
+    "Iansui": "芫荽",
+}
+
 def _iter_font_files():
     exts = {".ttf", ".otf", ".ttc"}
-    skip_dir_names = {"_quarantine", "_extra", "fonts_pending", "Noto_Color_Emoji"}
+    skip_dir_names = {
+        "_quarantine", "_extra", "fonts_pending", "Noto_Color_Emoji",
+        "Bitcount_Prop_Single_Ink", "Honk", "Kalnia_Glaze", "Nabla", "Sixtyfour_Convergence",
+    }
     files = []
     if os.path.isdir(FONT_DIR):
         for root, dirs, filenames in os.walk(FONT_DIR):
@@ -457,9 +475,13 @@ class FontManager:
             return self.register()
         FONT_FILES.clear()
         FONT_FILES.update(fam_files)
+        for fam_k, paths_v in list(fam_files.items()):
+            alias_k = _LOCALIZED_FAMILY_ALIASES.get(fam_k)
+            if alias_k and alias_k not in FONT_FILES:
+                FONT_FILES[alias_k] = paths_v
         self.font_files = FONT_FILES
         ALLOWED_FONTS[:] = sorted(f for f in fam_files.keys() if f != "Noto Color Emoji")
-        self._family_name_map = {f: f for f in fam_files}
+        self._family_name_map = {f: f for f in FONT_FILES}
         self._registered = True
         _mark_fonts_registered()
         self._ensure_family_loaded(DEFAULT_FONT_FAMILY)
@@ -489,9 +511,13 @@ class FontManager:
                 _log_no_loadable(stats)
                 return False
         self._family_name_map = {}
-        for family in self.font_files:
+        for family in list(self.font_files):
             if family and family not in self._family_name_map:
                 self._family_name_map[family] = "?????" if family == "ZCOOL XiaoWei" else family
+            alias = _LOCALIZED_FAMILY_ALIASES.get(family)
+            if alias and alias not in self._family_name_map:
+                self._family_name_map[alias] = self._family_name_map[family]
+                self.font_files.setdefault(alias, self.font_files[family])
         seen_files = set()
         loaded = 0
         # DirectWrite exposes variable-font named instances as extra family
@@ -804,6 +830,14 @@ def resolve_font_request(name) -> dict:
         rec = {
             "requested": raw, "family": raw, "style": None,
             "kind": "exact", "reason": "",
+        }
+        LAST_FONT_RESOLVE = rec
+        return rec
+    alias_fam = _LOCALIZED_FAMILY_ALIASES.get(raw)
+    if alias_fam and alias_fam in ALLOWED_FONTS:
+        rec = {
+            "requested": raw, "family": alias_fam, "style": None,
+            "kind": "exact", "reason": "localized_alias",
         }
         LAST_FONT_RESOLVE = rec
         return rec

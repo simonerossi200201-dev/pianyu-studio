@@ -3311,6 +3311,9 @@ class MainWindow(CommandBodies, QMainWindow):
         from cutora.ui.panels.transition_panel import TransitionPanel
         self.transition_panel = TransitionPanel()
         self.transition_panel.apply_requested.connect(self._on_apply_transition)
+        self.transition_panel.apply_to_all_requested.connect(self._on_apply_transition_to_all_seams)
+        self.transition_panel.apply_to_video_split_requested.connect(self._on_apply_transition_to_video_split)
+        self.transition_panel.apply_to_subtitles_text_requested.connect(self._on_apply_transition_to_subtitles_text)
         self.left_tabs.addTab(self.transition_panel, tr("转场"))
         from cutora.ui.asr_batch_results import AsrBatchResults
         self._asr_batch_results = AsrBatchResults(self)
@@ -5083,10 +5086,12 @@ class MainWindow(CommandBodies, QMainWindow):
             if not self._ensure_timeline_template():
                 return
 
-        # 必须先有当前 task
+        # 必须先有当前 task（空白工程拖入素材时自动创建承接工程）
         if self.curr_idx < 0 or self.curr_idx >= len(self.tasks):
-            QMessageBox.information(self, "提示", "请先导入一个视频文件（拖到左侧文件列表）")
-            return
+            if hasattr(self, "_ensure_task_for_overlay"):
+                self._ensure_task_for_overlay()
+            if self.curr_idx < 0 or self.curr_idx >= len(self.tasks):
+                return
 
         ext = os.path.splitext(path)[1].lower()
         task = self.tasks[self.curr_idx]
@@ -5403,9 +5408,10 @@ class MainWindow(CommandBodies, QMainWindow):
             if not self._ensure_timeline_template():
                 return
         if self.curr_idx < 0 or self.curr_idx >= len(self.tasks):
-            QMessageBox.information(
-                self, "提示", "请先导入一个视频文件（拖到左侧文件列表）")
-            return
+            if hasattr(self, "_ensure_task_for_overlay"):
+                self._ensure_task_for_overlay()
+            if self.curr_idx < 0 or self.curr_idx >= len(self.tasks):
+                return
         task = self.tasks[self.curr_idx]
         tl = _tl_of(task)
         if tl is None:
@@ -5489,16 +5495,8 @@ class MainWindow(CommandBodies, QMainWindow):
     _AUDIO_PROBE_OK = frozenset({"E_BAD_FORMAT", "E_NO_VIDEO_STREAM"})
 
     def _pending_drop_duration(self, task, start_t):
-        """Seconds to reserve now, or None if the drop point is past the main video."""
-        dur = float(self._DROP_PENDING_SEC)
-        main_dur = _get_main_video_duration(task)
-        if isinstance(main_dur, (int, float)) and main_dur > 0:
-            remaining = max(0.0, float(main_dur) - float(start_t))
-            if remaining <= 0.0:
-                self.statusBar().showMessage("导入位置已超出主视频时长，未添加素材", 3000)
-                return None
-            dur = min(dur, remaining)
-        return dur
+        """Seconds to reserve now while import_probe is running."""
+        return float(self._DROP_PENDING_SEC)
 
     def _note_drop_slot(self, slot):
         batch = getattr(self, "_active_drop_batch", None)
@@ -5526,22 +5524,13 @@ class MainWindow(CommandBodies, QMainWindow):
         queue_import_probe(slot["path"], _done)
 
     def _drop_span_duration(self, task, start_t, known):
-        """Clamp a known or pending duration to the main video, if there is one."""
+        """Return full natural duration of dropped clip (never truncate video/audio to old main_dur)."""
         if known is None:
-            dur = float(self._DROP_PENDING_SEC)
-        else:
-            try:
-                dur = float(known)
-            except (TypeError, ValueError):
-                dur = 0.0
-        main_dur = _get_main_video_duration(task)
-        if isinstance(main_dur, (int, float)) and main_dur > 0:
-            remaining = max(0.0, float(main_dur) - float(start_t))
-            if remaining <= 0.0:
-                return 0.0
-            if dur <= 0.0:
-                return remaining
-            return min(dur, remaining)
+            return float(self._DROP_PENDING_SEC)
+        try:
+            dur = float(known)
+        except (TypeError, ValueError):
+            dur = 0.0
         return max(0.0, dur)
 
     def _write_drop_span(self, slot, start_t, dur):
@@ -5568,6 +5557,18 @@ class MainWindow(CommandBodies, QMainWindow):
                 src.duration = float(known)
             except (TypeError, ValueError):
                 src.duration = float(dur)
+        task = slot.get("task")
+        if isinstance(task, dict) and known is not None and dur > 0:
+            end_edge = float(start_t) + float(dur)
+            old_dur = float(task.get("duration") or 0.0)
+            old_trim = task.get("trim_end_sec")
+            if slot.get("promoted_main_video"):
+                task["duration"] = end_edge
+                task["trim_end_sec"] = end_edge
+            elif end_edge > old_dur:
+                task["duration"] = end_edge
+                if old_trim is None or float(old_trim or 0.0) >= old_dur - 0.05:
+                    task["trim_end_sec"] = end_edge
 
     def _relayout_drop_batch(self, batch):
         if not batch:
@@ -5730,6 +5731,10 @@ class MainWindow(CommandBodies, QMainWindow):
         try:
             from cutora.preview.engine import timeline_duration_sec
             self.timeline.set_data(int(timeline_duration_sec(task) * 1000), task)
+            if hasattr(self.timeline, "_rebuild_av_link_index"):
+                self.timeline._rebuild_av_link_index()
+            if getattr(self.timeline, "_clip_sel", None) and hasattr(self.timeline, "_expand_av_link_keys"):
+                self.timeline._clip_sel = self.timeline._expand_av_link_keys(self.timeline._clip_sel)
             self.timeline.update()
             if hasattr(self, "video_canvas"):
                 self.video_canvas.update()
@@ -5871,9 +5876,33 @@ class MainWindow(CommandBodies, QMainWindow):
             video_track = target_track
         else:
             video_track = get_or_create_track(tl, "video")
+
+        promoted_main = False
+        if isinstance(task, dict) and not task.get("video"):
+            task["video"] = path
+            promoted_main = True
+            has_any_main_track = any(
+                getattr(t, "type", None) == "video" and getattr(t, "is_main_video", False)
+                for t in (getattr(tl, "tracks", None) or [])
+            )
+            if not has_any_main_track:
+                video_track.is_main_video = True
+                if not getattr(video_track, "name", ""):
+                    video_track.name = "主视频"
+            try:
+                if hasattr(self, "file_list") and 0 <= int(getattr(self, "curr_idx", -1)) < self.file_list.count():
+                    it = self.file_list.item(int(self.curr_idx))
+                    if it is not None:
+                        it.setText(os.path.basename(path))
+                if hasattr(self, "_relabel_library_rows"):
+                    self._relabel_library_rows()
+            except Exception:
+                pass
+
         vclip = Clip(src.id, 0.0, dur, start_t)
         drop_gid = uuid.uuid4().hex
         vclip.link_group_id = drop_gid
+        vclip.is_main = bool(getattr(video_track, "is_main_video", False))
         vclip.loop = bool(loop)
         vclip.fit_mode = fit_mode
         vclip.blend_mode = "normal"
@@ -5897,6 +5926,7 @@ class MainWindow(CommandBodies, QMainWindow):
             "duration": None,
             "removed": False,
             "done": False,
+            "promoted_main_video": promoted_main,
         }
         self._note_drop_slot(slot)
         self._queue_drop_probe(slot)
@@ -14216,6 +14246,194 @@ class MainWindow(CommandBodies, QMainWindow):
             self.timeline.selected_seam = None
             self.timeline.selected_transition = (track, trans)
             self.timeline.update()
+
+    def _on_apply_transition_to_all_seams(self, preset, domain="visual", duration=0.0):
+        from cutora.model.seams import clip_span, find_seams, transition_at_seam
+        from cutora.model.timeline_model import TransitionItem
+        from cutora.render.anim_engine import audio_transition_duration
+        from cutora.render.transition_catalog import recommended_duration
+
+        if not (0 <= getattr(self, "curr_idx", -1) < len(getattr(self, "tasks", None) or [])):
+            self.statusBar().showMessage("请先导入或创建一个工程任务", 4000)
+            return
+        task = self.tasks[self.curr_idx]
+        tl = _tl_of(task)
+        if tl is None:
+            self.statusBar().showMessage("当前没有时间线", 4000)
+            return
+        want_dom = "audio" if str(domain or "visual") == "audio" else "visual"
+        eff_dur = float(duration or 0.0)
+        if eff_dur <= 0:
+            eff_dur = (
+                audio_transition_duration(preset)
+                if want_dom == "audio"
+                else recommended_duration(str(preset or ""), 1.2)
+            )
+        fps = self.timeline._timeline_fps() if hasattr(self.timeline, "_timeline_fps") else 30.0
+        count = 0
+        self.push_undo("批量应用转场到全部接缝")
+        try:
+            for tr in getattr(tl, "tracks", []) or []:
+                tr_dom = getattr(tr, "domain", "visual")
+                if (tr_dom == "audio") != (want_dom == "audio"):
+                    continue
+                if want_dom == "visual" and getattr(tr, "type", None) != "video":
+                    continue
+                seams = list(find_seams(tr, fps=fps))
+                clips = list(getattr(tr, "clips", []) or [])
+                for left_i, right_i, seam_t in seams:
+                    if 0 <= left_i < len(clips):
+                        _s, left_end = clip_span(clips[left_i])
+                        seam_t = left_end
+                    existing = transition_at_seam(tr, seam_t, fps=fps)
+                    start_t = max(0.0, float(seam_t) - eff_dur * 0.5)
+                    if existing is not None:
+                        existing.preset = str(preset or "")
+                        existing.duration = eff_dur
+                        existing.start_t = start_t
+                        t_obj = existing
+                    else:
+                        t_obj = TransitionItem(
+                            start_t=start_t,
+                            duration=eff_dur,
+                            preset=str(preset or ""),
+                            domain=want_dom,
+                        )
+                        tr.transitions.append(t_obj)
+                    if want_dom == "visual":
+                        try:
+                            from cutora.audio import sfx_social
+                            sfx_social.attach_transition_sfx(tl, tr, t_obj)
+                        except Exception:
+                            pass
+                    count += 1
+        finally:
+            self.capture_undo_after()
+        self.timeline.update()
+        if hasattr(self, "video_canvas") and self.video_canvas is not None:
+            self.video_canvas.update()
+        if count > 0:
+            self.statusBar().showMessage(f"已将转场「{preset}」批量应用到 {count} 处接缝", 3500)
+        else:
+            self.statusBar().showMessage("当前时间线没有可添加转场的接缝（可使用「批量应用到视频/分屏」直接作用于片段）", 4000)
+
+    def _on_apply_transition_to_video_split(self, preset, duration=0.0):
+        from cutora.model.seams import clip_span, find_seams, transition_at_seam
+        from cutora.model.timeline_model import TransitionItem
+        from cutora.render.transition_catalog import recommended_duration
+
+        if not (0 <= getattr(self, "curr_idx", -1) < len(getattr(self, "tasks", None) or [])):
+            self.statusBar().showMessage("请先导入或创建一个工程任务", 4000)
+            return
+        task = self.tasks[self.curr_idx]
+        tl = _tl_of(task)
+        base = str(preset or "cross_dissolve")
+        for suf in ("_in", "_out", "_both"):
+            if base.endswith(suf):
+                base = base[: -len(suf)]
+                break
+        scoped = f"{base}_both" if base and base != "none" else "none"
+        eff_dur = float(duration or 0.0)
+        if eff_dur <= 0:
+            eff_dur = recommended_duration(base, 1.2)
+        clip_count = 0
+        ov_count = 0
+        seam_count = 0
+        fps = self.timeline._timeline_fps() if hasattr(self.timeline, "_timeline_fps") else 30.0
+        self.push_undo("批量应用转场到视频/分屏")
+        try:
+            if tl is not None:
+                for tr in getattr(tl, "tracks", []) or []:
+                    if getattr(tr, "type", None) != "video":
+                        continue
+                    for c in getattr(tr, "clips", []) or []:
+                        c.transition_preset = scoped
+                        c.transition_duration = eff_dur
+                        clip_count += 1
+                    seams = list(find_seams(tr, fps=fps))
+                    clips = list(getattr(tr, "clips", []) or [])
+                    for left_i, right_i, seam_t in seams:
+                        if 0 <= left_i < len(clips):
+                            _s, left_end = clip_span(clips[left_i])
+                            seam_t = left_end
+                        existing = transition_at_seam(tr, seam_t, fps=fps)
+                        start_t = max(0.0, float(seam_t) - eff_dur * 0.5)
+                        if existing is not None:
+                            existing.preset = base
+                            existing.duration = eff_dur
+                            existing.start_t = start_t
+                        else:
+                            tr.transitions.append(TransitionItem(
+                                start_t=start_t,
+                                duration=eff_dur,
+                                preset=base,
+                                domain="visual",
+                            ))
+                        seam_count += 1
+            for ov in task.get("image_overlays", []) or []:
+                if isinstance(ov, dict):
+                    ov["transition_preset"] = scoped
+                    ov["transition_duration"] = eff_dur
+                    ov_count += 1
+        finally:
+            self.capture_undo_after()
+        self.timeline.update()
+        if hasattr(self, "video_canvas") and self.video_canvas is not None:
+            self.video_canvas.update()
+        total = clip_count + ov_count + seam_count
+        if total > 0:
+            self.statusBar().showMessage(
+                f"已将转场「{base}」批量应用到 {clip_count} 个视频/分屏片段、{ov_count} 个图片图层及 {seam_count} 处接缝",
+                4000,
+            )
+        else:
+            self.statusBar().showMessage("当前没有可应用转场的视频/分屏片段或图片图层", 3500)
+
+    def _on_apply_transition_to_subtitles_text(self, preset, duration=0.0):
+        from cutora.render.transition_catalog import recommended_duration
+
+        if not (0 <= getattr(self, "curr_idx", -1) < len(getattr(self, "tasks", None) or [])):
+            self.statusBar().showMessage("请先导入或创建一个工程任务", 4000)
+            return
+        task = self.tasks[self.curr_idx]
+        base = str(preset or "cross_dissolve")
+        for suf in ("_in", "_out", "_both"):
+            if base.endswith(suf):
+                base = base[: -len(suf)]
+                break
+        scoped = f"{base}_both" if base and base != "none" else "none"
+        eff_dur = float(duration or 0.0)
+        if eff_dur <= 0:
+            eff_dur = recommended_duration(base, 0.8)
+        # 字幕单句通常较短，默认过渡时间上限控制在合理范围
+        sub_dur = min(eff_dur, 0.8)
+        seg_count = 0
+        txt_count = 0
+        self.push_undo("批量应用转场到字幕/文本")
+        try:
+            for seg in task.get("segments", []) or []:
+                if isinstance(seg, dict):
+                    seg["transition_preset"] = scoped
+                    seg["transition_duration"] = sub_dur
+                    seg_count += 1
+            for ov in task.get("text_overlays", []) or []:
+                if isinstance(ov, dict):
+                    ov["transition_preset"] = scoped
+                    ov["transition_duration"] = eff_dur
+                    txt_count += 1
+        finally:
+            self.capture_undo_after()
+        self.timeline.update()
+        if hasattr(self, "video_canvas") and self.video_canvas is not None:
+            self.video_canvas.update()
+        total = seg_count + txt_count
+        if total > 0:
+            self.statusBar().showMessage(
+                f"已将转场「{base}」批量应用到 {seg_count} 条字幕与 {txt_count} 个文字图层",
+                4000,
+            )
+        else:
+            self.statusBar().showMessage("当前没有可应用转场的字幕或文字图层", 3500)
 
     def add_img_ov(self):
         path, _ = QFileDialog.getOpenFileName(self, "Img", "", "Images (*.png *.jpg)")

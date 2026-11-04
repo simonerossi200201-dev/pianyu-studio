@@ -1,0 +1,88 @@
+{
+  "description": "Procedural high-resolution companion visual textures, masks, and overlays for CUTORA social transitions. Generated clean-room by the CUTORA engine (NumPy + Qt QPainter); zero third-party or copyrighted material.",
+  "license": "GPL-3.0-or-later / CUTORA project-owned asset (commercial use OK)",
+  "generated_utc": "2026-11-04T00:12:00Z",
+  "files": [
+    {
+      "file": "anamorphic_flare.png",
+      "size": [
+        512,
+        288
+      ],
+      "bytes": 47719,
+      "sha256": "06665c84bc3e54c3da15b16053f2dcea46b4e6220415983b1a0c5ee7b233ddd3"
+    },
+    {
+      "file": "bokeh_crystal_overlay.png",
+      "size": [
+        512,
+        288
+      ],
+      "bytes": 54835,
+      "sha256": "a9365bac384ba8737ec53cc18938dab0a67139cfc301ee89430e0be5c644916a"
+    },
+    {
+      "file": "cyber_hud_grid.png",
+      "size": [
+        512,
+        288
+      ],
+      "bytes": 13623,
+      "sha256": "7e14eb1e1fa745d55eb920b92af671672cfc3a50026848b162b4e1840ab95e27"
+    },
+    {
+      "file": "film_burn_overlay.png",
+      "size": [
+        512,
+        288
+      ],
+      "bytes": 124692,
+      "sha256": "10fe1843e6303a99d554c03a59c9752bdd00e74bcb83a493ec4179ba9916300d"
+    },
+    {
+      "file": "glass_shards_map.png",
+      "size": [
+        512,
+        288
+      ],
+      "bytes": 67185,
+      "sha256": "1823aaefac18613cbc640151c062f6a543dc4ab1eb07afeff9d1785c7e8a60a0"
+    },
+    {
+      "file": "ink_wash_mask.png",
+      "size": [
+        512,
+        288
+      ],
+      "bytes": 72790,
+      "sha256": "a31b7cdb2f285ef70f4783a949ffd3c647f7da73b675611ba08e67f1a675c66b"
+    },
+    {
+      "file": "paper_tear_edge.png",
+      "size": [
+        512,
+        288
+      ],
+      "bytes": 155795,
+      "sha256": "5a5c3474f748bf6c80992296f2e01d96638fff708d5df7bc566cbb8d29a9dab7"
+    },
+    {
+      "file": "speed_lines_mask.png",
+      "size": [
+        512,
+        288
+      ],
+      "bytes": 55635,
+      "sha256": "5ffc5c812f02dfc9cd6b0a6cf7512c9d354eb48cb96af63f0bf09bf619b6714b"
+    },
+    {
+      "file": "warm_light_leak.png",
+      "size": [
+        512,
+        288
+      ],
+      "bytes": 104240,
+      "sha256": "773a7d7b719c87031d27f754b44cfa0ab9d201c3303a24d367a7de76dcaaef73"
+    }
+  ]
+}

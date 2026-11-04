@@ -161,7 +161,7 @@ UI_ANIM_TYPE_LABELS = [
 # ───────────────────────────────────────────────────────
 # 1.5  Transition presets (for video/image/text clips)
 # ───────────────────────────────────────────────────────
-DEFAULT_TRANSITION_DURATION = 0.35
+DEFAULT_TRANSITION_DURATION = 1.2
 
 # Chinese labels → internal preset (type_scope)
 TRANSITION_PRESETS = [
@@ -193,7 +193,7 @@ TRANSITION_PRESETS = [
     ("Zoom In(双向)",     "zoom_in_both"),
 ]
 
-# T20c NLE tape library. Default duration 0.35s. 黑场 is #0B0B0E, never #000.
+# T20c NLE tape library. Default duration 1.2s. 黑场 is #0B0B0E, never #000.
 STANDALONE_TRANSITION_LIBRARY = [
     ("交叉溶解", "cross_dissolve"),
     ("黑场", "fade_dark"),
@@ -209,7 +209,7 @@ STANDALONE_TRANSITION_LIBRARY = [
 ]
 from cutora.render.transitions import EXTRA_TRANSITION_LIBRARY
 STANDALONE_TRANSITION_LIBRARY = list(STANDALONE_TRANSITION_LIBRARY) + list(EXTRA_TRANSITION_LIBRARY)
-STANDALONE_TRANSITION_DEFAULT_DUR = 0.35
+STANDALONE_TRANSITION_DEFAULT_DUR = 1.2
 FADE_DARK_RGB = (0x0B, 0x0B, 0x0E)
 
 _EXISTING_PRESET_KEYS = {p for _l, p in TRANSITION_PRESETS}
@@ -232,7 +232,7 @@ def is_standalone_transition_preset(preset) -> bool:
     base, _scope = _parse_transition_preset(preset)
     return bool(base and base in _STANDALONE_BASE_SET and base not in ("cross_dissolve",))
 
-# T20-f audio tape library. Seam fade is 30 ms; others default 0.35 s.
+# T20-f audio tape library. Seam fade is 30 ms; others default 0.80 s.
 AUDIO_TRANSITION_LIBRARY = [
     ("等功率交叉淡化", "audio_xfade_equal"),
     ("线性交叉淡化", "audio_xfade_linear"),
@@ -241,7 +241,7 @@ AUDIO_TRANSITION_LIBRARY = [
     ("接缝淡化", "audio_seam_fade"),
 ]
 AUDIO_SEAM_FADE_DUR = 0.030
-AUDIO_TRANSITION_DEFAULT_DUR = 0.35
+AUDIO_TRANSITION_DEFAULT_DUR = 0.80
 
 
 def audio_transition_duration(preset) -> float:

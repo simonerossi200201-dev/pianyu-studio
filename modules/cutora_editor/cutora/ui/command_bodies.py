@@ -815,6 +815,7 @@ class CommandBodies:
                     sfx_id = recommended_sfx(str(preset or ""))
                     if sfx_id:
                         sfx_social.attach_transition_sfx(tl, tr, replaced, sfx_id)
+                        replaced.sfx_id = ""
                     else:
                         sfx_social.detach_transition_sfx(tl, tr, replaced)
             except Exception:
@@ -829,11 +830,9 @@ class CommandBodies:
         }
 
     def command_set_transition(self, track_id, start_t=None, duration=None,
-                               transition_id=None, preset=None):
-        """Resize/move one TransitionItem. Opposite-edge-stays is applied by the UI
-        before this command runs; here we just write the final start/duration.
-        Min duration is one frame. Dragging past source handles is allowed
-        (freeze-frame covers the gap).
+                               transition_id=None, preset=None, sfx_id=None):
+        """Resize/move one TransitionItem. If duration changes without start_t,
+        keep the transition symmetrically centered on its seam midpoint.
         """
         idx, task = _idx(self, None)
         tl = _tl(task)
@@ -867,22 +866,54 @@ class CommandBodies:
             raise CommandError("找不到转场")
         fps = float(getattr(tl, "fps", 30.0) or 30.0) if tl is not None else 30.0
         min_dur = 1.0 / max(1.0, fps)
+        old_start = float(getattr(found, "start_t", 0.0) or 0.0)
+        old_dur = max(min_dur, float(getattr(found, "duration", min_dur) or min_dur))
+        old_center = old_start + old_dur * 0.5
         if duration is not None:
             found.duration = max(min_dur, float(duration))
+            if start_t is None:
+                found.start_t = max(0.0, old_center - found.duration * 0.5)
         if start_t is not None:
             found.start_t = max(0.0, float(start_t))
         if preset is not None:
             found.preset = str(preset)
         if found.duration < min_dur:
             found.duration = min_dur
-        if preset is not None and str(getattr(found, "domain", "visual") or "visual") == "visual":
+        if sfx_id is not None:
             try:
                 from cutora.audio import sfx_social
                 from cutora.render.transition_catalog import recommended_sfx
-                if sfx_social.is_enabled():
-                    sfx_id = recommended_sfx(str(preset or ""))
-                    if sfx_id:
-                        sfx_social.attach_transition_sfx(tl, tr, found, sfx_id)
+                sfx_val = str(sfx_id or "").strip()
+                if sfx_val in ("", "auto", "default"):
+                    found.sfx_id = ""
+                    rec_sfx = recommended_sfx(str(getattr(found, "preset", "") or ""))
+                    if rec_sfx:
+                        sfx_social.attach_transition_sfx(tl, tr, found, rec_sfx)
+                        found.sfx_id = ""
+                    else:
+                        sfx_social.detach_transition_sfx(tl, tr, found)
+                elif sfx_val == "none":
+                    sfx_social.detach_transition_sfx(tl, tr, found)
+                    found.sfx_id = "none"
+                else:
+                    sfx_social.attach_transition_sfx(tl, tr, found, sfx_val)
+                    found.sfx_id = sfx_val
+            except Exception:
+                pass
+        elif preset is not None and str(getattr(found, "domain", "visual") or "visual") == "visual":
+            try:
+                from cutora.audio import sfx_social
+                from cutora.render.transition_catalog import recommended_sfx
+                cur_sfx_pref = str(getattr(found, "sfx_id", "") or "")
+                if cur_sfx_pref == "none":
+                    sfx_social.detach_transition_sfx(tl, tr, found)
+                elif cur_sfx_pref and cur_sfx_pref not in ("auto", "default"):
+                    sfx_social.attach_transition_sfx(tl, tr, found, cur_sfx_pref)
+                elif sfx_social.is_enabled():
+                    rec_sfx = recommended_sfx(str(preset or ""))
+                    if rec_sfx:
+                        sfx_social.attach_transition_sfx(tl, tr, found, rec_sfx)
+                        found.sfx_id = ""
                     else:
                         sfx_social.detach_transition_sfx(tl, tr, found)
             except Exception:
@@ -893,6 +924,7 @@ class CommandBodies:
             "start_t": float(found.start_t),
             "duration": float(found.duration),
             "preset": str(getattr(found, "preset", "") or ""),
+            "sfx_id": str(getattr(found, "sfx_id", "") or ""),
         }
 
     def command_delete_transition(self, track_id, start_t=None,
